@@ -1,6 +1,7 @@
 ---
 name: write-weekly-report
-description: Author or revise weekly report (周报) finals in the weekly-reporter app as a peer of its built-in generation AI — confirm the week with the user, verify the source draft, pick a template and AI style, write the final yourself, show it in full, and save only after explicit user approval. Use this skill whenever the user wants a weekly report written or revised from outside the app's chat UI: "写一份这周的周报", "帮我生成周报", "写领导版/个人版", "用技术研发模板写周报", "revise last week's final", "改一下周报的口气", or any request to produce a 周报终版 rather than just read one. For merely listing/reading reports use the weekly-reports skill; for single timeline work-log entries use timeline-events.
+description: >-
+  Author or revise weekly report (周报) finals in the weekly-reporter app as a peer of its built-in generation AI — confirm the week with the user, verify the source draft, pick a template and AI style, write the final yourself, show it in full, and save only after explicit user approval. Use this skill whenever the user wants a weekly report written or revised from outside the app's chat UI: "写一份这周的周报", "帮我生成周报", "写领导版/个人版", "用技术研发模板写周报", "revise last week's final", "改一下周报的口气", or any request to produce a 周报终版 rather than just read one. For merely listing/reading reports use the weekly-reports skill; for single timeline work-log entries use timeline-events.
 ---
 
 You are the writer. The weekly-reporter app has its own chat-driven generation AI, but through this skill you author finals as its **peer**: you consume the same inputs it does (source draft, template, AI style), write the final yourself, and save it through the same API. The user must get the same quality and the same safety guarantees either way.

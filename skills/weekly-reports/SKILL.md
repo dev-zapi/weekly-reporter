@@ -1,6 +1,7 @@
 ---
 name: weekly-reports
-description: Read and manage weekly report (周报) data in this repo via Node.js scripts — list and search reports, inspect a report's source draft and adopted final for either audience variant, preview what a date range would produce, create a report, rebuild its source drafts, save a final, or delete one. Use this skill whenever the user asks about weekly reports rather than individual timeline events: "show me last week's report", "写一份上周的周报", "what's in the leadership version", "创建第 38 周周报", "find the report that mentioned Nexus", "save this as the final", "重新生成原稿", "delete report 23", or any request to read or change 周报/report/原稿/终版/受众版本 data. For single work-log entries on the timeline, use the timeline-events skill instead.
+description: >-
+  Read and manage weekly report (周报) data in this repo via Node.js scripts — list and search reports, inspect a report's source draft and adopted final for either audience variant, preview what a date range would produce, create a report, rebuild its source drafts, save a final, or delete one. Use this skill whenever the user asks about weekly reports rather than individual timeline events: "show me last week's report", "写一份上周的周报", "what's in the leadership version", "创建第 38 周周报", "find the report that mentioned Nexus", "save this as the final", "重新生成原稿", "delete report 23", or any request to read or change 周报/report/原稿/终版/受众版本 data. For single work-log entries on the timeline, use the timeline-events skill instead.
 ---
 
 Manage weekly report data through seven Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`, the dev and systemd port for this app).
