@@ -1,0 +1,26 @@
+{
+  "skill_name": "write-weekly-report",
+  "evals": [
+    {
+      "id": 1,
+      "name": "author-new-week-approval-gate",
+      "prompt": "帮我写第 38 周（2026-09-14 到 2026-09-20）的周报，领导版和个人版都要。模板用官方的技术研发模板。写好先给我看全文，我确认了再保存。",
+      "expected_output": "Agent previews the week, reuses/creates the report, reads both variants' source drafts, shows two complete final drafts (technical template structure, plan section ≤5 items), and asks for approval. No save happens because no approval was given: both variants' finalStatus remain 'none' in the app.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "carry-forward-reference",
+      "prompt": "该写这周的周报了（2026-09-14 到 2026-09-20），先只要领导版。上周的终版你参考一下，下周计划该结转的结转、该丢的丢，说清楚理由。写完给我过目再存。",
+      "expected_output": "Agent reads the previous week's (2026-09-07..13) current leadership final, extracts its 下周计划 items, drafts this week's leadership final whose plan carries still-relevant items and drops finished ones, and presents an explicit carry/drop list with one-line reasons alongside the full draft. No save without approval.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "empty-draft-guard",
+      "prompt": "帮我把 2026-08-03 到 2026-08-09 那周的周报写了，两个版本。",
+      "expected_output": "Preview shows an empty source draft; agent refuses to author a final, explains the week has no events (likely missing collect-source sync or wrong dates), and does not create a fabricated report or save anything.",
+      "files": []
+    }
+  ]
+}

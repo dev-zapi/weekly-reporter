@@ -63,10 +63,11 @@ Re-reads current events, bumps `sourceRevision`, and rebuilds both source drafts
 
 ```bash
 node {baseDir}/scripts/save-final.mjs <id> --variant <leadership|personal> \
-  (--content <text> | --file <path>) [--source-revision <n>]
+  (--content <text> | --file <path>) [--source-revision <n>] \
+  [--template-id <id>] [--ai-style-key <key>]
 ```
 
-Prefer `--file` for anything longer than one line; shell quoting mangles multi-line markdown. Pass `--source-revision` with the value you read from `show.mjs` to get a 409 instead of silently overwriting a final that was rebuilt from a newer draft in the meantime.
+Prefer `--file` for anything longer than one line; shell quoting mangles multi-line markdown. Pass `--source-revision` with the value you read from `show.mjs` to get a 409 instead of silently overwriting a final that was rebuilt from a newer draft in the meantime. `--template-id` / `--ai-style-key` snapshot the template and AI style onto the variant, mirroring what proposal acceptance records — pass the ones the content was actually written with (the write-weekly-report skill relies on this). Omitted, they leave existing snapshots untouched.
 
 ```bash
 node {baseDir}/scripts/delete.mjs <id> --confirm

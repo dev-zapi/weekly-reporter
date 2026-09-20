@@ -1,18 +1,20 @@
 #!/usr/bin/env node
 
 // Save the adopted final content for one audience variant of a report.
-// Usage: save-final.mjs <id> --variant <leadership|personal> (--content <text> | --file <path>) [--source-revision <n>]
+// Usage: save-final.mjs <id> --variant <leadership|personal> (--content <text> | --file <path>) [--source-revision <n>] [--template-id <id>] [--ai-style-key <key>]
 
 import { readFile } from 'node:fs/promises'
 import { api, fail, failResponse, jsonPut, parseArgs, requireId, requireVariant } from './lib/client.mjs'
 
-const USAGE = 'Usage: save-final.mjs <id> --variant <leadership|personal> (--content <text> | --file <path>) [--source-revision <n>]'
+const USAGE = 'Usage: save-final.mjs <id> --variant <leadership|personal> (--content <text> | --file <path>) [--source-revision <n>] [--template-id <id>] [--ai-style-key <key>]'
 
 const { flags, positional } = parseArgs(process.argv.slice(2), {
   '--variant': 'value',
   '--content': 'value',
   '--file': 'value',
   '--source-revision': 'value',
+  '--template-id': 'value',
+  '--ai-style-key': 'value',
 }, USAGE)
 
 const reportId = requireId(positional[0], USAGE)
@@ -43,6 +45,11 @@ if (flags['source-revision'] != null) {
   // overwriting a final that was rebuilt from a newer source draft meanwhile.
   payload.sourceRevision = revision
 }
+// Provenance snapshots: pass the template/style you actually wrote with so the
+// variant records them the same way the app's own proposal acceptance does.
+// Omitted flags leave the variant's existing snapshots untouched.
+if (flags['template-id'] != null) payload.templateId = flags['template-id']
+if (flags['ai-style-key'] != null) payload.aiStyleKey = flags['ai-style-key']
 
 const { status, body } = await api(`/api/reports/${reportId}/final`, jsonPut(payload))
 if (status !== 200) failResponse(status, body, `Report #${reportId} (${variant})`)
