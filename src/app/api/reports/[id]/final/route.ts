@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
-import { generationMessageParts, generationProposals, generationSessions, reportVariants, reports } from '@/lib/db/schema'
+import { aiStyles, generationMessageParts, generationProposals, generationSessions, reportVariants, reports } from '@/lib/db/schema'
 import { normalizeStructureCompletenessRule } from '@/lib/reports/structure-completeness'
+import { getTemplateSelection } from '@/lib/reports/service'
 
 export async function PUT(
   request: Request,
@@ -23,8 +24,32 @@ export async function PUT(
     ) {
       return NextResponse.json({ error: 'Final content and audience variant are required', code: 'INVALID_INPUT' }, { status: 400 })
     }
+    if (body.templateId !== undefined && typeof body.templateId !== 'string') {
+      return NextResponse.json({ error: 'templateId must be a string', code: 'INVALID_INPUT' }, { status: 400 })
+    }
+    if (body.aiStyleKey !== undefined && typeof body.aiStyleKey !== 'string') {
+      return NextResponse.json({ error: 'aiStyleKey must be a string', code: 'INVALID_INPUT' }, { status: 400 })
+    }
 
     const db = getDb()
+
+    let resolvedTemplate: { id: string; name: string; content: string } | null = null
+    if (body.templateId !== undefined) {
+      const selection = await getTemplateSelection(body.templateId)
+      if (!selection) {
+        return NextResponse.json({ error: `Unknown template: ${body.templateId}`, code: 'VALIDATION_ERROR' }, { status: 400 })
+      }
+      resolvedTemplate = { id: selection.id, name: selection.name, content: selection.content }
+    }
+
+    let resolvedAiStyleKey: string | null = null
+    if (body.aiStyleKey !== undefined) {
+      const styleRow = await db.query.aiStyles.findFirst({ where: eq(aiStyles.key, body.aiStyleKey) })
+      if (!styleRow) {
+        return NextResponse.json({ error: `Unknown AI style: ${body.aiStyleKey}`, code: 'VALIDATION_ERROR' }, { status: 400 })
+      }
+      resolvedAiStyleKey = styleRow.key
+    }
     const existing = await db.query.reportVariants.findFirst({
       where: and(eq(reportVariants.reportId, reportId), eq(reportVariants.variant, variant)),
     })
@@ -49,14 +74,21 @@ export async function PUT(
     }
 
     const now = new Date()
+    const templateContentForNormalization = resolvedTemplate ? resolvedTemplate.content : existing.templateContent
     const finalValues = {
       finalContent: body.content.trim(),
       finalStatus: 'current',
       structureCompletenessRule: normalizeStructureCompletenessRule(
         existing.structureCompletenessRule,
-        existing.templateContent,
+        templateContentForNormalization,
       ),
       updatedAt: now,
+      ...(resolvedTemplate ? {
+        templateId: resolvedTemplate.id,
+        templateName: resolvedTemplate.name,
+        templateContent: resolvedTemplate.content,
+      } : {}),
+      ...(resolvedAiStyleKey !== null ? { aiStyle: resolvedAiStyleKey } : {}),
     } as const
     const updated = db.transaction((tx) => {
       const updatedVariant = tx.update(reportVariants)

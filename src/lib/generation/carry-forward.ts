@@ -120,7 +120,7 @@ export async function createCarryForwardSnapshot(report: Report, audience: Audie
     .where(inArray(reportVariants.reportId, candidateReports.map((item) => item.id)))
   for (const candidateReport of candidateReports) {
     const candidate = candidateVariants.find((item) => item.reportId === candidateReport.id && item.variant === audience)
-    if (!candidate || candidate.finalStatus !== 'current' || candidate.acceptedProposalId == null || !candidate.finalContent?.trim()) continue
+    if (!candidate || candidate.finalStatus !== 'current' || !candidate.finalContent?.trim()) continue
     return snapshotFromParse(candidateReport, candidate, parseNextWeekPlan(candidate.finalContent), capturedAt)
   }
   return noSourceSnapshot(audience, capturedAt)

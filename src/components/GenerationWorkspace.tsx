@@ -743,7 +743,7 @@ export function GenerationWorkspace({
       onAccepted(data.variant)
       setLiveProposal(null) // Clear live proposal so we show the updated proposal from detail
       await Promise.all([loadDetail(activeSessionId), loadSessions(activeSessionId)])
-      toast.success('Final version saved; scoring will run in the background')
+      toast.success('Final version saved')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save proposed final version')
     } finally {

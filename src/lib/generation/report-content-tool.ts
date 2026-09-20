@@ -60,8 +60,8 @@ export function queryReportContentForSession(input: { sessionId: number; paramet
         return unavailable('This historical report is not available for the current audience or authorization')
       }
     } else {
-      if (variant.finalStatus === 'none' || !variant.finalContent || variant.acceptedProposalId == null) {
-        return unavailable('The requested report has no adopted final for this audience')
+      if (variant.finalStatus === 'none' || !variant.finalContent) {
+        return unavailable('The requested report has no current final for this audience')
       }
       if (variant.finalStatus === 'stale' && params.allowStale !== true) {
         return unavailable('The stale final requires explicit authorization')

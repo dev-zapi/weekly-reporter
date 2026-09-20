@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   findReport: vi.fn(),
   findProposal: vi.fn(),
   findSession: vi.fn(),
+  findTemplate: vi.fn(),
+  findAIStyle: vi.fn(),
   returning: vi.fn(),
   transactionReturning: vi.fn(),
   set: vi.fn(),
@@ -20,6 +22,8 @@ vi.mock('@/lib/db', () => ({
       reports: { findFirst: mocks.findReport },
       generationProposals: { findFirst: mocks.findProposal },
       generationSessions: { findFirst: mocks.findSession },
+      templates: { findFirst: mocks.findTemplate },
+      aiStyles: { findFirst: mocks.findAIStyle },
     },
     update: () => ({
       set: (values: unknown) => {
@@ -165,5 +169,113 @@ describe('PUT /api/reports/[id]/final', () => {
     }))
     expect(mocks.insertRun).toHaveBeenCalled()
     expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({ baselineFinalContent: '会话后编辑' }))
+  })
+
+  it('writes back an official template and valid AI style key onto the variant', async () => {
+    mocks.findAIStyle.mockResolvedValue({ key: 'formal', label: '正式' })
+    mocks.transactionReturning.mockReturnValue({ ...existingVariant, finalContent: '新终版', templateId: 'official-tech-dev', templateName: '技术研发专属周报模板', aiStyle: 'formal' })
+
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+        templateId: 'official-tech-dev', aiStyleKey: 'formal',
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(200)
+    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({
+      templateId: 'official-tech-dev',
+      templateName: '技术研发专属周报模板',
+      templateContent: expect.stringContaining('研发周报'),
+      aiStyle: 'formal',
+    }))
+  })
+
+  it('returns 400 for an unknown templateId', async () => {
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+        templateId: 'official-nonexistent',
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('returns 400 for an unknown aiStyleKey', async () => {
+    mocks.findAIStyle.mockResolvedValue(undefined)
+
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+        aiStyleKey: 'nonexistent-style',
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.code).toBe('VALIDATION_ERROR')
+  })
+
+  it('leaves template and style fields unchanged when both are omitted', async () => {
+    mocks.transactionReturning.mockReturnValue({ ...existingVariant, finalContent: '新终版' })
+
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(200)
+    const setCall = mocks.set.mock.calls.find((call: unknown[]) => (call[0] as Record<string, unknown>).finalContent === '新终版')
+    expect(setCall).toBeDefined()
+    const setValues = setCall![0] as Record<string, unknown>
+    expect(setValues.templateId).toBeUndefined()
+    expect(setValues.templateName).toBeUndefined()
+    expect(setValues.templateContent).toBeUndefined()
+    expect(setValues.aiStyle).toBeUndefined()
+  })
+
+  it('normalizes structureCompletenessRule from the new template content when a template is written back', async () => {
+    mocks.transactionReturning.mockReturnValue({ ...existingVariant, finalContent: '新终版' })
+
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+        templateId: 'official-minimal',
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(200)
+    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({
+      templateContent: expect.stringContaining('极简'),
+    }))
+  })
+
+  it('returns 400 INVALID_INPUT when templateId is not a string', async () => {
+    const response = await PUT(new Request('http://localhost/api/reports/3/final', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        variant: 'leadership', content: '新终版', sourceRevision: 2,
+        templateId: 123,
+      }),
+    }), { params: Promise.resolve({ id: '3' }) })
+
+    expect(response.status).toBe(400)
+    const body = await response.json()
+    expect(body.code).toBe('INVALID_INPUT')
   })
 })
