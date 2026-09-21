@@ -1,36 +1,14 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# weekly-reporter
 
-## Getting Started
+**weekly-reporter** 是一个自托管的单用户周报工作台：它持续从你的本地 Git 仓库和 GitHub/GitLab 采集工作事件，汇成可筛选、可标注的时间线，并在你指定的日期范围内为不同受众（领导版 / 个人版）生成周报——先由事件快照确定性地产出原稿，再通过与 AI 的多轮协作会话按模板和风格生成可评审、可保存的终版，让每周周报有据可依、有迹可查。
 
-First, run the development server:
+## 功能特性
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **多源事件采集** — 从本地 Git 仓库和 GitHub/GitLab 同步 commit 事件，按分支维护同步游标，不漏延迟推送的提交
+- **时间线** — 事件按工作时间排序展示，支持手动记录、重要标记与 `#标签` 筛选
+- **双受众周报** — 同一篇周报分领导版 / 个人版，各自基于独立事件快照生成
+- **AI 终版生成** — 以确定性原稿为事实来源，在持久化多轮会话中按模板与风格生成候选终版，经评审确认后才保存；支持计划结转与历史周报参考
+- **模板与提示词管理** — 周报模板、AI 风格、系统提示词与 AI 连接配置全部数据库驱动、可视化编辑
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> [!NOTE]
+> 本项目仍在开发中，且面向个人使用：未做任何认证与访问限制，仅建议在可信环境（如个人 Linux 服务器）中部署，不要直接暴露到公网。
