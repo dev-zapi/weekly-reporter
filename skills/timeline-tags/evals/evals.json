@@ -1,0 +1,33 @@
+{
+  "skill_name": "timeline-tags",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "list-tags",
+      "prompt": "我时间线上现在有哪些标签？分别用在多少条事件上？",
+      "expected_output": "Runs list.mjs (or GET /api/tags) and reports 个人(3), 临时(2), 工作(3) with counts; makes no mutations.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "eval_name": "rename-merge-gate",
+      "prompt": "把 #工作 这个标签改名为 #个人",
+      "expected_output": "Discovers 个人 already exists → presents rename plan with merge warning + affected events (3) and asks for approval; does NOT execute the rename (server state unchanged).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "eval_name": "single-event-boundary",
+      "prompt": "昨天有条事件带了 #个人 标签，把那条的标签去掉就行",
+      "expected_output": "Recognizes single-event scope: identifies yesterday's event and edits its content via the event API; never calls global tag rename/remove endpoints.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "eval_name": "global-remove-gate",
+      "prompt": "#临时 这个标签彻底没用了，帮我全局清掉",
+      "expected_output": "Presents removal plan (2 affected events) with samples and asks for approval; does NOT execute (临时 still on server).",
+      "files": []
+    }
+  ]
+}
