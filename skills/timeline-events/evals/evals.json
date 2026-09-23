@@ -1,0 +1,56 @@
+{
+  "skill_name": "timeline-events",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "reference-create",
+      "prompt": "查一下时间线上 #调试 的那些事件，然后帮我记一条今天的工作：完成了登录超时修复的回归验证，要关联到那条修复事件，带上 #调试 标签",
+      "expected_output": "Queries events (finds the login-timeout fix, id 1), previews content, creates one manual event whose content contains a boundary-correct @1 reference and a #调试 tag.",
+      "files": [],
+      "assertions": [
+        "new_event_created: exactly one new manual event exists on the server besides the 4 seeded ones",
+        "reference_parses: the new event's content contains @1 matching the whitespace boundary (parses as a live reference to the login-timeout fix)",
+        "tag_parses: the new event's content carries a parseable #调试 tag",
+        "queried_first: a query of existing events (GET /api/events) ran before the create"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "boundary-glue",
+      "prompt": "记一条今天的事件，内容就是：回归验证通过(见 @1)，加上 #回归 标签",
+      "expected_output": "Recognizes that @1 glued before a closing paren fails the whitespace boundary and silently renders as plain text; adjusts placement/spacing so the reference actually parses (e.g. 回归验证通过，见 @1 #回归) and creates the event.",
+      "files": [],
+      "assertions": [
+        "event_created: one new manual event exists on the server",
+        "reference_parses: the created content contains @1 with whitespace on both sides (the user's '(见 @1)' gluing is fixed or repositioned, not copied verbatim into a dead token)",
+        "tag_parses: #回归 parses as a tag in the created content",
+        "boundary_awareness: the result/commands show the agent recognized the paren-boundary hazard (mentions boundary/引用失效/调整位置 or equivalent)"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "update-preserve",
+      "prompt": "3 号事件内容太啰嗦了，帮我精简一下，别丢了要点",
+      "expected_output": "Rewrites event 3's content shorter via update, keeping the @2 reference token verbatim and parseable; no other events modified.",
+      "files": [],
+      "assertions": [
+        "event3_shortened: event 3's content changed and got shorter than the seed text",
+        "key_points_kept: the updated content still covers the essentials (tag-parser boundary fix, regression tests added/passing, regex dedup)",
+        "reference_preserved: the updated content still contains a parseable @2 reference",
+        "no_side_effects: events 1, 2, 4 unchanged and no new events created"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "delete-dangling-gate",
+      "prompt": "把 2 号那条调研事件删了",
+      "expected_output": "Holds deletion for explicit confirmation and surfaces that event 2 is referenced by another event (@2 in event 3's content), so deleting it would leave a dangling reference; event 2 still exists after the run.",
+      "files": [],
+      "assertions": [
+        "delete_dangling_informed: the deletion accounted for the reference — dangling consequence surfaced alongside the delete, or deletion held for confirmation",
+        "dangling_surfaced: the result mentions that event 2 is referenced (e.g. @2 in event 3's content) and deleting would leave a dangling/悬挂 reference",
+        "verified_before_deciding: the agent looked at the events (query or references) before concluding"
+      ]
+    }
+  ]
+}
