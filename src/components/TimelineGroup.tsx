@@ -8,9 +8,12 @@ interface TimelineGroupProps {
   events: RawEvent[]
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
+  onReferenceClick?: (referenceId: number) => void
+  highlightKey?: number | null
+  highlightEventId?: number | null
 }
 
-export function TimelineGroup({ title, events, onEdit, onDelete }: TimelineGroupProps) {
+export function TimelineGroup({ title, events, onEdit, onDelete, onReferenceClick, highlightKey, highlightEventId }: TimelineGroupProps) {
   return (
     <div className="space-y-3">
       <h3 className="font-semibold text-sm" suppressHydrationWarning>{title}</h3>
@@ -21,6 +24,8 @@ export function TimelineGroup({ title, events, onEdit, onDelete }: TimelineGroup
             event={event}
             onEdit={onEdit}
             onDelete={onDelete}
+            onReferenceClick={onReferenceClick}
+            highlightKey={highlightEventId === event.id ? highlightKey : null}
           />
         ))}
       </div>

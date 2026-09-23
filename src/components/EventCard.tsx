@@ -1,22 +1,42 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Edit2, Trash2, FileText, GitBranch } from 'lucide-react'
 import type { RawEvent } from '@/lib/db/schema'
 import { EventTimestamp } from './EventTimestamp'
+import { ContentWithReferences } from './ContentWithReferences'
+import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 
 interface EventCardProps {
   event: RawEvent
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
+  onReferenceClick?: (referenceId: number) => void
+  highlightKey?: number | null
 }
 
-export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
+export function EventCard({ event, onEdit, onDelete, onReferenceClick, highlightKey }: EventCardProps) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(event.content)
   const [loading, setLoading] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const isManual = event.source === 'manual'
+
+  useEffect(() => {
+    if (highlightKey && cardRef.current) {
+      // Remove first so re-applying the same class re-triggers the animation.
+      cardRef.current.classList.remove('reference-highlight')
+      // Force reflow before re-adding the class.
+      void cardRef.current.offsetWidth
+      cardRef.current.classList.add('reference-highlight')
+      const timer = setTimeout(() => {
+        cardRef.current?.classList.remove('reference-highlight')
+      }, HIGHLIGHT_DURATION_MS)
+      return () => clearTimeout(timer)
+    }
+  }, [highlightKey])
 
   const handleSubmit = async () => {
     if (!onEdit) return
@@ -57,7 +77,28 @@ export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
   const handleDelete = async () => {
     if (!onDelete) return
 
-    if (confirm('Delete this record?')) {
+    // Check if any events reference this one
+    let referrers: Array<{ id: number; content: string }> = []
+    try {
+      const res = await fetch(`/api/events/${event.id}/references`)
+      if (res.ok) {
+        const data = await res.json()
+        referrers = data.referrers || []
+      }
+    } catch {
+      // Ignore errors, proceed with deletion
+    }
+
+    let message = 'Delete this record?'
+    if (referrers.length > 0) {
+      const summaries = referrers.map((r) => {
+        const snippet = r.content.length > 40 ? r.content.slice(0, 40) + '…' : r.content
+        return `#${r.id}: "${snippet.replace(/\n/g, ' ')}"`
+      }).join('\n')
+      message = `This event is referenced by ${referrers.length} event(s). Deleting it will leave dangling references.\n\nReferrers:\n${summaries}\n\nContinue?`
+    }
+
+    if (confirm(message)) {
       setLoading(true)
       try {
         await onDelete(event.id)
@@ -68,7 +109,7 @@ export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
   }
 
   return (
-    <div className="border rounded-lg p-4 space-y-2">
+    <div ref={cardRef} data-event-id={event.id} className="border rounded-lg p-4 space-y-2">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 flex-1">
           {event.isImportant && (
@@ -98,11 +139,17 @@ export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
                 </div>
               </div>
             ) : (
-              <p className="text-sm whitespace-pre-line">{event.content}</p>
+              <p className="text-sm whitespace-pre-line">
+                <ContentWithReferences
+                  content={event.content}
+                  isManual={isManual}
+                  onReferenceClick={onReferenceClick}
+                />
+              </p>
             )}
 
             <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-              {event.source === 'manual' ? (
+              {isManual ? (
                 <FileText className="h-3 w-3" />
               ) : (
                 <GitBranch className="h-3 w-3" />
@@ -135,7 +182,7 @@ export function EventCard({ event, onEdit, onDelete }: EventCardProps) {
           </div>
         </div>
 
-        {!editing && event.source === 'manual' && (
+        {!editing && isManual && (
           <div className="flex gap-1">
             {onEdit && (
               <Button size="sm" variant="ghost" onClick={() => setEditing(true)} disabled={loading}>

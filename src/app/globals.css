@@ -274,9 +274,27 @@
   }
 }
 
+@keyframes reference-highlight {
+  0% {
+    box-shadow: 0 0 0 2px var(--ring);
+  }
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+.reference-highlight {
+  animation: reference-highlight 2.5s ease-out forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .streaming-text-reveal {
     animation: none;
+  }
+  .reference-highlight {
+    /* Static ring without animation for users who prefer reduced motion. */
+    animation: none;
+    box-shadow: 0 0 0 2px var(--ring);
   }
 }
 

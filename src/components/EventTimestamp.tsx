@@ -67,6 +67,7 @@ export function EventTimestamp({ event }: EventTimestampProps) {
       </TooltipTrigger>
       <TooltipContent>
         <div className="flex flex-col gap-0.5">
+          <div>ID: {event.id}</div>
           {rows.map((row, idx) => (
             <div key={idx}>{row}</div>
           ))}

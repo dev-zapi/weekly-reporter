@@ -13,6 +13,9 @@ interface TimelineViewProps {
   events: RawEvent[]
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
+  onReferenceClick?: (referenceId: number) => void
+  highlightEventId?: number | null
+  highlightKey?: number | null
 }
 
 function groupEventsByViewMode(events: RawEvent[], viewMode: ViewMode): Map<string, RawEvent[]> {
@@ -51,7 +54,7 @@ function groupEventsByViewMode(events: RawEvent[], viewMode: ViewMode): Map<stri
   return groups
 }
 
-export function TimelineView({ events, onEdit, onDelete }: TimelineViewProps) {
+export function TimelineView({ events, onEdit, onDelete, onReferenceClick, highlightEventId, highlightKey }: TimelineViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('day')
   const [groups, setGroups] = useState<Map<string, RawEvent[]>>(new Map())
   
@@ -72,6 +75,9 @@ export function TimelineView({ events, onEdit, onDelete }: TimelineViewProps) {
             events={groupEvents}
             onEdit={onEdit}
             onDelete={onDelete}
+            onReferenceClick={onReferenceClick}
+            highlightEventId={highlightEventId}
+            highlightKey={highlightKey}
           />
         ))}
       </div>
