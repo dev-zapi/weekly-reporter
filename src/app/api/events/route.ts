@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db'
 import { desc, eq, between, sql, inArray } from 'drizzle-orm'
 import { rawEvents, eventTags } from '@/lib/db/schema'
 import { parseTags, syncEventTags, TAG_CHARSET_REGEX } from '@/lib/tags'
+import { parseReferences, syncEventReferences } from '@/lib/references'
 
 export async function GET(request: Request) {
   try {
@@ -146,6 +147,7 @@ export async function POST(request: Request) {
         updatedAt: now,
       }).returning().get()
       syncEventTags(tx, event.id, parseTags(content))
+      syncEventReferences(tx, event.id, parseReferences(content))
       return event
     })
     return NextResponse.json(newEvent, { status: 201 })

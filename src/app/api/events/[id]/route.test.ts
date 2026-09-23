@@ -8,6 +8,11 @@ vi.mock('@/lib/tags', async (importOriginal) => {
   return { ...actual, syncEventTags: vi.fn() }
 })
 
+vi.mock('@/lib/references', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/references')>()
+  return { ...actual, syncEventReferences: vi.fn(), deleteEventReferences: vi.fn() }
+})
+
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   update: vi.fn(),

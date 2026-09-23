@@ -239,6 +239,13 @@
       "when": 1789285862361,
       "tag": "0033_dry_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1790134203630,
+      "tag": "0034_event_references",
+      "breakpoints": true
     }
   ]
 }

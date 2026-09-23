@@ -3,8 +3,52 @@ import { getDb } from '@/lib/db'
 import { rawEvents, RawEvent, eventTags } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parseTags, syncEventTags } from '@/lib/tags'
+import { parseReferences, syncEventReferences, deleteEventReferences } from '@/lib/references'
 
 type EventUpdateData = Partial<Pick<RawEvent, 'content' | 'eventTime' | 'isImportant' | 'updatedAt'>>
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const db = getDb()
+    const { id: paramId } = await params
+    const id = parseInt(paramId)
+
+    if (isNaN(id)) {
+      return NextResponse.json(
+        { error: 'Invalid event ID' },
+        { status: 400 }
+      )
+    }
+
+    const event = db.select()
+      .from(rawEvents)
+      .where(eq(rawEvents.id, id))
+      .limit(1)
+      .get()
+
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    const tags = db
+      .select({ tagName: eventTags.tagName })
+      .from(eventTags)
+      .where(eq(eventTags.eventId, id))
+      .all()
+      .map((r) => r.tagName)
+
+    return NextResponse.json({ ...event, tags })
+  } catch (error) {
+    console.error('Error fetching event:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch event', code: 'FETCH_ERROR' },
+      { status: 500 }
+    )
+  }
+}
 
 export async function PUT(
   request: NextRequest,
@@ -89,6 +133,7 @@ export async function PUT(
       const result = tx.update(rawEvents).set(updateData).where(eq(rawEvents.id, id)).returning().get()
       if (body.content !== undefined && event[0].source === 'manual') {
         syncEventTags(tx, id, parseTags(body.content))
+        syncEventReferences(tx, id, parseReferences(body.content))
       }
       return result
     })
@@ -103,7 +148,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -136,6 +181,7 @@ export async function DELETE(
     
     db.transaction((tx) => {
       tx.delete(eventTags).where(eq(eventTags.eventId, id)).run()
+      deleteEventReferences(tx, id)
       tx.delete(rawEvents).where(eq(rawEvents.id, id)).run()
     })
     return new NextResponse(null, { status: 204 })

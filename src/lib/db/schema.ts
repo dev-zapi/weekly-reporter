@@ -315,6 +315,18 @@ export const eventTags = sqliteTable('event_tags', {
 export type EventTag = typeof eventTags.$inferSelect
 export type NewEventTag = typeof eventTags.$inferInsert
 
+export const eventReferences = sqliteTable('event_references', {
+  eventId: integer('event_id').notNull(),
+  referencedEventId: integer('referenced_event_id').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (t) => ({
+  eventReferenceUnique: uniqueIndex('event_references_event_ref_unique').on(t.eventId, t.referencedEventId),
+  referencedEventIdx: index('event_references_referenced_event_idx').on(t.referencedEventId),
+}))
+
+export type EventReference = typeof eventReferences.$inferSelect
+export type NewEventReference = typeof eventReferences.$inferInsert
+
 export const sentenceSnippets = sqliteTable('sentence_snippets', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   content: text('content').notNull(),
