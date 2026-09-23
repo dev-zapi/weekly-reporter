@@ -116,7 +116,7 @@ export async function polishEvent(
   const { object } = await generateObject({
     model,
     schema: z.object({ polishedContent: z.string() }),
-    prompt: `${systemPrompt}\n\n请润色以下内容。保持原意不变，仅优化表达方式、补充数据感、调整句式。直接返回润色后文本，不要添加任何解释。\n\n${content}`,
+    prompt: `${systemPrompt}\n\n请润色以下内容。保持原意不变，仅优化表达方式、补充数据感、调整句式。直接返回润色后文本，不要添加任何解释。\n内容中的 @数字（如 @7008）是对另一事件的引用，必须原样保留，不改写、不展开、不删除。\n\n${content}`,
     temperature,
   })
   return object.polishedContent
