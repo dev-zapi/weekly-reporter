@@ -5,9 +5,10 @@ import type { CollectSource, CollectSourceConfig } from '@/lib/db/schema'
 import { getAdapter } from './adapters'
 import type { FetchCommitsOptions, RawEventData } from './types'
 import { basename } from 'path'
-import { getNormalizedRepoName } from './adapters/local-git-adapter'
+import { getNormalizedRepoName, getCurrentBranch, getLocalBranchNames, pullCurrentBranch, assertLocalGitRepo } from './adapters/local-git-adapter'
 import { normalizeRepoName } from '@/lib/utils'
 import { withSourceOperationLock } from './source-operation-lock'
+import { isEmptyBranchConfig, orderBranchesForAttribution, buildPrunedBranchCursors } from './branches'
 
 export interface BranchSyncResult {
   name: string
@@ -134,61 +135,135 @@ async function syncSourceUnlocked(sourceId: number, resync?: boolean): Promise<S
     const repoName = await resolveRepoName(source)
     const now = new Date()
 
-    // ---- 统一 branches 模型（git-local 与远端类型） ----
-    const branches = normalizeBranches(source.config.branches)
-
-    let allCommits: Awaited<ReturnType<typeof adapter.fetchCommits>> = []
-    // 记录每个 commit 来自哪个分支（多分支源下归一化时需要区分）
-    const branchCommits: Array<{ commit: Awaited<ReturnType<typeof adapter.fetchCommits>>[number]; branchName: string }> = []
-    // 记录每个分支本次拉取到的最大 committer date
+    type FetchedCommit = Awaited<ReturnType<typeof adapter.fetchCommits>>[number]
+    let allCommits: FetchedCommit[] = []
+    const branchCommits: Array<{ commit: FetchedCommit; branchName: string }> = []
     const branchMaxCommitterDate: Record<string, Date> = {}
-    // 记录每个分支的同步结果
     const branchResults: BranchSyncResult[] = []
 
-    // Sync each branch with per-branch cursor and error handling
-    for (const branch of branches) {
+    /**
+     * Shared per-branch bookkeeping: fetch commits with the branch's cursor,
+     * accumulate totals, and record success/failure. Used by both the
+     * explicit-branch path and the all-branches path.
+     */
+    async function collectOneBranch(
+      branchName: string,
+      cursorTime: string | null | undefined,
+      extraOptions: Partial<FetchCommitsOptions> = {},
+    ): Promise<void> {
       try {
-        // 使用分支自己的 cursor，resync 模式下不传 since
-        const since = resync ? undefined : (branch.lastCommitTime ? new Date(branch.lastCommitTime) : undefined)
-
+        const since = resync ? undefined : (cursorTime ? new Date(cursorTime) : undefined)
         const options: FetchCommitsOptions = {
-          config: {
-            ...source.config,
-            branch: branch.name || undefined,
-          },
+          config: { ...source!.config, branch: branchName || undefined },
           since,
-          until: new Date(),
+          until: now,
+          ...extraOptions,
         }
 
-        const commits = await adapter.fetchCommits(options)
+        const commits = await adapter!.fetchCommits(options)
         allCommits = allCommits.concat(commits)
         for (const c of commits) {
-          branchCommits.push({ commit: c, branchName: branch.name })
+          branchCommits.push({ commit: c, branchName })
         }
 
-        // 计算该分支本次拉取到的最大 committer date
         if (commits.length > 0) {
           const maxDate = commits.reduce((max, c) =>
             c.committerDate > max ? c.committerDate : max,
-            commits[0].committerDate
+            commits[0].committerDate,
           )
-          branchMaxCommitterDate[branch.name] = maxDate
+          branchMaxCommitterDate[branchName] = maxDate
         }
 
-        branchResults.push({
-          name: branch.name,
-          status: 'success',
-          commitsCount: commits.length,
-        })
+        branchResults.push({ name: branchName, status: 'success', commitsCount: commits.length })
       } catch (branchError) {
         const errorMessage = branchError instanceof Error ? branchError.message : '未知错误'
-        branchResults.push({
-          name: branch.name,
-          status: 'failed',
-          commitsCount: 0,
-          error: errorMessage,
-        })
+        branchResults.push({ name: branchName, status: 'failed', commitsCount: 0, error: errorMessage })
       }
+    }
+
+    // ---- 判定全分支采集模式（git-local 且分支配置为空） ----
+    const allBranchesMode = source!.type === 'git-local' && isEmptyBranchConfig(source!.config.branches)
+
+    if (allBranchesMode) {
+      const repoPath = source!.config.owner
+      // 无效/缺失路径 → 抛出 → 外层 catch 标记 unavailable
+      await assertLocalGitRepo(repoPath)
+      const localHeads = await getLocalBranchNames(repoPath)
+      const currentBranch = await getCurrentBranch(repoPath)
+      const orderedBranches = orderBranchesForAttribution(localHeads, currentBranch)
+
+      // 全分支模式下只拉取当前签出分支一次（best-effort），其余分支的本地历史直接读取
+      try {
+        await pullCurrentBranch(repoPath)
+      } catch (pullError) {
+        console.warn('全分支采集：pull 当前分支失败，继续使用本地 commit:', pullError)
+      }
+
+      const cursorMap = new Map<string, string | null>()
+      for (const cursor of source!.config.branchCursors || []) {
+        if (!cursorMap.has(cursor.name)) {
+          cursorMap.set(cursor.name, cursor.lastCommitTime ?? null)
+        }
+      }
+
+      for (const branchName of orderedBranches) {
+        await collectOneBranch(branchName, cursorMap.get(branchName), { skipPull: true })
+      }
+
+      const failedBranches = branchResults.filter(b => b.status === 'failed')
+      const allBranchesFailed = orderedBranches.length > 0 && failedBranches.length === orderedBranches.length
+
+      if (allBranchesFailed) {
+        const firstError = failedBranches[0]?.error || '未知错误'
+        const errorMessage = `全部分支同步失败：${firstError}`
+        await db.update(collectSources)
+          .set({ lastSyncStatus: 'failed', updatedAt: now })
+          .where(eq(collectSources.id, source!.id))
+        return failedResult(source, source!.id, errorMessage)
+      }
+
+      const baseSourceInfo = {
+        repo: repoName,
+        branch: '',
+        sourceId: source!.id,
+        sourceName: source!.name,
+      }
+      const events = branchCommits.map(({ commit, branchName }) =>
+        adapter!.normalizeCommit(commit, source!.type, { ...baseSourceInfo, branch: branchName }),
+      )
+      const eventsCount = await insertNewEvents(db, source!.id, events, now)
+
+      const newCursors = buildPrunedBranchCursors(
+        localHeads,
+        branchMaxCommitterDate,
+        source!.config.branchCursors || [],
+      )
+
+      await db.update(collectSources)
+        .set({
+          config: { ...source!.config, branchCursors: newCursors },
+          lastSyncAt: now,
+          lastSyncStatus: 'success',
+          updatedAt: now,
+        })
+        .where(eq(collectSources.id, source!.id))
+
+      return {
+        sourceId: source!.id,
+        sourceName: source!.name,
+        status: 'success',
+        commitsCount: allCommits.length,
+        eventsCount,
+        branches: branchResults,
+      }
+    }
+
+    // ---- 统一 branches 模型（git-local 显式分支 与远端类型） ----
+    const branches = normalizeBranches(source!.config.branches)
+
+    // Sync each branch with per-branch cursor and error handling
+    for (const branch of branches) {
+      await collectOneBranch(branch.name, branch.lastCommitTime)
     }
 
     // 判断整体状态
@@ -205,22 +280,22 @@ async function syncSourceUnlocked(sourceId: number, resync?: boolean): Promise<S
           lastSyncStatus: 'failed',
           updatedAt: now,
         })
-        .where(eq(collectSources.id, source.id))
+        .where(eq(collectSources.id, source!.id))
 
-      return failedResult(source, source.id, errorMessage)
+      return failedResult(source, source!.id, errorMessage)
     }
 
     const baseSourceInfo = {
       repo: repoName,
       branch: '',  // will be overridden per commit
-      sourceId: source.id,
-      sourceName: source.name,
+      sourceId: source!.id,
+      sourceName: source!.name,
     }
 
     const events = branchCommits.map(({ commit, branchName }) =>
-      adapter.normalizeCommit(commit, source.type, { ...baseSourceInfo, branch: branchName })
+      adapter!.normalizeCommit(commit, source!.type, { ...baseSourceInfo, branch: branchName })
     )
-    const eventsCount = await insertNewEvents(db, source.id, events, now)
+    const eventsCount = await insertNewEvents(db, source!.id, events, now)
 
     // 更新分支 cursor：只更新本次拉到新 commit 的分支
     const updatedBranches = branches.map(b => {
@@ -233,16 +308,16 @@ async function syncSourceUnlocked(sourceId: number, resync?: boolean): Promise<S
 
     await db.update(collectSources)
       .set({
-        config: { ...source.config, branches: updatedBranches },
+        config: { ...source!.config, branches: updatedBranches },
         lastSyncAt: now,
         lastSyncStatus: 'success',
         updatedAt: now,
       })
-      .where(eq(collectSources.id, source.id))
+      .where(eq(collectSources.id, source!.id))
 
     return {
-      sourceId: source.id,
-      sourceName: source.name,
+      sourceId: source!.id,
+      sourceName: source!.name,
       status: 'success',
       commitsCount: allCommits.length,
       eventsCount,
@@ -252,8 +327,9 @@ async function syncSourceUnlocked(sourceId: number, resync?: boolean): Promise<S
     const errorMessage = error instanceof Error ? error.message : '未知错误'
 
     // Check if the error is due to missing/invalid directory for local git sources
-    const isUnavailable = source.type === 'git-local' && (
+    const isUnavailable = source!.type === 'git-local' && (
       errorMessage.includes('路径不是 Git 仓库') ||
+      errorMessage.includes('本地仓库路径不存在') ||
       errorMessage.includes('not a git repository') ||
       errorMessage.includes('no such file or directory') ||
       errorMessage.includes('ENOENT')
@@ -266,17 +342,17 @@ async function syncSourceUnlocked(sourceId: number, resync?: boolean): Promise<S
           lastSyncStatus: 'failed',
           updatedAt: new Date(),
         })
-        .where(eq(collectSources.id, source.id))
+        .where(eq(collectSources.id, source!.id))
     } else {
       await db.update(collectSources)
         .set({
           lastSyncStatus: 'failed',
           updatedAt: new Date(),
         })
-        .where(eq(collectSources.id, source.id))
+        .where(eq(collectSources.id, source!.id))
     }
 
-    return failedResult(source, source.id, errorMessage, isUnavailable)
+    return failedResult(source, source!.id, errorMessage, isUnavailable)
   }
 }
 

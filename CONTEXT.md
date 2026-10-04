@@ -18,7 +18,7 @@ _Avoid_: shell 展开（那是客户端/终端行为，这里特指服务端规�
 
 ### 同步游标 (Sync Cursor)
 同步进度标记。git-local 采集源和远端采集源（GitHub/GitLab）均按**分支**独立维护游标（值为该分支上次同步拉取到的 commit 中最大的 **committer date**）。下次同步时作为 `since` 参数传入 API，保证时间缝隙内被延迟推送的 commit 不被漏掉。
-存储位置：`collect_sources.config.branches[i].lastCommitTime`。
+存储位置：显式分支与远端默认分支为 `collect_sources.config.branches[i].lastCommitTime`；git-local 全分支采集为 `config.branchCursors[i].lastCommitTime`。
 _Avoid_: lastSyncAt（这是同步操作时间，不是数据游标）
 
 ### Committer date vs Author date
@@ -34,12 +34,16 @@ _Avoid_: 混用二者。UI 展示用 author date，sync cursor 用 committer dat
 _Avoid_: 手动同步、手动拉取（容易与事件采集或工作树更新混淆）
 
 ### 分支配置 (Branch Configuration)
-采集源用于决定采集范围的分支名称集合；每个已配置分支可携带独立的同步游标。未配置具体分支时，表示跟随仓库默认分支。编辑本地 Git 源时显示的当前签出分支只是帮助用户理解默认分支，不属于配置。
-_Avoid_: 分支文本、分支列表（前者是界面表达，后者未区分默认分支语义）
+采集源用于决定采集范围的分支名称集合；每个已配置分支携带独立的同步游标。留空的含义按来源类型区分：git-local 空配置表示全分支采集（本地所有分支），远端源空配置表示跟随仓库默认分支。编辑本地 Git 源时显示的当前签出分支只是提示，不属于配置。
+_Avoid_: 分支文本、分支列表（前者是界面表达，后者未区分空配置语义）
 
 ### 仓库默认分支 (Repository Default Branch)
-当分支配置为空时，由仓库自身决定的采集分支。它不是采集源保存的显式分支配置；本地 Git 编辑页可以显示当前签出分支作为提示，但远程源不在编辑页推断或伪造该名称。
+**远端**采集源分支配置为空时，由仓库自身决定的采集分支。它不是采集源保存的显式分支配置，远程源不在编辑页推断或伪造该名称。git-local 空配置不落在此概念，走全分支采集。
 _Avoid_: 当前分支（当前签出分支只是本地仓库状态，不一定是远程仓库默认分支）
+
+### 全分支采集 (All-Branches Collection)
+git-local 采集源分支配置为空时的采集模式：采集本地所有分支（`refs/heads`，不含远端跟踪引用与标签）。每个本地分支在 `config.branchCursors` 中各自维护同步游标，分支集合在每次同步时动态发现——新分支自动加入，已删除分支的游标被清理。`config.branches` 保持为空以表达「全分支」意图。同一 commit 落在多个分支时，`metadata.branch` 归属于「当前签出分支优先、其余按字母序」中第一个包含它的分支。
+_Avoid_: 全部分支、所有引用（会被误解为含远端跟踪分支与标签）
 
 ## AI 集成
 

@@ -348,7 +348,11 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
                 setBranchRefreshKey(key => key + 1)
               }}
             />
-            <p className="text-xs text-muted-foreground">Leave blank to follow the repository default branch. You can enter a branch not shown in suggestions.</p>
+            <p className="text-xs text-muted-foreground">
+              {isLocal(formData.type)
+                ? 'Leave blank to collect all local branches. You can enter a branch not shown in suggestions.'
+                : 'Leave blank to follow the repository default branch. You can enter a branch not shown in suggestions.'}
+            </p>
           </div>
 
           {isRemote(formData.type) && (

@@ -255,6 +255,7 @@ export interface CollectSourceConfig {
   token?: string
   authorEmails: string[]
   branches?: Array<string | { name: string; lastCommitTime?: string | null }>
+  branchCursors?: Array<{ name: string; lastCommitTime: string | null }>
   aliases?: string[]
 }
 

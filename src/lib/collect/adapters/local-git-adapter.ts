@@ -93,42 +93,127 @@ export async function getCurrentBranch(repoPath: string): Promise<string> {
   }
 }
 
+/**
+ * 拉取当前签出分支的最新代码（best-effort）。
+ * detached HEAD、无 remote、或非仓库时静默跳过；
+ * 冲突或仓库无效时抛出与既有行为一致的明确错误。
+ */
+export async function pullCurrentBranch(repoPath: string): Promise<void> {
+  let hasRemote = false
+  try {
+    const { stdout: remoteOut } = await execFileAsync('git', ['remote'], {
+      cwd: repoPath,
+      maxBuffer: 1024 * 1024,
+    })
+    hasRemote = Boolean(remoteOut.trim())
+  } catch (error) {
+    const msg = getGitErrorMessage(error)
+    if (msg.includes('not a git repository')) {
+      throw new Error(`路径不是 Git 仓库：${repoPath}`)
+    }
+    if (msg.includes('ENOENT') || msg.includes('no such file or directory')) {
+      throw new Error(`本地仓库路径不存在：${repoPath}`)
+    }
+    return
+  }
+
+  if (!hasRemote) return
+
+  const currentBranch = await getCurrentBranch(repoPath)
+  if (!currentBranch) return
+
+  try {
+    await execFileAsync('git', ['pull', '--no-edit', 'origin', currentBranch], {
+      cwd: repoPath,
+      maxBuffer: 1024 * 1024 * 10,
+    })
+  } catch (error) {
+    const msg = getGitErrorMessage(error)
+    if (msg.includes('CONFLICT') || msg.includes('conflict')) {
+      throw new Error('Git pull 有冲突，请手动解决后再同步')
+    }
+    if (msg.includes('not a git repository')) {
+      throw new Error(`路径不是 Git 仓库：${repoPath}`)
+    }
+    console.warn('Git pull 失败，继续同步本地 commit:', msg)
+  }
+}
+
+/**
+ * 返回本地所有 head 分支名（refs/heads），按字母升序。
+ * 不包含远端跟踪引用或标签；出错返回 []。
+ */
+export async function getLocalBranchNames(repoPath: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['for-each-ref', '--format=%(refname:short)', 'refs/heads'],
+      { cwd: repoPath, maxBuffer: 1024 * 1024 }
+    )
+    return stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .sort()
+  } catch {
+    return []
+  }
+}
+
+/** 校验 repoPath 是有效 git 工作树；无效/不存在时抛出（供同步标记 unavailable）。 */
+export async function assertLocalGitRepo(repoPath: string): Promise<void> {
+  try {
+    await execFileAsync('git', ['rev-parse', '--is-inside-work-tree'], {
+      cwd: repoPath,
+      maxBuffer: 1024 * 1024,
+    })
+  } catch (error) {
+    const message = getGitErrorMessage(error)
+    if (message.includes('ENOENT') || message.includes('no such file or directory')) {
+      throw new Error(`本地仓库路径不存在：${repoPath}`)
+    }
+    throw new Error(`路径不是 Git 仓库：${repoPath}`)
+  }
+}
+
 export const localGitAdapter: GitAdapter = {
   platform: 'git-local',
-  
-  async fetchCommits(options: FetchCommitsOptions): Promise<GitCommit[]> {
-    const { config, since, until } = options
-    const { owner, repo, authorEmails, branch } = config
-    
-    const repoPath = owner
-    
-    // 同步前拉取最新代码
-    try {
-      const { stdout: remoteOut } = await execFileAsync('git', ['remote'], {
-        cwd: repoPath,
-        maxBuffer: 1024 * 1024,
-      })
 
-      if (remoteOut.trim()) {
-        const currentBranch = branch || (await execFileAsync('git', ['branch', '--show-current'], {
+  async fetchCommits(options: FetchCommitsOptions): Promise<GitCommit[]> {
+    const { config, since, until, skipPull } = options
+    const { owner, repo, authorEmails, branch } = config
+
+    const repoPath = owner
+
+    // 同步前拉取最新代码（skipPull 模式下由 sync.ts 统一处理）
+    if (!skipPull) {
+      try {
+        const { stdout: remoteOut } = await execFileAsync('git', ['remote'], {
           cwd: repoPath,
           maxBuffer: 1024 * 1024,
-        })).stdout.trim()
-
-        await execFileAsync('git', ['pull', '--no-edit', 'origin', currentBranch], {
-          cwd: repoPath,
-          maxBuffer: 1024 * 1024 * 10,
         })
+
+        if (remoteOut.trim()) {
+          const currentBranch = branch || (await execFileAsync('git', ['branch', '--show-current'], {
+            cwd: repoPath,
+            maxBuffer: 1024 * 1024,
+          })).stdout.trim()
+
+          await execFileAsync('git', ['pull', '--no-edit', 'origin', currentBranch], {
+            cwd: repoPath,
+            maxBuffer: 1024 * 1024 * 10,
+          })
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        if (msg.includes('CONFLICT') || msg.includes('conflict')) {
+          throw new Error('Git pull 有冲突，请手动解决后再同步')
+        }
+        if (msg.includes('not a git repository')) {
+          throw new Error(`路径不是 Git 仓库：${repoPath}`)
+        }
+        console.warn('Git pull 失败，继续同步本地 commit:', msg)
       }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      if (msg.includes('CONFLICT') || msg.includes('conflict')) {
-        throw new Error('Git pull 有冲突，请手动解决后再同步')
-      }
-      if (msg.includes('not a git repository')) {
-        throw new Error(`路径不是 Git 仓库：${repoPath}`)
-      }
-      console.warn('Git pull 失败，继续同步本地 commit:', msg)
     }
     
     const args = [

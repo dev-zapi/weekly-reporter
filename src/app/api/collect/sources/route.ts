@@ -125,8 +125,18 @@ export async function POST(request: Request) {
       ? (validated.enabled === false ? 'disabled' : 'enabled')
       : 'unavailable'
 
+    // 规范化 branchCursors（zod schema 允许 undefined，但数据库 schema 要求 string | null）
+    const normalizedConfig = {
+      ...validated.config,
+      branchCursors: validated.config.branchCursors?.map(c => ({
+        name: c.name,
+        lastCommitTime: c.lastCommitTime ?? null,
+      })),
+    }
+
     const result = await db.insert(collectSources).values({
       ...validated,
+      config: normalizedConfig,
       status: initialStatus,
       createdAt: now,
       updatedAt: now,

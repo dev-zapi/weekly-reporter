@@ -26,6 +26,7 @@ export interface FetchCommitsOptions {
   }
   since?: Date
   until?: Date
+  skipPull?: boolean
 }
 
 export interface RawEventData {

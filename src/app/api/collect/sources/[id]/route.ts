@@ -109,9 +109,16 @@ export async function PUT(
       : 'unavailable'
 
     const normalizedBranches = mergeEditedBranches(existingConfig.branches, validated.config.branches)
+    // 保留全分支模式下累积的游标（表单不发送该字段，防止每次编辑清空游标导致全量重扫）
+    const preservedCursors = existingConfig.branchCursors?.map(c => ({
+      name: c.name,
+      lastCommitTime: c.lastCommitTime ?? null,
+    }))
+    const { branchCursors: _validatedCursors, ...validatedConfigWithoutCursors } = validated.config
     const config = {
-      ...validated.config,
+      ...validatedConfigWithoutCursors,
       ...(normalizedBranches && normalizedBranches.length > 0 ? { branches: normalizedBranches } : { branches: undefined }),
+      ...(preservedCursors ? { branchCursors: preservedCursors } : {}),
     }
 
     const result = await db.update(collectSources)
