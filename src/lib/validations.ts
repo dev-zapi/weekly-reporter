@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { expandInputPath } from '@/lib/collect/paths'
+import { expandInputPath, stripTrailingSlash } from '@/lib/collect/paths'
 import { TAG_CHARSET_REGEX } from '@/lib/tags'
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/
@@ -83,12 +83,11 @@ export const collectSourceSchema = z.object({
   // 并去掉结尾斜杠，保证落库的 owner 与扫描得来的路径形态一致
   (data) => {
     if (data.type !== 'git-local') return data
-    const stripSlash = (p: string) => p.replace(/(.)\/+$/, '$1')
     return {
       ...data,
       config: {
         ...data.config,
-        owner: stripSlash(expandInputPath(data.config.owner)),
+        owner: stripTrailingSlash(expandInputPath(data.config.owner)),
       },
     }
   }

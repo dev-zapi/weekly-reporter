@@ -14,6 +14,10 @@
 输入框始终保留用户原文，展开只发生在服务端。
 _Avoid_: shell 展开（那是客户端/终端行为，这里特指服务端规则）
 
+### 本地来源路径查找 (Local Source Path Lookup)
+git-local 采集源通过 `config.owner`（规范化后的本地绝对路径）标识身份。查找接口将用户输入路径展开并与已注册来源的 `config.owner` 做字符串相等比较，并在两端路径均可解析时尝试 realpath 等价匹配；多个匹配时取最小 id。
+_Avoid_: 按名字查找（name 仅为显示字段，身份由路径决定）
+
 ## 采集源同步
 
 ### 同步游标 (Sync Cursor)
