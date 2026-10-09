@@ -1,0 +1,60 @@
+{
+  "skill_name": "collect-git-source",
+  "evals": [
+    {
+      "id": 1,
+      "name": "onboard-new-repo",
+      "prompt": "我在 /home/god/.cache/cgs-eval/alpha 这个仓库里干活。把它接入周报系统并立即收集一下——只采集我的提交（我的邮箱是 dev@example.com），项目范围 personal。",
+      "expected_output": "Looks up the repo, finds no source, runs the onboarding flow: creates exactly one git-local source (owner = repo path, authorEmails = [dev@example.com], projectScope personal, name alpha, all-branches mode), triggers the first sync, and reports the sync summary (commits scanned, new events).",
+      "files": [],
+      "assertions": [
+        "exactly one git-local source exists",
+        "source owner is the alpha repo path",
+        "authorEmails is exactly [dev@example.com]",
+        "projectScope is personal",
+        "all-branches mode (no explicit branches config)",
+        "first sync succeeded",
+        "4 events collected (email filter held; would be 6 if unfiltered)",
+        "final report contains a sync summary with commit/event counts"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "trigger-existing-source",
+      "prompt": "cd 到 /home/god/.cache/cgs-eval/beta 这个仓库，触发一下采集，我想把最新提交收进来。",
+      "expected_output": "Looks up the repo, finds the existing enabled source, syncs it by id, reports the summary. No source is created or modified.",
+      "files": [],
+      "assertions": [
+        "no new source created (the two seeded sources remain)",
+        "beta source unchanged: owner + emails",
+        "sync succeeded",
+        "2 events collected for the beta source"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "enable-disabled-source",
+      "prompt": "cd 到 /home/god/.cache/cgs-eval/gamma 这个仓库同步一下。这个源之前被我禁用了，直接启用并同步就行。",
+      "expected_output": "Lookup finds a disabled source; enables it (PATCH enabled=true) then syncs, reporting the summary. No new source created; emails unchanged.",
+      "files": [],
+      "assertions": [
+        "no new source created (the two seeded sources remain)",
+        "gamma source is enabled (enabled=true, status=enabled)",
+        "emails unchanged ([gamma@example.com])",
+        "sync succeeded",
+        "1 event collected for the gamma source"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "not-a-git-repo",
+      "prompt": "cd 到 /tmp/cgs-eval-plain 这个目录，收集一下当前仓库。",
+      "expected_output": "Detects the directory is not a git repository and stops with a clear error. Nothing is created or modified on the server.",
+      "files": [],
+      "assertions": [
+        "no collect source exists after the run",
+        "report states the directory is not a git repository"
+      ]
+    }
+  ]
+}
