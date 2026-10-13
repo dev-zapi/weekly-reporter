@@ -1,0 +1,61 @@
+{
+  "skill_name": "collect-sources",
+  "evals": [
+    {
+      "id": 1,
+      "name": "list-and-show",
+      "prompt": "有哪些采集源？顺便把 alpha 这个源的详细配置给我看看。",
+      "expected_output": "Lists all three seeded sources and shows alpha's full config. Pure read — server state identical to the seed afterwards.",
+      "files": [],
+      "assertions": [
+        "exactly three sources (read-only flow, no drift)",
+        "alpha intact (owner/emails/scope/enabled, all-branches mode)",
+        "beta intact (owner/emails, disabled)",
+        "gamma intact (github/repo/2 emails/branch main, token masked)",
+        "report shows alpha config (owner path + email)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "rename-and-alias",
+      "prompt": "把 alpha 那个采集源改名叫 alpha-old，再加个别名 ax。",
+      "expected_output": "alpha renamed to alpha-old with alias ax added; owner/emails/branches/scope untouched; beta and gamma unchanged.",
+      "files": [],
+      "assertions": [
+        "still three sources",
+        "alpha renamed to alpha-old",
+        "alias ax added (exactly)",
+        "everything else kept (owner/emails/scope/status, all-branches)",
+        "beta and gamma untouched"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "multi-field-update-enable",
+      "prompt": "给 beta 这个采集源加一个邮箱 new@example.com，项目范围改成 work，然后把它启用。",
+      "expected_output": "beta has emails {beta@example.com, new@example.com}, projectScope work, enabled=true and status=enabled; owner and other fields intact; alpha and gamma unchanged.",
+      "files": [],
+      "assertions": [
+        "still three sources",
+        "beta emails = {beta@example.com, new@example.com}",
+        "beta scope is work",
+        "beta enabled with consistent status (enabled=true AND status=enabled)",
+        "beta owner intact (full-replace did not wipe fields)",
+        "alpha and gamma untouched"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "delete-source",
+      "prompt": "把 gamma 那个采集源删掉。",
+      "expected_output": "gamma deleted (its id 404s); alpha and beta fully intact; the user was told collected events survive and move to the other group before deletion.",
+      "files": [],
+      "assertions": [
+        "gamma gone (two sources left, none named gamma)",
+        "gamma id #3 returns 404",
+        "alpha and beta intact after gamma deletion",
+        "report says collected events survive (other group)"
+      ]
+    }
+  ]
+}
