@@ -119,6 +119,9 @@ export async function PUT(
       ...validatedConfigWithoutCursors,
       ...(normalizedBranches && normalizedBranches.length > 0 ? { branches: normalizedBranches } : { branches: undefined }),
       ...(preservedCursors ? { branchCursors: preservedCursors } : {}),
+      // 全量替换语义：body 的 aliases 就是新列表（存在则写入 config.aliases，
+      // 缺省/为空则清除）—— 与 zod 顶层 aliases 的校验/查重保持同一来源
+      ...(validated.aliases?.length ? { aliases: validated.aliases } : {}),
     }
 
     const result = await db.update(collectSources)

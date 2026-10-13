@@ -132,6 +132,9 @@ export async function POST(request: Request) {
         name: c.name,
         lastCommitTime: c.lastCommitTime ?? null,
       })),
+      // 别名的存储位置是 config.aliases（列表的名称搜索与查重都从这里读），
+      // 而 zod 校验的是顶层 aliases —— 不在此并入的话，提交的别名会被静默丢弃
+      ...(validated.aliases?.length ? { aliases: validated.aliases } : {}),
     }
 
     const result = await db.insert(collectSources).values({
