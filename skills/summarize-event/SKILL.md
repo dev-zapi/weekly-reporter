@@ -15,4 +15,4 @@ Note the app's parsing rules: it recognizes `#word` tokens only at the start of 
 
 When a summarized item continues, fixes, or verifies an event already on the timeline, prefer `@id` over vague prose, taking the id from a timeline-events query (via the timeline-events skill) and using only ids that appeared in its output. References are ordinary content, not an attachment: they ride the normal preview and need no separate A/B/C choice.
 
-Preview the line for user confirmation, submit only after approval, then invoke the "timeline-events" skill to create the event.
+A direct-send request — the user says "直接发送", "不用确认", or similar when triggering this skill or accepting the offer — overrides the interactive stops for that one run: apply the recommended tags without the A/B/C question, take the skip-collection option when the collect-git-source flow reaches a user decision, and submit the composed line immediately rather than waiting for preview approval. The override covers that run only. Otherwise, preview the line for user confirmation and submit only after approval. Either way, invoke the "timeline-events" skill to create the event.
