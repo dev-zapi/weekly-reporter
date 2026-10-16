@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { validateParentLink } from '@/lib/plan-items'
 
 export async function GET(
   request: Request,
@@ -101,6 +102,30 @@ export async function PUT(
         { error: 'Plan item not found' },
         { status: 404 }
       )
+    }
+
+    // Validate an optional parent link against the item's own plan period.
+    if (parentItemId !== undefined && parentItemId !== null) {
+      const childPlan = await db.select()
+        .from(periodPlans)
+        .where(eq(periodPlans.id, existingItems[0].periodPlanId))
+        .all()
+
+      if (childPlan.length === 0) {
+        return NextResponse.json(
+          { error: 'Period plan not found' },
+          { status: 404 }
+        )
+      }
+
+      const validation = await validateParentLink({
+        childScope: childPlan[0].scope,
+        childPeriodStart: childPlan[0].periodStart,
+        parentItemId,
+      })
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
+      }
     }
 
     // Build update object

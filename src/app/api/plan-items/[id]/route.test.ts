@@ -349,6 +349,208 @@ describe('/api/plan-items/[id]', () => {
       expect(data.parentItemId).toBe(monthItem[0].id)
     })
 
+    it('should reject a parentItemId that does not exist', async () => {
+      const now = new Date()
+
+      const weekPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: weekPlan[0].id,
+        text: 'Weekly task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + weekItem[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentItemId: 9999 }),
+      })
+      const params = Promise.resolve({ id: String(weekItem[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('parentitemid')
+    })
+
+    it('should reject a parent that is not a month item', async () => {
+      const now = new Date()
+
+      const weekPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekParent = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: weekPlan[0].id,
+        text: 'Week parent',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: weekPlan[0].id,
+        text: 'Weekly task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 2,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + weekItem[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentItemId: weekParent[0].id }),
+      })
+      const params = Promise.resolve({ id: String(weekItem[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('month')
+    })
+
+    it('should reject a parent whose month does not contain the week start', async () => {
+      const now = new Date()
+
+      const monthPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'month',
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-30',
+        monthKey: '2026-09',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const monthItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: monthPlan[0].id,
+        text: 'September goal',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: weekPlan[0].id,
+        text: 'Weekly task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + weekItem[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentItemId: monthItem[0].id }),
+      })
+      const params = Promise.resolve({ id: String(weekItem[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('parentitemid')
+    })
+
+    it('should allow clearing the parent link with null', async () => {
+      const now = new Date()
+
+      const monthPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'month',
+        periodStart: '2026-10-01',
+        periodEnd: '2026-10-31',
+        monthKey: '2026-10',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const monthItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: monthPlan[0].id,
+        text: 'Monthly goal',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: weekPlan[0].id,
+        text: 'Weekly task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: monthItem[0].id,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + weekItem[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentItemId: null }),
+      })
+      const params = Promise.resolve({ id: String(weekItem[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.parentItemId).toBeNull()
+    })
+
     it('should update multiple fields at once', async () => {
       const now = new Date()
 
