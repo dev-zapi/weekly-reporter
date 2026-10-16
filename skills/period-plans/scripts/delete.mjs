@@ -7,7 +7,7 @@ import { api, failResponse, parseArgs, requireId } from './lib/client.mjs'
 
 const USAGE = `Usage: delete.mjs <id>`
 
-const { flags, positional } = parseArgs(process.argv.slice(2), {}, USAGE)
+const { positional } = parseArgs(process.argv.slice(2), {}, USAGE)
 
 const id = requireId(positional[0], USAGE)
 
