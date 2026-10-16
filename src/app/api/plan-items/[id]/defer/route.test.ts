@@ -357,7 +357,7 @@ describe('/api/plan-items/[id]/defer', () => {
       expect(data.periodPlanId).toBe(week2[0].id)
     })
 
-    it('should allow deferring an already-deferred item', async () => {
+    it('should reject deferring an item that is already deferred', async () => {
       const now = new Date()
 
       // Create first week plan
@@ -390,10 +390,82 @@ describe('/api/plan-items/[id]/defer', () => {
       const response = await POST(request, { params })
       const data = await response.json()
 
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('planned or in_progress')
+
+      // No new plan or item is created.
+      const plans = testDb.select().from(schema.periodPlans).all()
+      expect(plans).toHaveLength(1)
+    })
+
+    it('should reject deferring a completed item', async () => {
+      const now = new Date()
+
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item1 = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'Done task',
+        status: 'done',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item1[0].id + '/defer', {
+        method: 'POST',
+      })
+      const params = Promise.resolve({ id: String(item1[0].id) })
+      const response = await POST(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('planned or in_progress')
+    })
+
+    it('should allow deferring a planned item', async () => {
+      const now = new Date()
+
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item1 = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'Planned task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item1[0].id + '/defer', {
+        method: 'POST',
+      })
+      const params = Promise.resolve({ id: String(item1[0].id) })
+      const response = await POST(request, { params })
+      const data = await response.json()
+
       expect(response.status).toBe(201)
-      expect(data.text).toBe('Already deferred task')
       expect(data.deferredFromItemId).toBe(item1[0].id)
-      expect(data.status).toBe('planned')
     })
 
     it('should create next period if it does not exist', async () => {

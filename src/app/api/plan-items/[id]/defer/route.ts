@@ -36,6 +36,15 @@ export async function POST(
 
     const originalItem = items[0]
 
+    // Only incomplete items can be deferred; done/cancelled/deferred items are
+    // not candidates for the next period.
+    if (originalItem.status !== 'planned' && originalItem.status !== 'in_progress') {
+      return NextResponse.json(
+        { error: 'Only planned or in_progress items can be deferred' },
+        { status: 400 }
+      )
+    }
+
     // Get the plan for this item
     const plans = await db.select()
       .from(periodPlans)

@@ -196,6 +196,42 @@ describe('PeriodPlanItemRow', () => {
     expect(mockOnDefer).not.toHaveBeenCalled()
   })
 
+  it('disables the defer control for items that are not incomplete', () => {
+    const statuses = ['done', 'cancelled', 'deferred'] as const
+
+    statuses.forEach((status) => {
+      const { unmount } = render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, status }}
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+
+      expect(screen.getByLabelText('Defer to next period')).toBeDisabled()
+      unmount()
+    })
+  })
+
+  it('keeps the defer control enabled for planned and in_progress items', () => {
+    const statuses = ['planned', 'in_progress'] as const
+
+    statuses.forEach((status) => {
+      const { unmount } = render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, status }}
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+
+      expect(screen.getByLabelText('Defer to next period')).toBeEnabled()
+      unmount()
+    })
+  })
+
   it('displays correct status label for each status', () => {
     const statuses = ['planned', 'in_progress', 'done', 'cancelled', 'deferred'] as const
     const labels = ['Planned', 'In Progress', 'Done', 'Cancelled', 'Deferred']

@@ -92,6 +92,7 @@ node {baseDir}/scripts/defer.mjs <id>
 ```
 
 - Confirm with the user before deferring. The original item will be marked `deferred` and a new item will appear in the next period with `status='planned'`, linked back via `deferredFromItemId`.
+- Only items with status `planned` or `in_progress` can be deferred; the API rejects `done`, `cancelled`, and `deferred` items with HTTP 400.
 - The target period is always the next one (week → next week, month → next month). You cannot defer to an arbitrary period.
 - On success: `✓ Item deferred: #<newId> created in next period (original #<id> marked deferred)`
 

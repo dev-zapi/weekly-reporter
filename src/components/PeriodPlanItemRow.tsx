@@ -86,6 +86,9 @@ export function PeriodPlanItemRow({
     onUpdate(item.id, { parentItemId: value === '' ? null : Number(value) })
   }
 
+  // Only incomplete items can be deferred (server enforces the same rule).
+  const canDefer = item.status === 'planned' || item.status === 'in_progress'
+
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
       <Badge className={statusColors[item.status]}>{statusLabels[item.status]}</Badge>
@@ -187,7 +190,14 @@ export function PeriodPlanItemRow({
             </>
           )}
 
-          <Button variant="ghost" size="icon-xs" onClick={handleDefer} aria-label="Defer to next period">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleDefer}
+            disabled={!canDefer}
+            title={canDefer ? 'Defer to next period' : 'Only incomplete items can be deferred'}
+            aria-label="Defer to next period"
+          >
             <Forward className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
