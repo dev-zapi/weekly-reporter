@@ -2,11 +2,12 @@ import { z } from 'zod'
 import { expandInputPath, stripTrailingSlash } from '@/lib/collect/paths'
 import { TAG_CHARSET_REGEX } from '@/lib/tags'
 
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/
+export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+export const MONTH_REGEX = /^\d{4}-\d{2}$/
 
 export const reportWeekSchema = z.object({
-  weekStart: z.string().regex(dateRegex, 'Date must use YYYY-MM-DD format'),
-  weekEnd: z.string().regex(dateRegex, 'Date must use YYYY-MM-DD format'),
+  weekStart: z.string().regex(DATE_REGEX, 'Date must use YYYY-MM-DD format'),
+  weekEnd: z.string().regex(DATE_REGEX, 'Date must use YYYY-MM-DD format'),
 }).refine(
   (data) => new Date(data.weekStart) <= new Date(data.weekEnd),
   {

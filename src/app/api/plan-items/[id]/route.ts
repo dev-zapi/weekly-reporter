@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { periodPlanItems } from '@/lib/db/schema'
+import { periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
 
 export async function GET(
   request: Request,
@@ -72,10 +72,9 @@ export async function PUT(
 
     // Validate status if provided
     if (status !== undefined) {
-      const validStatuses = ['planned', 'in_progress', 'done', 'cancelled', 'deferred']
-      if (!validStatuses.includes(status)) {
+      if (!PERIOD_PLAN_ITEM_STATUSES.includes(status)) {
         return NextResponse.json(
-          { error: 'Invalid status. Must be one of: planned, in_progress, done, cancelled, deferred' },
+          { error: `Invalid status. Must be one of: ${PERIOD_PLAN_ITEM_STATUSES.join(', ')}` },
           { status: 400 }
         )
       }

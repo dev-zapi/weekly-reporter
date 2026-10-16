@@ -3,9 +3,7 @@ import { getDb } from '@/lib/db'
 import { eq, and, asc } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
-
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-const monthRegex = /^\d{4}-\d{2}$/
+import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 
 export async function GET(request: Request) {
   try {
@@ -30,7 +28,7 @@ export async function GET(request: Request) {
 
     if (scope === 'week') {
       if (dateParam) {
-        if (!dateRegex.test(dateParam)) {
+        if (!DATE_REGEX.test(dateParam)) {
           return NextResponse.json(
             { error: 'Invalid date format. Use YYYY-MM-DD' },
             { status: 400 }
@@ -41,7 +39,7 @@ export async function GET(request: Request) {
         periodStart = range.start
         periodEnd = range.end
       } else if (weekStart && weekEnd) {
-        if (!dateRegex.test(weekStart) || !dateRegex.test(weekEnd)) {
+        if (!DATE_REGEX.test(weekStart) || !DATE_REGEX.test(weekEnd)) {
           return NextResponse.json(
             { error: 'Invalid weekStart or weekEnd format. Use YYYY-MM-DD' },
             { status: 400 }
@@ -58,7 +56,7 @@ export async function GET(request: Request) {
     } else {
       // month scope
       if (month) {
-        if (!monthRegex.test(month)) {
+        if (!MONTH_REGEX.test(month)) {
           return NextResponse.json(
             { error: 'Invalid month format. Use YYYY-MM' },
             { status: 400 }
@@ -68,7 +66,7 @@ export async function GET(request: Request) {
         periodStart = range.start
         periodEnd = range.end
       } else if (dateParam) {
-        if (!dateRegex.test(dateParam)) {
+        if (!DATE_REGEX.test(dateParam)) {
           return NextResponse.json(
             { error: 'Invalid date format. Use YYYY-MM-DD' },
             { status: 400 }

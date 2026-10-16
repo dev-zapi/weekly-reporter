@@ -403,7 +403,8 @@ export type NewSystemPromptRow = typeof systemPrompts.$inferInsert
 // --- 周期计划表（Period Plans） ---
 
 export type PeriodPlanScope = 'week' | 'month'
-export type PeriodPlanItemStatus = 'planned' | 'in_progress' | 'done' | 'cancelled' | 'deferred'
+export const PERIOD_PLAN_ITEM_STATUSES = ['planned', 'in_progress', 'done', 'cancelled', 'deferred'] as const
+export type PeriodPlanItemStatus = (typeof PERIOD_PLAN_ITEM_STATUSES)[number]
 
 export const periodPlans = sqliteTable('period_plans', {
   id: integer('id').primaryKey({ autoIncrement: true }),

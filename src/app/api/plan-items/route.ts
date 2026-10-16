@@ -3,9 +3,7 @@ import { getDb } from '@/lib/db'
 import { eq, and, sql } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getMonthPeriodRangeByKey } from '@/lib/periods'
-
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-const monthRegex = /^\d{4}-\d{2}$/
+import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 
 export async function POST(request: Request) {
   try {
@@ -63,8 +61,8 @@ export async function POST(request: Request) {
         if (
           typeof weekStart !== 'string' ||
           typeof weekEnd !== 'string' ||
-          !dateRegex.test(weekStart) ||
-          !dateRegex.test(weekEnd)
+          !DATE_REGEX.test(weekStart) ||
+          !DATE_REGEX.test(weekEnd)
         ) {
           return NextResponse.json(
             { error: 'Invalid weekStart or weekEnd format. Use YYYY-MM-DD' },
@@ -81,7 +79,7 @@ export async function POST(request: Request) {
             { status: 400 }
           )
         }
-        if (!monthRegex.test(month)) {
+        if (!MONTH_REGEX.test(month)) {
           return NextResponse.json(
             { error: 'Invalid month format. Use YYYY-MM' },
             { status: 400 }
