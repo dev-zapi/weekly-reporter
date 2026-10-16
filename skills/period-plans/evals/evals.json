@@ -1,0 +1,57 @@
+{
+  "skill_name": "period-plans",
+  "evals": [
+    {
+      "id": 1,
+      "name": "list-empty-and-create-week",
+      "prompt": "查看下周的周计划，然后加两条：'完成 API 文档' (work) 和 '读一本书' (personal)。",
+      "expected_output": "First list returns 'No plan found for this period.' (or an empty plan). After creation, two items exist under a new week plan with the correct text, projectScope, and status=planned.",
+      "files": [],
+      "assertions": [
+        "initial list returns no items for the week",
+        "two items created with correct text",
+        "first item has projectScope=work (default)",
+        "second item has projectScope=personal",
+        "both items have status=planned"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "create-month-plan-and-link",
+      "prompt": "看看这个月的月度计划，加一条'发布 v2.0'。然后把上周周计划里的'完成 API 文档'挂到这条月度计划下面。",
+      "expected_output": "Month plan created with the new item. The week item's parentItemId now references the month item. List output shows the parent link.",
+      "files": [],
+      "assertions": [
+        "month plan created with one item",
+        "week item updated with parentItemId pointing to month item",
+        "list output shows (parent=<id>) notation"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "update-status-and-defer",
+      "prompt": "把'完成 API 文档'标记为 done。把'读一本书'顺延到下周。",
+      "expected_output": "First item status changed to done. Second item deferred: a new item appears in next week's plan with status=planned and deferredFromItemId linking back; the original is marked deferred.",
+      "files": [],
+      "assertions": [
+        "first item status is done",
+        "second item status is deferred",
+        "new item exists in next week's plan",
+        "new item has deferredFromItemId pointing to the original",
+        "new item status is planned"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "delete-item",
+      "prompt": "把刚才顺延的那条旧条目（'读一本书'，状态是 deferred）删掉。",
+      "expected_output": "Original deferred item deleted. List shows it's gone. The deferred copy in next week is unaffected.",
+      "files": [],
+      "assertions": [
+        "original item deleted (404 if queried)",
+        "deferred copy in next week still exists",
+        "no orphaned references"
+      ]
+    }
+  ]
+}
