@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
 
