@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Clock, FileText, FileStack, Cloud, BookOpen, MessageSquare } from 'lucide-react'
+import { Clock, FileText, FileStack, Cloud, BookOpen, MessageSquare, CalendarCheck } from 'lucide-react'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { SettingsButton } from './Settings'
 import { SyncAllSourcesButton } from './SyncAllSources'
@@ -11,6 +11,7 @@ import { SyncAllSourcesButton } from './SyncAllSources'
 const NAV_ITEMS = [
   { href: '/', label: 'Timeline', icon: Clock },
   { href: '/reports', label: 'Reports', icon: FileText },
+  { href: '/plans', label: 'Plans', icon: CalendarCheck },
   { href: '/templates', label: 'Templates', icon: FileStack },
   { href: '/prompts', label: 'Prompts', icon: MessageSquare },
   { href: '/collect', label: 'Sources', icon: Cloud },
