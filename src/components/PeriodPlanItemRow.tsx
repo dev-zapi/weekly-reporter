@@ -10,6 +10,7 @@ import type { PeriodPlanItem, PeriodPlanItemStatus, ProjectScope } from '@/lib/d
 type Props = {
   item: PeriodPlanItem
   parentOptions?: PeriodPlanItem[]
+  showParentSelector?: boolean
   canMoveUp?: boolean
   canMoveDown?: boolean
   onUpdate: (id: number, updates: Partial<PeriodPlanItem>) => void
@@ -39,6 +40,7 @@ const statusOrder: PeriodPlanItemStatus[] = ['planned', 'in_progress', 'done', '
 export function PeriodPlanItemRow({
   item,
   parentOptions = [],
+  showParentSelector = false,
   canMoveUp = false,
   canMoveDown = false,
   onUpdate,
@@ -151,7 +153,7 @@ export function PeriodPlanItemRow({
             <option value="personal">Personal</option>
           </select>
 
-          {parentOptions.length > 0 && (
+          {(showParentSelector || parentOptions.length > 0) && (
             <select
               value={item.parentItemId ?? ''}
               onChange={(event) => handleParentChange(event.target.value)}

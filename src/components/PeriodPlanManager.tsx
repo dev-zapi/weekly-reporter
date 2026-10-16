@@ -236,6 +236,7 @@ export function PeriodPlanManager() {
               key={item.id}
               item={item}
               parentOptions={scope === 'week' ? parentOptions : []}
+              showParentSelector={scope === 'week'}
               canMoveUp={index > 0}
               canMoveDown={index < items.length - 1}
               onUpdate={handleUpdateItem}

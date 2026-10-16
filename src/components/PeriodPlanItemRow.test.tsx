@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
@@ -287,6 +287,29 @@ describe('PeriodPlanItemRow', () => {
     )
 
     expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+  })
+
+  it('always renders the parent selector in week scope, even with no parent options', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, parentItemId: 42 }}
+        showParentSelector
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    const parentSelect = screen.getByLabelText('Parent month item')
+    // Only the clear option remains, so a stale link is always clearable.
+    const options = within(parentSelect).getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveTextContent('No month parent')
+
+    await user.selectOptions(parentSelect, '')
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { parentItemId: null })
   })
 
   it('invokes onMove when the move buttons are clicked', async () => {
