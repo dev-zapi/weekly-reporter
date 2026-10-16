@@ -45,8 +45,12 @@ export async function GET(request: Request) {
             { status: 400 }
           )
         }
-        periodStart = weekStart
-        periodEnd = weekEnd
+        // Canonicalize to the Monday-start week rather than trusting the raw
+        // pair, so any date within the week resolves to the same plan row.
+        const date = new Date(weekStart + 'T00:00:00')
+        const range = getWeekPeriodRange(date)
+        periodStart = range.start
+        periodEnd = range.end
       } else {
         return NextResponse.json(
           { error: 'For week scope, provide either date or weekStart+weekEnd' },

@@ -148,6 +148,29 @@ describe('/api/plans', () => {
       expect(data.plan.id).toBe(plan[0].id)
     })
 
+    it('should canonicalize a non-Monday weekStart to the Monday-start week', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      // Wednesday 2026-10-14 .. Tuesday 2026-10-20 (a raw pair that does not
+      // start on Monday) must resolve to the canonical week 10-12 .. 10-18.
+      const request = new Request('http://localhost/api/plans?scope=week&weekStart=2026-10-14&weekEnd=2026-10-20')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.plan).not.toBeNull()
+      expect(data.plan.id).toBe(plan[0].id)
+    })
+
     it('should return plan for month scope with month parameter', async () => {
       const now = new Date()
 
