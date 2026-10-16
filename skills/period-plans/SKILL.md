@@ -22,7 +22,7 @@ A **period plan** covers a specific week (Monday-start natural week) or month (c
 - Text (plain text, no @id/#tag parsing in Phase 1)
 - Status: `planned` | `in_progress` | `done` | `cancelled` | `deferred`
 - Project scope: `work` (default) | `personal`
-- Optional parent item (week item → month item, constrained by month containing the week's start date)
+- Optional parent item (week item → month item; the intended constraint is "month contains the week's start date", but the API does not enforce it — see Add)
 - Optional deferral link (tracks the chain when an item is deferred to the next period)
 - Position (manual ordering for priority)
 
@@ -103,7 +103,7 @@ Remove an item. This is a hard delete — the item is gone permanently.
 node {baseDir}/scripts/delete.mjs <id>
 ```
 
-- Confirm with the user before deleting. If the item has children (other items reference it as parent), those children lose their parent link but are NOT deleted.
+- Confirm with the user before deleting. The delete is not cascading: children that referenced this item as parent keep a dangling `parentItemId` (the API neither nulls it nor deletes them), and any `deferredFromItemId` pointing at it becomes stale. Mention this during confirmation when relevant.
 - On success: `✓ Item #<id> deleted`
 - On 404: item not found
 
