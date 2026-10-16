@@ -22,7 +22,7 @@ A **period plan** covers a specific week (Monday-start natural week) or month (c
 - Text (plain text, no @id/#tag parsing in Phase 1)
 - Status: `planned` | `in_progress` | `done` | `cancelled` | `deferred`
 - Project scope: `work` (default) | `personal`
-- Optional parent item (week item → month item; the intended constraint is "month contains the week's start date", but the API does not enforce it — see Add)
+- Optional parent item (week item → month item; the API enforces "month contains the week's start date" — see Add)
 - Optional deferral link (tracks the chain when an item is deferred to the next period)
 - Position (manual ordering for priority)
 
@@ -63,7 +63,7 @@ node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> -
 - For month scope: provide `--month YYYY-MM`
 - `--text` — item text (required)
 - `--project` — item project scope: `work` (default) or `personal`
-- `--parent` — parent item ID (week item → month item; the API does not currently enforce the month-contains-week-start constraint, so pick a valid parent yourself)
+- `--parent` — parent item ID (week item → month item). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
 
 On success: `✓ Item created: #<ID> (plan=<planId>)`
 
@@ -79,7 +79,7 @@ node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--pr
 - `--status` — change status (one of: planned, in_progress, done, cancelled, deferred)
 - `--project` — change project scope (work or personal)
 - `--position` — change sort order (manual priority)
-- `--parent` — change parent item ID (pass `--parent ""` to clear the parent link)
+- `--parent` — change parent item ID (pass `--parent ""` to clear the parent link). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
 
 On success: `✓ Item #<id> updated`
 
@@ -104,7 +104,7 @@ Remove an item. This is a hard delete — the item is gone permanently.
 node {baseDir}/scripts/delete.mjs <id>
 ```
 
-- Confirm with the user before deleting. The delete is not cascading: children that referenced this item as parent keep a dangling `parentItemId` (the API neither nulls it nor deletes them), and any `deferredFromItemId` pointing at it becomes stale. Mention this during confirmation when relevant.
+- Confirm with the user before deleting. Deleting a parent clears the `parentItemId` of its children (they are kept, not deleted); any `deferredFromItemId` pointing at the deleted item is kept as a stale historical reference. Mention this during confirmation when relevant.
 - On success: `✓ Item #<id> deleted`
 - On 404: item not found
 
