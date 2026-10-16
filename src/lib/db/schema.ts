@@ -399,3 +399,44 @@ export const systemPrompts = sqliteTable('system_prompts', {
 
 export type SystemPromptRow = typeof systemPrompts.$inferSelect
 export type NewSystemPromptRow = typeof systemPrompts.$inferInsert
+
+// --- 周期计划表（Period Plans） ---
+
+export type PeriodPlanScope = 'week' | 'month'
+export type PeriodPlanItemStatus = 'planned' | 'in_progress' | 'done' | 'cancelled' | 'deferred'
+
+export const periodPlans = sqliteTable('period_plans', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  scope: text('scope').notNull().$type<PeriodPlanScope>(),
+  periodStart: text('period_start').notNull(),
+  periodEnd: text('period_end').notNull(),
+  monthKey: text('month_key'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  periodUnique: uniqueIndex('period_plans_scope_period_unique').on(table.scope, table.periodStart, table.periodEnd),
+  monthKeyUnique: uniqueIndex('period_plans_scope_month_key_unique').on(table.scope, table.monthKey),
+}))
+
+export type PeriodPlan = typeof periodPlans.$inferSelect
+export type NewPeriodPlan = typeof periodPlans.$inferInsert
+
+export const periodPlanItems = sqliteTable('period_plan_items', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  periodPlanId: integer('period_plan_id').notNull(),
+  text: text('text').notNull(),
+  status: text('status').notNull().default('planned').$type<PeriodPlanItemStatus>(),
+  projectScope: text('project_scope').notNull().default('work').$type<ProjectScope>(),
+  parentItemId: integer('parent_item_id'),
+  deferredFromItemId: integer('deferred_from_item_id'),
+  position: integer('position').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  planPositionIdx: index('period_plan_items_plan_position_idx').on(table.periodPlanId, table.position),
+  parentItemIdx: index('period_plan_items_parent_item_idx').on(table.parentItemId),
+  deferredFromItemIdx: index('period_plan_items_deferred_from_item_idx').on(table.deferredFromItemId),
+}))
+
+export type PeriodPlanItem = typeof periodPlanItems.$inferSelect
+export type NewPeriodPlanItem = typeof periodPlanItems.$inferInsert
