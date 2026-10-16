@@ -226,6 +226,65 @@ describe('/api/plan-items/[id]/defer', () => {
       expect(data.parentItemId).toBe(monthItem[0].id)
     })
 
+    it('should drop an inherited parent link that no longer covers the new week', async () => {
+      const now = new Date()
+
+      // Parent month is October; the deferred week start falls in November.
+      const monthPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'month',
+        periodStart: '2026-10-01',
+        periodEnd: '2026-10-31',
+        monthKey: '2026-10',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const monthItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: monthPlan[0].id,
+        text: 'October goal',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      // Week starting Mon 2026-10-26 (still in October).
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-26',
+        periodEnd: '2026-11-01',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const weekItem = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'Weekly task',
+        status: 'in_progress',
+        projectScope: 'work',
+        parentItemId: monthItem[0].id,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + weekItem[0].id + '/defer', {
+        method: 'POST',
+      })
+      const params = Promise.resolve({ id: String(weekItem[0].id) })
+      const response = await POST(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.deferredFromItemId).toBe(weekItem[0].id)
+      expect(data.parentItemId).toBeNull()
+    })
+
     it('should append to end of target period', async () => {
       const now = new Date()
 
