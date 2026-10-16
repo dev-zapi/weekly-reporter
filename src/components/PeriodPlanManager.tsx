@@ -6,10 +6,6 @@ import {
   subWeeks,
   addMonths,
   subMonths,
-  format,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
 } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
 import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
 
 type Scope = 'week' | 'month'
@@ -27,8 +24,6 @@ type PlanResponse = {
 }
 
 type PeriodParams = Record<string, string>
-
-const dateFormat = 'yyyy-MM-dd'
 
 export function PeriodPlanManager() {
   const [scope, setScope] = useState<Scope>('week')
@@ -42,17 +37,16 @@ export function PeriodPlanManager() {
   // Derive the period parameters used by both the read and write endpoints.
   const getPeriodParams = useCallback((): PeriodParams => {
     if (scope === 'week') {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 })
-      const end = endOfWeek(currentDate, { weekStartsOn: 1 })
+      const range = getWeekPeriodRange(currentDate)
       return {
         scope: 'week',
-        weekStart: format(start, dateFormat),
-        weekEnd: format(end, dateFormat),
+        weekStart: range.start,
+        weekEnd: range.end,
       }
     }
     return {
       scope: 'month',
-      month: format(startOfMonth(currentDate), 'yyyy-MM'),
+      month: getMonthPeriodRange(currentDate).monthKey,
     }
   }, [scope, currentDate])
 
@@ -84,8 +78,7 @@ export function PeriodPlanManager() {
   useEffect(() => {
     if (scope !== 'week') return
     const controller = new AbortController()
-    const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
-    const month = format(weekStart, 'yyyy-MM')
+    const month = getWeekPeriodRange(currentDate).start.slice(0, 7)
     void fetch(`/api/plans?scope=month&month=${month}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to load parent options')
@@ -187,11 +180,10 @@ export function PeriodPlanManager() {
 
   const getPeriodDisplay = () => {
     if (scope === 'week') {
-      const start = startOfWeek(currentDate, { weekStartsOn: 1 })
-      const end = endOfWeek(currentDate, { weekStartsOn: 1 })
-      return `${format(start, dateFormat)} - ${format(end, dateFormat)}`
+      const range = getWeekPeriodRange(currentDate)
+      return `${range.start} - ${range.end}`
     }
-    return format(currentDate, 'yyyy-MM')
+    return getMonthPeriodRange(currentDate).monthKey
   }
 
   return (
@@ -244,6 +236,7 @@ export function PeriodPlanManager() {
               key={item.id}
               item={item}
               parentOptions={scope === 'week' ? parentOptions : []}
+              showParentSelector={scope === 'week'}
               canMoveUp={index > 0}
               canMoveDown={index < items.length - 1}
               onUpdate={handleUpdateItem}

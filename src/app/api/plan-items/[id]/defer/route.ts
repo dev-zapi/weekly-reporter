@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, sql } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
-import { addWeeks, addMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns'
-import { format } from 'date-fns'
+import { getNextWeekPeriodRange, getNextMonthPeriodRange } from '@/lib/periods'
+import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
 
 export async function POST(
   request: Request,
@@ -36,6 +36,15 @@ export async function POST(
 
     const originalItem = items[0]
 
+    // Only incomplete items can be deferred; done/cancelled/deferred items are
+    // not candidates for the next period.
+    if (originalItem.status !== 'planned' && originalItem.status !== 'in_progress') {
+      return NextResponse.json(
+        { error: 'Only planned or in_progress items can be deferred' },
+        { status: 400 }
+      )
+    }
+
     // Get the plan for this item
     const plans = await db.select()
       .from(periodPlans)
@@ -51,55 +60,45 @@ export async function POST(
 
     const originalPlan = plans[0]
 
-    // Calculate next period
+    // Calculate the next period (same scope).
     let nextPeriodStart: string
     let nextPeriodEnd: string
     let nextMonthKey: string | null = null
 
     if (originalPlan.scope === 'week') {
-      // Parse the current period start date
-      const currentDate = new Date(originalPlan.periodStart + 'T00:00:00')
-      const nextDate = addWeeks(currentDate, 1)
-      const nextStart = startOfWeek(nextDate, { weekStartsOn: 1 })
-      const nextEnd = endOfWeek(nextDate, { weekStartsOn: 1 })
-      nextPeriodStart = format(nextStart, 'yyyy-MM-dd')
-      nextPeriodEnd = format(nextEnd, 'yyyy-MM-dd')
+      const range = getNextWeekPeriodRange(originalPlan.periodStart)
+      nextPeriodStart = range.start
+      nextPeriodEnd = range.end
     } else {
-      // month scope
-      const currentDate = new Date(originalPlan.periodStart + 'T00:00:00')
-      const nextDate = addMonths(currentDate, 1)
-      const nextStart = startOfMonth(nextDate)
-      const nextEnd = endOfMonth(nextDate)
-      nextPeriodStart = format(nextStart, 'yyyy-MM-dd')
-      nextPeriodEnd = format(nextEnd, 'yyyy-MM-dd')
-      nextMonthKey = format(nextDate, 'yyyy-MM')
+      const range = getNextMonthPeriodRange(originalPlan.monthKey ?? originalPlan.periodStart.slice(0, 7))
+      nextPeriodStart = range.start
+      nextPeriodEnd = range.end
+      nextMonthKey = range.monthKey
     }
 
-    // Find or create the next period plan
-    const existingNextPlans = await db.select()
-      .from(periodPlans)
-      .where(
-        sql`${periodPlans.scope} = ${originalPlan.scope} AND ${periodPlans.periodStart} = ${nextPeriodStart} AND ${periodPlans.periodEnd} = ${nextPeriodEnd}`
-      )
-      .all()
-
-    let nextPlanId: number
+    // Find or create the next period plan.
+    const nextPlan = await ensurePeriodPlan({
+      scope: originalPlan.scope,
+      periodStart: nextPeriodStart,
+      periodEnd: nextPeriodEnd,
+      monthKey: nextMonthKey,
+    })
+    const nextPlanId = nextPlan.id
     const now = new Date()
 
-    if (existingNextPlans.length > 0) {
-      nextPlanId = existingNextPlans[0].id
-    } else {
-      // Create new plan
-      const newPlan = await db.insert(periodPlans).values({
-        scope: originalPlan.scope,
-        periodStart: nextPeriodStart,
-        periodEnd: nextPeriodEnd,
-        monthKey: nextMonthKey,
-        createdAt: now,
-        updatedAt: now,
-      }).returning().all()
-
-      nextPlanId = newPlan[0].id
+    // Inherit the parent link only if it still satisfies the month-contains-
+    // week-start rule for the NEW week; otherwise silently drop it so the
+    // deferral still succeeds.
+    let inheritedParentItemId: number | null = originalItem.parentItemId
+    if (inheritedParentItemId !== null) {
+      const validation = await validateParentLink({
+        childScope: originalPlan.scope,
+        childPeriodStart: nextPeriodStart,
+        parentItemId: inheritedParentItemId,
+      })
+      if (!validation.ok) {
+        inheritedParentItemId = null
+      }
     }
 
     // Get max position for the next plan
@@ -119,7 +118,7 @@ export async function POST(
       text: originalItem.text,
       status: 'planned',
       projectScope: originalItem.projectScope,
-      parentItemId: originalItem.parentItemId,
+      parentItemId: inheritedParentItemId,
       deferredFromItemId: originalItem.id,
       position: newPosition,
       createdAt: now,

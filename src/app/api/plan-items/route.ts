@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
-import { eq, and, sql } from 'drizzle-orm'
-import { periodPlans, periodPlanItems } from '@/lib/db/schema'
+import { eq, sql } from 'drizzle-orm'
+import { periodPlans, periodPlanItems, type PeriodPlan } from '@/lib/db/schema'
 import { getMonthPeriodRangeByKey } from '@/lib/periods'
-
-const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-const monthRegex = /^\d{4}-\d{2}$/
+import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
+import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
 
 export async function POST(request: Request) {
   try {
@@ -38,10 +37,10 @@ export async function POST(request: Request) {
       )
     }
 
-    let targetPlanId = periodPlanId
+    let targetPlan: PeriodPlan
 
     // If periodPlanId not provided, ensure the plan exists
-    if (!targetPlanId) {
+    if (!periodPlanId) {
       if (!scope || (scope !== 'week' && scope !== 'month')) {
         return NextResponse.json(
           { error: 'Either periodPlanId or scope is required' },
@@ -49,8 +48,8 @@ export async function POST(request: Request) {
         )
       }
 
-      let periodStart: string | null = null
-      let periodEnd: string | null = null
+      let periodStart: string
+      let periodEnd: string
       let monthKey: string | null = null
 
       if (scope === 'week') {
@@ -63,8 +62,8 @@ export async function POST(request: Request) {
         if (
           typeof weekStart !== 'string' ||
           typeof weekEnd !== 'string' ||
-          !dateRegex.test(weekStart) ||
-          !dateRegex.test(weekEnd)
+          !DATE_REGEX.test(weekStart) ||
+          !DATE_REGEX.test(weekEnd)
         ) {
           return NextResponse.json(
             { error: 'Invalid weekStart or weekEnd format. Use YYYY-MM-DD' },
@@ -81,7 +80,7 @@ export async function POST(request: Request) {
             { status: 400 }
           )
         }
-        if (!monthRegex.test(month)) {
+        if (!MONTH_REGEX.test(month)) {
           return NextResponse.json(
             { error: 'Invalid month format. Use YYYY-MM' },
             { status: 400 }
@@ -93,39 +92,12 @@ export async function POST(request: Request) {
         monthKey = month
       }
 
-      // Try to find existing plan
-      const existingPlan = await db.select()
-        .from(periodPlans)
-        .where(
-          and(
-            eq(periodPlans.scope, scope),
-            eq(periodPlans.periodStart, periodStart),
-            eq(periodPlans.periodEnd, periodEnd)
-          )
-        )
-        .all()
-
-      if (existingPlan.length > 0) {
-        targetPlanId = existingPlan[0].id
-      } else {
-        // Create new plan
-        const now = new Date()
-        const newPlan = await db.insert(periodPlans).values({
-          scope,
-          periodStart,
-          periodEnd,
-          monthKey,
-          createdAt: now,
-          updatedAt: now,
-        }).returning().all()
-
-        targetPlanId = newPlan[0].id
-      }
+      targetPlan = await ensurePeriodPlan({ scope, periodStart, periodEnd, monthKey })
     } else {
       // Verify the plan exists
       const plan = await db.select()
         .from(periodPlans)
-        .where(eq(periodPlans.id, targetPlanId))
+        .where(eq(periodPlans.id, periodPlanId))
         .all()
 
       if (plan.length === 0) {
@@ -133,6 +105,22 @@ export async function POST(request: Request) {
           { error: 'Period plan not found' },
           { status: 404 }
         )
+      }
+
+      targetPlan = plan[0]
+    }
+
+    const targetPlanId = targetPlan.id
+
+    // Validate an optional parent link against the target plan's period.
+    if (parentItemId !== undefined && parentItemId !== null) {
+      const validation = await validateParentLink({
+        childScope: targetPlan.scope,
+        childPeriodStart: targetPlan.periodStart,
+        parentItemId,
+      })
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
       }
     }
 

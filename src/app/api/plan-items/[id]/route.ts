@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { periodPlanItems } from '@/lib/db/schema'
+import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { validateParentLink } from '@/lib/plan-items'
 
 export async function GET(
   request: Request,
@@ -72,10 +73,9 @@ export async function PUT(
 
     // Validate status if provided
     if (status !== undefined) {
-      const validStatuses = ['planned', 'in_progress', 'done', 'cancelled', 'deferred']
-      if (!validStatuses.includes(status)) {
+      if (!PERIOD_PLAN_ITEM_STATUSES.includes(status)) {
         return NextResponse.json(
-          { error: 'Invalid status. Must be one of: planned, in_progress, done, cancelled, deferred' },
+          { error: `Invalid status. Must be one of: ${PERIOD_PLAN_ITEM_STATUSES.join(', ')}` },
           { status: 400 }
         )
       }
@@ -102,6 +102,30 @@ export async function PUT(
         { error: 'Plan item not found' },
         { status: 404 }
       )
+    }
+
+    // Validate an optional parent link against the item's own plan period.
+    if (parentItemId !== undefined && parentItemId !== null) {
+      const childPlan = await db.select()
+        .from(periodPlans)
+        .where(eq(periodPlans.id, existingItems[0].periodPlanId))
+        .all()
+
+      if (childPlan.length === 0) {
+        return NextResponse.json(
+          { error: 'Period plan not found' },
+          { status: 404 }
+        )
+      }
+
+      const validation = await validateParentLink({
+        childScope: childPlan[0].scope,
+        childPeriodStart: childPlan[0].periodStart,
+        parentItemId,
+      })
+      if (!validation.ok) {
+        return NextResponse.json({ error: validation.error }, { status: 400 })
+      }
     }
 
     // Build update object
@@ -160,6 +184,14 @@ export async function DELETE(
         { status: 404 }
       )
     }
+
+    // Clear the parent link on children so deleting a parent never leaves a
+    // dangling structural reference. deferredFromItemId chains are historical
+    // provenance and are intentionally left untouched.
+    await db.update(periodPlanItems)
+      .set({ parentItemId: null, updatedAt: new Date() })
+      .where(eq(periodPlanItems.parentItemId, itemId))
+      .run()
 
     // Delete the item
     await db.delete(periodPlanItems)

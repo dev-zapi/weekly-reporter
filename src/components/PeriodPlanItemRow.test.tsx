@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
@@ -196,6 +196,42 @@ describe('PeriodPlanItemRow', () => {
     expect(mockOnDefer).not.toHaveBeenCalled()
   })
 
+  it('disables the defer control for items that are not incomplete', () => {
+    const statuses = ['done', 'cancelled', 'deferred'] as const
+
+    statuses.forEach((status) => {
+      const { unmount } = render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, status }}
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+
+      expect(screen.getByLabelText('Defer to next period')).toBeDisabled()
+      unmount()
+    })
+  })
+
+  it('keeps the defer control enabled for planned and in_progress items', () => {
+    const statuses = ['planned', 'in_progress'] as const
+
+    statuses.forEach((status) => {
+      const { unmount } = render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, status }}
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+
+      expect(screen.getByLabelText('Defer to next period')).toBeEnabled()
+      unmount()
+    })
+  })
+
   it('displays correct status label for each status', () => {
     const statuses = ['planned', 'in_progress', 'done', 'cancelled', 'deferred'] as const
     const labels = ['Planned', 'In Progress', 'Done', 'Cancelled', 'Deferred']
@@ -251,6 +287,29 @@ describe('PeriodPlanItemRow', () => {
     )
 
     expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+  })
+
+  it('always renders the parent selector in week scope, even with no parent options', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, parentItemId: 42 }}
+        showParentSelector
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    const parentSelect = screen.getByLabelText('Parent month item')
+    // Only the clear option remains, so a stale link is always clearable.
+    const options = within(parentSelect).getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveTextContent('No month parent')
+
+    await user.selectOptions(parentSelect, '')
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { parentItemId: null })
   })
 
   it('invokes onMove when the move buttons are clicked', async () => {

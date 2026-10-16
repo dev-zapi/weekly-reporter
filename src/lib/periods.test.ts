@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from './periods'
+import {
+  getWeekPeriodRange,
+  getMonthPeriodRange,
+  getMonthPeriodRangeByKey,
+  getNextWeekPeriodRange,
+  getNextMonthPeriodRange,
+} from './periods'
 
 describe('getWeekPeriodRange', () => {
   it('should return Monday-start week range as yyyy-MM-dd strings', () => {
@@ -123,6 +129,53 @@ describe('getMonthPeriodRangeByKey', () => {
     expect(result).toEqual({
       start: '2026-01-01',
       end: '2026-01-31',
+    })
+  })
+})
+
+describe('getNextWeekPeriodRange', () => {
+  it('should return the Monday-start week after the given week start', () => {
+    const result = getNextWeekPeriodRange('2026-10-12')
+    expect(result).toEqual({
+      start: '2026-10-19',
+      end: '2026-10-25',
+    })
+  })
+
+  it('should roll over a year boundary', () => {
+    const result = getNextWeekPeriodRange('2026-12-28')
+    expect(result).toEqual({
+      start: '2027-01-04',
+      end: '2027-01-10',
+    })
+  })
+})
+
+describe('getNextMonthPeriodRange', () => {
+  it('should return the calendar month after the given month key', () => {
+    const result = getNextMonthPeriodRange('2026-10')
+    expect(result).toEqual({
+      monthKey: '2026-11',
+      start: '2026-11-01',
+      end: '2026-11-30',
+    })
+  })
+
+  it('should roll over a year boundary', () => {
+    const result = getNextMonthPeriodRange('2026-12')
+    expect(result).toEqual({
+      monthKey: '2027-01',
+      start: '2027-01-01',
+      end: '2027-01-31',
+    })
+  })
+
+  it('should handle February in a leap year', () => {
+    const result = getNextMonthPeriodRange('2024-01')
+    expect(result).toEqual({
+      monthKey: '2024-02',
+      start: '2024-02-01',
+      end: '2024-02-29',
     })
   })
 })
