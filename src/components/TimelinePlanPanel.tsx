@@ -8,27 +8,12 @@ import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { PLAN_ITEM_STATUS_COLORS, PLAN_ITEM_STATUS_LABELS } from '@/lib/plan-item-display'
 import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
 
 type ApiResponse = {
   plan: PeriodPlan | null
   items: PeriodPlanItem[]
-}
-
-const statusLabels: Record<PeriodPlanItem['status'], string> = {
-  planned: 'Planned',
-  in_progress: 'In Progress',
-  done: 'Done',
-  cancelled: 'Cancelled',
-  deferred: 'Deferred',
-}
-
-const statusColors: Record<PeriodPlanItem['status'], string> = {
-  planned: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  done: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  deferred: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
 }
 
 function ProjectScopeBadge({ scope }: { scope: PeriodPlanItem['projectScope'] }) {
@@ -43,8 +28,8 @@ function ProjectScopeBadge({ scope }: { scope: PeriodPlanItem['projectScope'] })
 
 function StatusBadge({ status }: { status: PeriodPlanItem['status'] }) {
   return (
-    <Badge className={statusColors[status]}>
-      {statusLabels[status]}
+    <Badge className={PLAN_ITEM_STATUS_COLORS[status]}>
+      {PLAN_ITEM_STATUS_LABELS[status]}
     </Badge>
   )
 }

@@ -5,6 +5,11 @@ import { ArrowDown, ArrowUp, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  PLAN_ITEM_STATUS_COLORS,
+  PLAN_ITEM_STATUS_LABELS,
+  PLAN_ITEM_STATUS_ORDER,
+} from '@/lib/plan-item-display'
 import type { PeriodPlanItem, PeriodPlanItemStatus, ProjectScope } from '@/lib/db/schema'
 
 type Props = {
@@ -18,24 +23,6 @@ type Props = {
   onDefer: (id: number) => void
   onMove?: (id: number, direction: 'up' | 'down') => void
 }
-
-const statusColors: Record<PeriodPlanItemStatus, string> = {
-  planned: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  done: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  deferred: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-}
-
-const statusLabels: Record<PeriodPlanItemStatus, string> = {
-  planned: 'Planned',
-  in_progress: 'In Progress',
-  done: 'Done',
-  cancelled: 'Cancelled',
-  deferred: 'Deferred',
-}
-
-const statusOrder: PeriodPlanItemStatus[] = ['planned', 'in_progress', 'done', 'cancelled', 'deferred']
 
 export function PeriodPlanItemRow({
   item,
@@ -93,7 +80,7 @@ export function PeriodPlanItemRow({
 
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
-      <Badge className={statusColors[item.status]}>{statusLabels[item.status]}</Badge>
+      <Badge className={PLAN_ITEM_STATUS_COLORS[item.status]}>{PLAN_ITEM_STATUS_LABELS[item.status]}</Badge>
 
       <div className="flex-1 space-y-2">
         {editing ? (
@@ -136,9 +123,9 @@ export function PeriodPlanItemRow({
             className="h-7 rounded border bg-transparent px-2 text-xs"
             aria-label="Status"
           >
-            {statusOrder.map((status) => (
+            {PLAN_ITEM_STATUS_ORDER.map((status) => (
               <option key={status} value={status}>
-                {statusLabels[status]}
+                {PLAN_ITEM_STATUS_LABELS[status]}
               </option>
             ))}
           </select>
