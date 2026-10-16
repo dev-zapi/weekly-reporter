@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Loader2, Calendar, X } from 'lucide-react'
 import type { RawEvent } from '@/lib/db/schema'
 import { useSyncAllSources } from '@/components/SyncAllSources'
-import { TimelinePlanPanel } from '@/components/TimelinePlanPanel'
+import { CurrentWeekPlanPanel } from '@/components/CurrentWeekPlanPanel'
 import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 
@@ -370,7 +370,7 @@ export default function TimelinePage() {
             selectedDate={selectedHeatmapDate}
             onDateSelect={setSelectedHeatmapDate}
           />
-          <TimelinePlanPanel refreshKey={completionVersion} />
+          <CurrentWeekPlanPanel refreshKey={completionVersion} />
           {selectedHeatmapDate && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-sm">
               <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
