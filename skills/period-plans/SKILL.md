@@ -55,15 +55,15 @@ If no plan exists for the period, prints "No plan found for this period."
 Add a new item to a plan. The plan is auto-created if it doesn't exist.
 
 ```bash
-node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--scope <work|personal>] [--parent <itemId>]
+node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>]
 ```
 
-- `--scope` (plan scope) — `week` or `month`
+- `--scope` — plan scope: `week` or `month`
 - For week scope: provide `--week-start` and `--week-end` (both required)
 - For month scope: provide `--month YYYY-MM`
 - `--text` — item text (required)
-- `--scope` (project scope) — `work` (default) or `personal`
-- `--parent` — parent item ID (week item → month item; must exist and the month must contain the week's start date)
+- `--project` — item project scope: `work` (default) or `personal`
+- `--parent` — parent item ID (week item → month item; the API does not currently enforce the month-contains-week-start constraint, so pick a valid parent yourself)
 
 On success: `✓ Item created: #<ID> (plan=<planId>)`
 
@@ -72,14 +72,14 @@ On success: `✓ Item created: #<ID> (plan=<planId>)`
 Modify an existing item. At least one flag is required.
 
 ```bash
-node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--scope <work|personal>] [--position <n>] [--parent <itemId>]
+node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>]
 ```
 
 - `--text` — replace item text
 - `--status` — change status (one of: planned, in_progress, done, cancelled, deferred)
-- `--scope` — change project scope (work or personal)
+- `--project` — change project scope (work or personal)
 - `--position` — change sort order (manual priority)
-- `--parent` — change parent item ID (or remove parent by passing empty string)
+- `--parent` — change parent item ID (pass `--parent ""` to clear the parent link)
 
 On success: `✓ Item #<id> updated`
 

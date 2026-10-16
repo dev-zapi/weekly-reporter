@@ -3,11 +3,11 @@
 // Defer a plan item to the next period
 // Usage: defer.mjs <id>
 
-import { api, fail, failResponse, parseArgs, json, requireId } from './lib/client.mjs'
+import { api, failResponse, parseArgs, json, requireId } from './lib/client.mjs'
 
 const USAGE = `Usage: defer.mjs <id>`
 
-const { flags, positional } = parseArgs(process.argv.slice(2), {}, USAGE)
+const { positional } = parseArgs(process.argv.slice(2), {}, USAGE)
 
 const id = requireId(positional[0], USAGE)
 

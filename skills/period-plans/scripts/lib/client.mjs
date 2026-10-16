@@ -109,7 +109,7 @@ export function requireScope(value) {
 }
 
 export function requireProjectScope(value) {
-  if (value !== 'work' && value !== 'personal') fail(`Error: --scope must be 'work' or 'personal', got '${value ?? ''}'`)
+  if (value !== 'work' && value !== 'personal') fail(`Error: --project must be 'work' or 'personal', got '${value ?? ''}'`)
   return value
 }
 

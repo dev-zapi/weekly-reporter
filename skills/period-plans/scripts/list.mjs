@@ -3,7 +3,7 @@
 // List period plans and their items
 // Usage: list.mjs --scope <week|month> [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>]
 
-import { api, failResponse, parseArgs, requireScope, requireDate, requireMonth } from './lib/client.mjs'
+import { api, fail, failResponse, parseArgs, requireScope, requireDate, requireMonth } from './lib/client.mjs'
 
 const USAGE = `Usage: list.mjs --scope <week|month> [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>]`
 
