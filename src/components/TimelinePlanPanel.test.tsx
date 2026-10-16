@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { CurrentWeekPlanPanel } from './CurrentWeekPlanPanel'
+import { TimelinePlanPanel } from './TimelinePlanPanel'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch
@@ -9,7 +9,7 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
-describe('CurrentWeekPlanPanel', () => {
+describe('TimelinePlanPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFetch.mockReset()
@@ -22,7 +22,7 @@ describe('CurrentWeekPlanPanel', () => {
   it('renders loading state initially', () => {
     mockFetch.mockReturnValue(new Promise(() => {})) // Never resolves
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     expect(screen.getByRole('status')).toBeInTheDocument()
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
@@ -37,7 +37,7 @@ describe('CurrentWeekPlanPanel', () => {
       json: () => Promise.resolve({ plan: null, items: [] }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
@@ -53,7 +53,7 @@ describe('CurrentWeekPlanPanel', () => {
       json: () => Promise.resolve({ plan: null, items: [] }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       expect(screen.getByText(/no plan yet/i)).toBeInTheDocument()
@@ -91,7 +91,7 @@ describe('CurrentWeekPlanPanel', () => {
       }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       expect(screen.getByText('Review PR')).toBeInTheDocument()
@@ -117,7 +117,7 @@ describe('CurrentWeekPlanPanel', () => {
       }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       const link = screen.getByRole('link', { name: /manage plans/i })
@@ -131,7 +131,7 @@ describe('CurrentWeekPlanPanel', () => {
       json: () => Promise.resolve({ error: 'Network error' }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
@@ -145,7 +145,7 @@ describe('CurrentWeekPlanPanel', () => {
       json: () => Promise.resolve({ plan: null, items: [] }),
     })
 
-    render(<CurrentWeekPlanPanel />)
+    render(<TimelinePlanPanel />)
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalled()

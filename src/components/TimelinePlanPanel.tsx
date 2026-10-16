@@ -8,14 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import type { PeriodPlanItem } from '@/lib/db/schema'
-
-type PeriodPlan = {
-  id: number
-  scope: 'week'
-  periodStart: string
-  periodEnd: string
-}
+import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
 
 type ApiResponse = {
   plan: PeriodPlan | null
@@ -56,7 +49,7 @@ function StatusBadge({ status }: { status: PeriodPlanItem['status'] }) {
   )
 }
 
-export function CurrentWeekPlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
+export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -85,7 +78,7 @@ export function CurrentWeekPlanPanel({ refreshKey = 0 }: { refreshKey?: number }
   }, [refreshKey])
 
   return (
-    <Card role="region" aria-label="Current week plan">
+    <Card role="region" aria-label="Timeline plan table">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>This Week&apos;s Plan</span>
