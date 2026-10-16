@@ -185,6 +185,14 @@ export async function DELETE(
       )
     }
 
+    // Clear the parent link on children so deleting a parent never leaves a
+    // dangling structural reference. deferredFromItemId chains are historical
+    // provenance and are intentionally left untouched.
+    await db.update(periodPlanItems)
+      .set({ parentItemId: null, updatedAt: new Date() })
+      .where(eq(periodPlanItems.parentItemId, itemId))
+      .run()
+
     // Delete the item
     await db.delete(periodPlanItems)
       .where(eq(periodPlanItems.id, itemId))
