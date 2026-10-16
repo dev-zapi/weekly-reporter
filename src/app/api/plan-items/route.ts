@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, and, sql } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
-import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
+import { getMonthPeriodRangeByKey } from '@/lib/periods'
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/
 const monthRegex = /^\d{4}-\d{2}$/
@@ -60,7 +60,12 @@ export async function POST(request: Request) {
             { status: 400 }
           )
         }
-        if (!dateRegex.test(weekStart) || !dateRegex.test(weekEnd)) {
+        if (
+          typeof weekStart !== 'string' ||
+          typeof weekEnd !== 'string' ||
+          !dateRegex.test(weekStart) ||
+          !dateRegex.test(weekEnd)
+        ) {
           return NextResponse.json(
             { error: 'Invalid weekStart or weekEnd format. Use YYYY-MM-DD' },
             { status: 400 }

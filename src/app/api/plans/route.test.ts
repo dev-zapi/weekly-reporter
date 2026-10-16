@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from '@/lib/db/schema'
@@ -32,13 +32,11 @@ function createTestDbWithMigrations() {
 
 describe('/api/plans', () => {
   let testDb: ReturnType<typeof createTestDbWithMigrations>
-  let originalGetDb: typeof import('@/lib/db').getDb
 
   beforeEach(async () => {
     testDb = createTestDbWithMigrations()
     // Mock getDb to return our test database
     const dbModule = await import('@/lib/db')
-    originalGetDb = dbModule.getDb
     vi.spyOn(dbModule, 'getDb').mockReturnValue(testDb)
   })
 
@@ -153,7 +151,7 @@ describe('/api/plans', () => {
     it('should return plan for month scope with month parameter', async () => {
       const now = new Date()
 
-      const plan = testDb.insert(schema.periodPlans).values({
+      testDb.insert(schema.periodPlans).values({
         scope: 'month',
         periodStart: '2026-10-01',
         periodEnd: '2026-10-31',
