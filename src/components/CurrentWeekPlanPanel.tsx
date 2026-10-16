@@ -5,8 +5,9 @@ import { format } from 'date-fns'
 import { Briefcase, LoaderCircle, User } from 'lucide-react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import type { PeriodPlanItem } from '@/lib/db/schema'
 
 type PeriodPlan = {
@@ -88,9 +89,12 @@ export function CurrentWeekPlanPanel({ refreshKey = 0 }: { refreshKey?: number }
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>This Week&apos;s Plan</span>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/plans">Manage Plans</Link>
-          </Button>
+          <Link
+            href="/plans"
+            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+          >
+            Manage Plans
+          </Link>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
           Read-only projection of current week&apos;s period plan
@@ -108,9 +112,12 @@ export function CurrentWeekPlanPanel({ refreshKey = 0 }: { refreshKey?: number }
             <div className="text-sm text-muted-foreground">
               No plan yet for this week.
             </div>
-            <Button asChild size="sm">
-              <Link href="/plans">Create Plan</Link>
-            </Button>
+            <Link
+              href="/plans"
+              className={cn(buttonVariants({ size: 'sm' }))}
+            >
+              Create Plan
+            </Link>
           </div>
         ) : (
           <div className="space-y-3">
@@ -128,9 +135,12 @@ export function CurrentWeekPlanPanel({ refreshKey = 0 }: { refreshKey?: number }
               ))}
             </ul>
             <div className="pt-2 border-t">
-              <Button asChild variant="outline" size="sm" className="w-full">
-                <Link href="/plans">View All Plans</Link>
-              </Button>
+              <Link
+                href="/plans"
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}
+              >
+                View All Plans
+              </Link>
             </div>
           </div>
         )}
