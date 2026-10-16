@@ -73,16 +73,16 @@ export function PeriodPlanManager() {
   }, [getPeriodParams])
 
   useEffect(() => {
-    void fetchPlan()
+    const loadPlan = async () => {
+      await fetchPlan()
+    }
+    void loadPlan()
   }, [fetchPlan])
 
   // In week scope, offer month items as parent candidates. The parent month is
   // the calendar month that contains the week's start day.
   useEffect(() => {
-    if (scope !== 'week') {
-      setParentOptions([])
-      return
-    }
+    if (scope !== 'week') return
     const controller = new AbortController()
     const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
     const month = format(weekStart, 'yyyy-MM')
