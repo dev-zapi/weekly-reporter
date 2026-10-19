@@ -105,6 +105,7 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                   <div className="flex-1 space-y-1">
                     <div className="font-medium">{item.text}</div>
                     <div className="flex flex-wrap gap-1.5">
+                      <Badge variant="outline" className="font-mono text-xs">%{item.id}</Badge>
                       <StatusBadge status={item.status} />
                       <ProjectScopeBadge scope={item.projectScope} />
                     </div>
