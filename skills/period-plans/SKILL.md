@@ -43,9 +43,9 @@ node {baseDir}/scripts/list.mjs --scope <week|month> [--date <YYYY-MM-DD>] [--we
 Output format:
 ```
 Plan: <scope> <periodStart> to <periodEnd> (id=<planId>)
-  #<itemId> [<status>] [<scope>] <text>
-  #<itemId> [<status>] [<scope>] <text> (parent=<parentItemId>)
-  #<itemId> [<status>] [<scope>] <text> (deferred from #<originalId>)
+  %<itemId> [<status>] [<scope>] <text>
+  %<itemId> [<status>] [<scope>] <text> (parent=<parentItemId>)
+  %<itemId> [<status>] [<scope>] <text> (deferred from %<originalId>)
 ```
 
 If no plan exists for the period, prints "No plan found for this period."
@@ -65,7 +65,7 @@ node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> -
 - `--project` — item project scope: `work` (default) or `personal`
 - `--parent` — parent item ID (week item → month item). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
 
-On success: `✓ Item created: #<ID> (plan=<planId>)`
+On success: `✓ Item created: %<ID> (plan=<planId>)`
 
 ## Update
 
@@ -81,7 +81,7 @@ node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--pr
 - `--position` — change sort order (manual priority)
 - `--parent` — change parent item ID (pass `--parent ""` to clear the parent link). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
 
-On success: `✓ Item #<id> updated`
+On success: `✓ Item %<id> updated`
 
 ## Defer
 
@@ -94,7 +94,7 @@ node {baseDir}/scripts/defer.mjs <id>
 - Confirm with the user before deferring. The original item will be marked `deferred` and a new item will appear in the next period with `status='planned'`, linked back via `deferredFromItemId`.
 - Only items with status `planned` or `in_progress` can be deferred; the API rejects `done`, `cancelled`, and `deferred` items with HTTP 400.
 - The target period is always the next one (week → next week, month → next month). You cannot defer to an arbitrary period.
-- On success: `✓ Item deferred: #<newId> created in next period (original #<id> marked deferred)`
+- On success: `✓ Item deferred: %<newId> created in next period (original %<id> marked deferred)`
 
 ## Delete
 
@@ -105,7 +105,7 @@ node {baseDir}/scripts/delete.mjs <id>
 ```
 
 - Confirm with the user before deleting. Deleting a parent clears the `parentItemId` of its children (they are kept, not deleted); any `deferredFromItemId` pointing at the deleted item is kept as a stale historical reference. Mention this during confirmation when relevant.
-- On success: `✓ Item #<id> deleted`
+- On success: `✓ Item %<id> deleted`
 - On 404: item not found
 
 ## Error handling

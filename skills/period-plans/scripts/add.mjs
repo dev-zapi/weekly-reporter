@@ -54,4 +54,4 @@ if (status !== 201) {
   failResponse(status, body, 'Plan item creation')
 }
 
-console.log(`✓ Item created: #${body.id} (plan=${body.periodPlanId})`)
+console.log(`✓ Item created: %${body.id} (plan=${body.periodPlanId})`)

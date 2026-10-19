@@ -62,4 +62,4 @@ if (status !== 200) {
   failResponse(status, body, 'Plan item update')
 }
 
-console.log(`✓ Item #${id} updated`)
+console.log(`✓ Item %${id} updated`)
