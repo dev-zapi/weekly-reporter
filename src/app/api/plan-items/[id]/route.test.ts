@@ -122,6 +122,88 @@ describe('/api/plan-items/[id]', () => {
       })
       expect(data.deferralChain).toEqual([30, 20, 10])
     })
+
+    it('should include referring events so deletion can warn before it happens', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event = testDb.insert(schema.rawEvents).values({
+        content: 'Did work on %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values({
+        eventId: event[0].id,
+        planItemId: item[0].id,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id)
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.referrers).toHaveLength(1)
+      expect(data.referrers[0].id).toBe(event[0].id)
+      expect(data.referrers[0].content).toBe('Did work on %' + item[0].id)
+    })
+
+    it('should return an empty referrers list when no events reference the item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Unreferenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id)
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.referrers).toEqual([])
+    })
   })
 
   describe('PUT', () => {

@@ -51,10 +51,19 @@ export async function GET(
     // Get the deferral chain
     const deferralChain = await getFulfillmentChain(itemId)
 
+    // Surface referring events so the plans UI can warn before deletion.
+    // Read-only: this never creates or removes associations.
+    const referrers = findPlanReferrers(db, itemId).map((referrer) => ({
+      id: referrer.id,
+      content: referrer.content,
+      eventTime: referrer.eventTime,
+    }))
+
     return NextResponse.json({
       ...item,
       period,
       deferralChain,
+      referrers,
     })
   } catch (error) {
     console.error('Error fetching plan item:', error)
