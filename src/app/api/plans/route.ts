@@ -4,6 +4,7 @@ import { eq, and, asc } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
+import { getFulfillmentCount } from '@/lib/plan-references'
 
 export async function GET(request: Request) {
   try {
@@ -116,9 +117,17 @@ export async function GET(request: Request) {
       .orderBy(asc(periodPlanItems.position))
       .all()
 
+    // Add fulfillment count to each item
+    const itemsWithFulfillment = await Promise.all(
+      items.map(async (item) => {
+        const fulfillmentCount = await getFulfillmentCount(item.id)
+        return { ...item, fulfillmentCount }
+      })
+    )
+
     return NextResponse.json({
       plan: planRow,
-      items
+      items: itemsWithFulfillment
     })
   } catch (error) {
     console.error('Error fetching plans:', error)
