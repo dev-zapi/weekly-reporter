@@ -12,6 +12,11 @@ vi.mock('@/lib/references', async (importOriginal) => {
   return { ...actual, syncEventReferences: vi.fn() }
 })
 
+vi.mock('@/lib/plan-references', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/plan-references')>()
+  return { ...actual, syncEventPlanReferences: vi.fn() }
+})
+
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   insert: vi.fn(),
