@@ -9,7 +9,7 @@ import { TagFilterPanel } from '@/components/TagFilterPanel'
 import { ActivityHeatmap, type HeatmapData } from '@/components/ActivityHeatmap'
 import { Button } from '@/components/ui/button'
 import { Loader2, Calendar, X } from 'lucide-react'
-import type { RawEvent } from '@/lib/db/schema'
+import type { RawEvent, PeriodPlanScope } from '@/lib/db/schema'
 import { useSyncAllSources } from '@/components/SyncAllSources'
 import { TimelinePlanPanel } from '@/components/TimelinePlanPanel'
 import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
@@ -285,7 +285,7 @@ export default function TimelinePage() {
     setPlanReferencePreviewId(planItemId)
   }, [])
 
-  const handleGoToPlans = useCallback((scope: 'week' | 'month', periodStart: string) => {
+  const handleGoToPlans = useCallback((scope: PeriodPlanScope, periodStart: string) => {
     setPlanReferencePreviewId(null)
     router.push(buildPlansDeepLink(scope, periodStart))
   }, [router])

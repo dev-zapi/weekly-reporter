@@ -5,17 +5,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PLAN_ITEM_STATUS_COLORS, PLAN_ITEM_STATUS_LABELS } from '@/lib/plan-item-display'
-import type { PeriodPlanItemStatus, ProjectScope } from '@/lib/db/schema'
+import type { PeriodPlanItemStatus, ProjectScope, PeriodPlanScope } from '@/lib/db/schema'
 
 interface PlanItemPreviewDialogProps {
   itemId: number | null
   onClose: () => void
-  onGoToPlans: (scope: 'week' | 'month', periodStart: string) => void
+  onGoToPlans: (scope: PeriodPlanScope, periodStart: string) => void
 }
 
 interface PlanItemPeriod {
   id: number
-  scope: 'week' | 'month'
+  scope: PeriodPlanScope
   periodStart: string
   periodEnd: string
 }

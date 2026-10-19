@@ -11,13 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { formatSystemDateTime } from '@/lib/time-format'
-
-/** A referring event surfaced by GET /api/plan-items/[id]. */
-type Referrer = {
-  id: number
-  content: string
-  eventTime: string
-}
+import type { PlanReferrerEvent } from '@/lib/plan-references/referrers'
 
 type Props = {
   itemId: number | null
@@ -32,7 +26,7 @@ type Props = {
  * referrers, never mutates associations.
  */
 export function PlanItemDeleteDialog({ itemId, onClose, onConfirm }: Props) {
-  const [referrers, setReferrers] = useState<Referrer[]>([])
+  const [referrers, setReferrers] = useState<PlanReferrerEvent[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -46,7 +40,7 @@ export function PlanItemDeleteDialog({ itemId, onClose, onConfirm }: Props) {
     fetch(`/api/plan-items/${itemId}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to load references')
-        const data: { referrers?: Referrer[] } = await response.json()
+        const data: { referrers?: PlanReferrerEvent[] } = await response.json()
         if (!controller.signal.aborted) setReferrers(data.referrers ?? [])
       })
       .catch(() => {

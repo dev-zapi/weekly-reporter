@@ -14,9 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { PeriodPlanItemRow, type PlanItemRowData } from './PeriodPlanItemRow'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
-import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
-
-type Scope = 'week' | 'month'
+import type { PeriodPlan, PeriodPlanItem, PeriodPlanScope } from '@/lib/db/schema'
 
 type PlanResponse = {
   plan: PeriodPlan | null
@@ -26,7 +24,7 @@ type PlanResponse = {
 type PeriodParams = Record<string, string>
 
 type Props = {
-  initialScope?: Scope
+  initialScope?: PeriodPlanScope
   initialStart?: string | null
 }
 
@@ -38,7 +36,7 @@ function parsePeriodStart(start: string | null | undefined): Date | null {
 }
 
 export function PeriodPlanManager({ initialScope = 'week', initialStart = null }: Props = {}) {
-  const [scope, setScope] = useState<Scope>(initialScope)
+  const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
   const [items, setItems] = useState<PeriodPlanItem[]>([])
   const [parentOptions, setParentOptions] = useState<PeriodPlanItem[]>([])
@@ -140,8 +138,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     try {
       const response = await fetch(`/api/plan-items/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete item')
-      // DELETE returns 200 JSON {deleted, referrers} (no longer 204). Deletion
-      // proceeds regardless of referrers; they were surfaced pre-deletion.
+      // DELETE returns 200 JSON {deleted: true} (no longer 204). Referrer
+      // warnings are surfaced pre-deletion via the confirm dialog's GET.
       const data: { deleted?: boolean } = await response.json()
       if (data.deleted === false) throw new Error('Failed to delete item')
       setItems((prev) => prev.filter((item) => item.id !== id))
@@ -204,7 +202,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
 
   return (
     <div className="space-y-6">
-      <Tabs value={scope} onValueChange={(value) => setScope(value as Scope)}>
+      <Tabs value={scope} onValueChange={(value) => setScope(value as PeriodPlanScope)}>
         <TabsList className="w-full">
           <TabsTrigger value="week">Week</TabsTrigger>
           <TabsTrigger value="month">Month</TabsTrigger>
