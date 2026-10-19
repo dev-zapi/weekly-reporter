@@ -127,6 +127,72 @@ describe('/api/plans', () => {
       expect(data.items[1].text).toBe('Task 2')
     })
 
+    it('should include fulfillment count for each item', async () => {
+      const now = new Date()
+
+      // Create a week plan
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      // Add items
+      testDb.insert(schema.periodPlanItems).values([
+        {
+          periodPlanId: plan[0].id,
+          text: 'Task 1',
+          status: 'planned',
+          projectScope: 'work',
+          parentItemId: null,
+          deferredFromItemId: null,
+          position: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          periodPlanId: plan[0].id,
+          text: 'Task 2',
+          status: 'done',
+          projectScope: 'personal',
+          parentItemId: null,
+          deferredFromItemId: null,
+          position: 2,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]).run()
+
+      // Add events and plan references
+      testDb.insert(schema.rawEvents).values([
+        { id: 1, eventTime: now, source: 'manual', content: 'Did work %1', metadata: null, category: null, isImportant: false, createdAt: now, updatedAt: now },
+        { id: 2, eventTime: now, source: 'manual', content: 'More work %1', metadata: null, category: null, isImportant: false, createdAt: now, updatedAt: now },
+        { id: 3, eventTime: now, source: 'manual', content: 'Work on %2', metadata: null, category: null, isImportant: false, createdAt: now, updatedAt: now },
+      ]).run()
+
+      // Get the actual item IDs
+      const items = testDb.select({ id: schema.periodPlanItems.id }).from(schema.periodPlanItems).all()
+
+      testDb.insert(schema.eventPlanReferences).values([
+        { eventId: 1, planItemId: items[0].id, createdAt: now },
+        { eventId: 2, planItemId: items[0].id, createdAt: now },
+        { eventId: 3, planItemId: items[1].id, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plans?scope=week&date=2026-10-15')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.items).toHaveLength(2)
+      expect(data.items[0].fulfillmentCount).toBe(2)
+      expect(data.items[1].fulfillmentCount).toBe(1)
+    })
+
+
     it('should query by weekStart and weekEnd for week scope', async () => {
       const now = new Date()
 

@@ -89,6 +89,39 @@ describe('/api/plan-items/[id]', () => {
       expect(data.id).toBe(item[0].id)
       expect(data.text).toBe('Test item')
     })
+
+    it('should return period identity and deferral chain', async () => {
+      const now = new Date()
+
+      // Create plans for different weeks
+      await testDb.insert(schema.periodPlans).values([
+        { id: 1, scope: 'week', periodStart: '2026-10-05', periodEnd: '2026-10-11', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 2, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 3, scope: 'week', periodStart: '2026-10-19', periodEnd: '2026-10-25', monthKey: null, createdAt: now, updatedAt: now },
+      ]).run()
+
+      // Create items with deferral chain: 30 -> 20 -> 10
+      await testDb.insert(schema.periodPlanItems).values([
+        { id: 10, periodPlanId: 1, text: 'Original', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: null, position: 1, createdAt: now, updatedAt: now },
+        { id: 20, periodPlanId: 2, text: 'Deferred once', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: 10, position: 1, createdAt: now, updatedAt: now },
+        { id: 30, periodPlanId: 3, text: 'Deferred twice', status: 'planned', projectScope: 'work', parentItemId: null, deferredFromItemId: 20, position: 1, createdAt: now, updatedAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plan-items/30')
+      const params = Promise.resolve({ id: '30' })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.id).toBe(30)
+      expect(data.period).toEqual({
+        id: 3,
+        scope: 'week',
+        periodStart: '2026-10-19',
+        periodEnd: '2026-10-25',
+      })
+      expect(data.deferralChain).toEqual([30, 20, 10])
+    })
   })
 
   describe('PUT', () => {

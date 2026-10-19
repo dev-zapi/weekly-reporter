@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
 import { validateParentLink } from '@/lib/plan-items'
+import { getFulfillmentChain } from '@/lib/plan-references'
 
 export async function GET(
   request: Request,
@@ -32,7 +33,29 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(items[0])
+    const item = items[0]
+
+    // Get the period plan
+    const plans = await db.select()
+      .from(periodPlans)
+      .where(eq(periodPlans.id, item.periodPlanId))
+      .all()
+
+    const period = plans.length > 0 ? {
+      id: plans[0].id,
+      scope: plans[0].scope,
+      periodStart: plans[0].periodStart,
+      periodEnd: plans[0].periodEnd,
+    } : null
+
+    // Get the deferral chain
+    const deferralChain = await getFulfillmentChain(itemId)
+
+    return NextResponse.json({
+      ...item,
+      period,
+      deferralChain,
+    })
   } catch (error) {
     console.error('Error fetching plan item:', error)
     return NextResponse.json(
