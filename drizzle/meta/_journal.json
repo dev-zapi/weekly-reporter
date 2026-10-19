@@ -253,6 +253,13 @@
       "when": 1792143442468,
       "tag": "0035_flowery_timeslip",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1792410310548,
+      "tag": "0036_right_impossible_man",
+      "breakpoints": true
     }
   ]
 }
