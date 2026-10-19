@@ -1,35 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from '@/lib/db/schema'
 import { getFulfillmentChain, getFulfillmentCount, getFulfillingEvents } from './fulfillment'
 import * as dbModule from '@/lib/db'
-import fs from 'node:fs'
-import path from 'node:path'
-
-function createTestDbWithMigrations() {
-  const sqlite = new Database(':memory:')
-
-  // Apply all migrations
-  const migrationsDir = path.join(__dirname, '../../../drizzle')
-  const migrationFiles = fs.readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql'))
-    .sort()
-
-  for (const file of migrationFiles) {
-    const migrationPath = path.join(migrationsDir, file)
-    const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
-    const statements = migrationSql.split('--> statement-breakpoint')
-    for (const stmt of statements) {
-      const trimmed = stmt.trim()
-      if (trimmed) {
-        sqlite.exec(trimmed)
-      }
-    }
-  }
-
-  return drizzle(sqlite, { schema })
-}
+import { createTestDbWithMigrations } from '@/test/db'
 
 describe('fulfillment', () => {
   let testDb: ReturnType<typeof createTestDbWithMigrations>
@@ -161,6 +134,32 @@ describe('fulfillment', () => {
       const count = await getFulfillmentCount(999)
       expect(count).toBe(0)
     })
+
+    it('counts an event that references two items in the chain only once', async () => {
+      const now = new Date()
+
+      await testDb.insert(schema.periodPlans).values([
+        { id: 1, scope: 'week', periodStart: '2026-10-05', periodEnd: '2026-10-11', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 2, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null, createdAt: now, updatedAt: now },
+      ]).run()
+
+      await testDb.insert(schema.periodPlanItems).values([
+        { id: 10, periodPlanId: 1, text: 'Original', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: null, position: 1, createdAt: now, updatedAt: now },
+        { id: 20, periodPlanId: 2, text: 'Carried', status: 'planned', projectScope: 'work', parentItemId: null, deferredFromItemId: 10, position: 1, createdAt: now, updatedAt: now },
+      ]).run()
+
+      // A single event cites both items in the same deferral chain.
+      await testDb.insert(schema.rawEvents).values([
+        { id: 1, eventTime: now, source: 'manual', content: 'Did %10 and %20', metadata: null, category: null, isImportant: false, createdAt: now, updatedAt: now },
+      ]).run()
+
+      await testDb.insert(schema.eventPlanReferences).values([
+        { eventId: 1, planItemId: 10, createdAt: now },
+        { eventId: 1, planItemId: 20, createdAt: now },
+      ]).run()
+
+      expect(await getFulfillmentCount(20)).toBe(1)
+    })
   })
 
   describe('getFulfillingEvents', () => {
@@ -211,6 +210,33 @@ describe('fulfillment', () => {
     it('returns empty array when item does not exist', async () => {
       const events = await getFulfillingEvents(999)
       expect(events).toEqual([])
+    })
+
+    it('lists an event that references two items in the chain only once', async () => {
+      const now = new Date()
+
+      await testDb.insert(schema.periodPlans).values([
+        { id: 1, scope: 'week', periodStart: '2026-10-05', periodEnd: '2026-10-11', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 2, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null, createdAt: now, updatedAt: now },
+      ]).run()
+
+      await testDb.insert(schema.periodPlanItems).values([
+        { id: 10, periodPlanId: 1, text: 'Original', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: null, position: 1, createdAt: now, updatedAt: now },
+        { id: 20, periodPlanId: 2, text: 'Carried', status: 'planned', projectScope: 'work', parentItemId: null, deferredFromItemId: 10, position: 1, createdAt: now, updatedAt: now },
+      ]).run()
+
+      await testDb.insert(schema.rawEvents).values([
+        { id: 1, eventTime: now, source: 'manual', content: 'Did %10 and %20', metadata: null, category: null, isImportant: false, createdAt: now, updatedAt: now },
+      ]).run()
+
+      await testDb.insert(schema.eventPlanReferences).values([
+        { eventId: 1, planItemId: 10, createdAt: now },
+        { eventId: 1, planItemId: 20, createdAt: now },
+      ]).run()
+
+      const events = await getFulfillingEvents(20)
+      expect(events).toHaveLength(1)
+      expect(events[0].id).toBe(1)
     })
   })
 })

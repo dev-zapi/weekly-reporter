@@ -1,4 +1,5 @@
-import { eq, and, inArray } from 'drizzle-orm'
+import 'server-only'
+import { eq, inArray } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { periodPlanItems, eventPlanReferences, rawEvents } from '@/lib/db/schema'
 
@@ -34,6 +35,8 @@ export async function getFulfillmentChain(itemId: number): Promise<number[]> {
 
 /**
  * Count fulfilling events for an item and its deferral chain ancestors.
+ * Counts distinct events: an event that references two items in the same
+ * deferral chain is a single piece of work and must count once.
  */
 export async function getFulfillmentCount(itemId: number): Promise<number> {
   const db = getDb()
@@ -43,13 +46,13 @@ export async function getFulfillmentCount(itemId: number): Promise<number> {
     return 0
   }
 
-  const result = await db
-    .select({ count: eventPlanReferences.planItemId })
+  const distinctEvents = await db
+    .selectDistinct({ eventId: eventPlanReferences.eventId })
     .from(eventPlanReferences)
     .where(inArray(eventPlanReferences.planItemId, chain))
     .all()
 
-  return result.length
+  return distinctEvents.length
 }
 
 export interface FulfillingEvent {
@@ -62,6 +65,8 @@ export interface FulfillingEvent {
 /**
  * Get fulfilling events for an item and its deferral chain ancestors.
  * Returns event time, content summary, and manual/collected marker.
+ * Deduped by event id: an event referencing two items in the same chain is
+ * listed once.
  */
 export async function getFulfillingEvents(itemId: number): Promise<FulfillingEvent[]> {
   const db = getDb()
@@ -83,10 +88,17 @@ export async function getFulfillingEvents(itemId: number): Promise<FulfillingEve
     .where(inArray(eventPlanReferences.planItemId, chain))
     .all()
 
-  return rows.map((row) => ({
-    id: row.id,
-    content: row.content,
-    eventTime: row.eventTime,
-    isManual: row.source === 'manual',
-  }))
+  const seen = new Set<number>()
+  const events: FulfillingEvent[] = []
+  for (const row of rows) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    events.push({
+      id: row.id,
+      content: row.content,
+      eventTime: row.eventTime,
+      isManual: row.source === 'manual',
+    })
+  }
+  return events
 }

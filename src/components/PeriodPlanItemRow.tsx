@@ -266,7 +266,7 @@ export function PeriodPlanItemRow({
                         {event.isManual ? 'Manual' : 'Collected'}
                       </Badge>
                     </div>
-                    <div className="text-sm">{event.content}</div>
+                    <div className="text-sm line-clamp-2">{event.content}</div>
                   </li>
                 ))}
               </ul>

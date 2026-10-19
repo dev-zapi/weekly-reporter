@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { syncEventPlanReferences, deleteEventPlanReferences } from './db'
+import {
+  syncEventPlanReferences,
+  deleteEventPlanReferences,
+  deleteEventPlanReferencesByPlanItem,
+} from './db'
 
 describe('plan-references/db', () => {
   const createMockTx = () => {
@@ -62,6 +66,17 @@ describe('plan-references/db', () => {
       const eventId = 42
 
       deleteEventPlanReferences(tx as any, eventId)
+
+      expect(tx.delete).toHaveBeenCalled()
+    })
+  })
+
+  describe('deleteEventPlanReferencesByPlanItem', () => {
+    it('should delete all inbound references for the plan item', () => {
+      const tx = createMockTx()
+      const planItemId = 7
+
+      deleteEventPlanReferencesByPlanItem(tx as any, planItemId)
 
       expect(tx.delete).toHaveBeenCalled()
     })

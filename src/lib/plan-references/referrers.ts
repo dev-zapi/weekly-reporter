@@ -1,3 +1,4 @@
+import 'server-only'
 import { eq } from 'drizzle-orm'
 import { eventPlanReferences, rawEvents } from '@/lib/db/schema'
 

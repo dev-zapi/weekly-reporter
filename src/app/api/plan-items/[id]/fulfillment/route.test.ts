@@ -1,34 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from '@/lib/db/schema'
 import { GET } from './route'
-import fs from 'node:fs'
-import path from 'node:path'
-
-function createTestDbWithMigrations() {
-  const sqlite = new Database(':memory:')
-
-  // Apply all migrations
-  const migrationsDir = path.join(__dirname, '../../../../../../drizzle')
-  const migrationFiles = fs.readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql'))
-    .sort()
-
-  for (const file of migrationFiles) {
-    const migrationPath = path.join(migrationsDir, file)
-    const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
-    const statements = migrationSql.split('--> statement-breakpoint')
-    for (const stmt of statements) {
-      const trimmed = stmt.trim()
-      if (trimmed) {
-        sqlite.exec(trimmed)
-      }
-    }
-  }
-
-  return drizzle(sqlite, { schema })
-}
+import { createTestDbWithMigrations } from '@/test/db'
 
 describe('/api/plan-items/[id]/fulfillment', () => {
   let testDb: ReturnType<typeof createTestDbWithMigrations>

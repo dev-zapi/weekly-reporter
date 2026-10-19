@@ -1,5 +1,5 @@
 import { PeriodPlanManager } from '@/components/PeriodPlanManager'
-import { resolvePlansDeepLink } from '@/lib/plan-period-link'
+import { resolvePlansDeepLink } from '@/lib/plan-links'
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 

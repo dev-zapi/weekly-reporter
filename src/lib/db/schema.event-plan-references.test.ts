@@ -1,38 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
 import * as schema from './schema'
 import { eq, and } from 'drizzle-orm'
-import fs from 'node:fs'
-import path from 'node:path'
-
-function createTestDbWithMigrations() {
-  const sqlite = new Database(':memory:')
-
-  // Apply all migrations up to the new event_plan_references migration
-  const drizzleDir = path.join(__dirname, '../../../drizzle')
-
-  // Read and apply migrations in order
-  const migrationFiles = fs.readdirSync(drizzleDir)
-    .filter(f => f.match(/^\d+_.*\.sql$/))
-    .sort()
-
-  for (const file of migrationFiles) {
-    const migrationPath = path.join(drizzleDir, file)
-    const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
-
-    // Split by statement breakpoint and execute each statement
-    const statements = migrationSql.split('--> statement-breakpoint')
-    for (const stmt of statements) {
-      const trimmed = stmt.trim()
-      if (trimmed) {
-        sqlite.exec(trimmed)
-      }
-    }
-  }
-
-  return drizzle(sqlite, { schema })
-}
+import { createTestDbWithMigrations } from '@/test/db'
 
 describe('event_plan_references schema', () => {
   it('should create event_plan_references table with correct structure', () => {

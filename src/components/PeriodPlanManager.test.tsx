@@ -63,7 +63,7 @@ function setupApi(options: {
       return okJson(makeItem())
     }
     if (method === 'DELETE') {
-      return Promise.resolve({ ok: true, status: 200, json: async () => ({ deleted: true, referrers: [] }) })
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ deleted: true }) })
     }
     return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'unexpected' }) })
   })
