@@ -128,6 +128,10 @@ export function PeriodPlanManager() {
     try {
       const response = await fetch(`/api/plan-items/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete item')
+      // DELETE returns 200 JSON {deleted, referrers} (no longer 204). Deletion
+      // proceeds regardless of referrers; they were surfaced pre-deletion.
+      const data: { deleted?: boolean } = await response.json()
+      if (data.deleted === false) throw new Error('Failed to delete item')
       setItems((prev) => prev.filter((item) => item.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item')

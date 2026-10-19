@@ -47,6 +47,9 @@ function setupApi(options: {
     if (method === 'GET' && url.includes('scope=month')) {
       return okJson({ plan: parentItems.length > 0 ? { id: 2 } : null, items: parentItems })
     }
+    if (method === 'GET' && url.startsWith('/api/plan-items/')) {
+      return okJson({ id: 5, referrers: [] })
+    }
     if (method === 'GET' && url.startsWith('/api/plans')) {
       return okJson({ plan, items })
     }
@@ -60,7 +63,7 @@ function setupApi(options: {
       return okJson(makeItem())
     }
     if (method === 'DELETE') {
-      return Promise.resolve({ ok: true, status: 204, json: async () => ({}) })
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ deleted: true, referrers: [] }) })
     }
     return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'unexpected' }) })
   })
@@ -276,21 +279,28 @@ describe('PeriodPlanManager', () => {
     })
   })
 
-  it('deletes an item only after confirmation', async () => {
+  it('deletes an item only after confirming in the dialog', async () => {
     const user = userEvent.setup()
     setupApi({ items: [makeItem({ id: 5, text: 'Remove me' })] })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(<PeriodPlanManager />)
 
     await waitFor(() => expect(screen.getByText('Remove me')).toBeInTheDocument())
 
     await user.click(screen.getByLabelText('Delete item'))
 
+    // Nothing is deleted until the confirmation dialog is accepted.
+    expect(mockFetch.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(false)
+
+    await user.click(await screen.findByRole('button', { name: /^delete$/i }))
+
     await waitFor(() => {
       const deleteCall = mockFetch.mock.calls.find(
         (call) => call[1]?.method === 'DELETE' && call[0] === '/api/plan-items/5'
       )
       expect(deleteCall).toBeDefined()
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('Remove me')).not.toBeInTheDocument()
     })
   })
 

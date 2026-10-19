@@ -126,7 +126,7 @@ describe('PeriodPlanItemRow', () => {
 
   it('calls onDelete when delete button is clicked and confirmed', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ referrers: [] }) })
 
     render(
       <PeriodPlanItemRow
@@ -137,15 +137,15 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const deleteButton = screen.getByLabelText('Delete item')
-    await user.click(deleteButton)
+    await user.click(screen.getByLabelText('Delete item'))
+    await user.click(await screen.findByRole('button', { name: /^delete$/i }))
 
     expect(mockOnDelete).toHaveBeenCalledWith(1)
   })
 
   it('does not call onDelete when confirmation is cancelled', async () => {
     const user = userEvent.setup()
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ referrers: [] }) })
 
     render(
       <PeriodPlanItemRow
@@ -156,10 +156,36 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const deleteButton = screen.getByLabelText('Delete item')
-    await user.click(deleteButton)
+    await user.click(screen.getByLabelText('Delete item'))
+    await user.click(await screen.findByRole('button', { name: /cancel/i }))
 
     expect(mockOnDelete).not.toHaveBeenCalled()
+  })
+
+  it('warns about referring events before deleting a referenced item', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        referrers: [
+          { id: 11, content: 'Worked on %1', eventTime: '2026-10-14T09:00:00.000Z' },
+        ],
+      }),
+    })
+
+    render(
+      <PeriodPlanItemRow
+        item={mockItem}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    await user.click(screen.getByLabelText('Delete item'))
+
+    expect(await screen.findByText('Worked on %1')).toBeInTheDocument()
+    expect(screen.getByText(/referenced by 1 event/i)).toBeInTheDocument()
   })
 
   it('calls onDefer when defer button is clicked and confirmed', async () => {

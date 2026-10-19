@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatSystemDateTime } from '@/lib/time-format'
+import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
 import {
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_LABELS,
@@ -53,6 +54,7 @@ export function PeriodPlanItemRow({
   const [events, setEvents] = useState<FulfillingEventView[] | null>(null)
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
 
   // Lazily load fulfilling events on first expansion so the plans list stays
   // cheap for the common collapsed case.
@@ -87,10 +89,10 @@ export function PeriodPlanItemRow({
     setEditing(false)
   }
 
+  // Deletion is confirmed through a dialog that first surfaces any events
+  // referencing this item, so the user sees dangling references before deleting.
   const handleDelete = () => {
-    if (window.confirm('Delete this plan item? This cannot be undone.')) {
-      onDelete(item.id)
-    }
+    setDeleteTarget(item.id)
   }
 
   const handleDefer = () => {
@@ -272,6 +274,15 @@ export function PeriodPlanItemRow({
           </div>
         )}
       </div>
+
+      <PlanItemDeleteDialog
+        itemId={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={(id) => {
+          onDelete(id)
+          setDeleteTarget(null)
+        }}
+      />
     </div>
   )
 }
