@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Trash2, Forward } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { formatSystemDateTime } from '@/lib/time-format'
 import {
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_LABELS,
@@ -12,8 +13,19 @@ import {
 } from '@/lib/plan-item-display'
 import type { PeriodPlanItem, PeriodPlanItemStatus, ProjectScope } from '@/lib/db/schema'
 
+/** A plan item enriched by GET /api/plans with its chain-aggregated fulfillment count. */
+export type PlanItemRowData = PeriodPlanItem & { fulfillmentCount?: number }
+
+/** One fulfilling event as returned by GET /api/plan-items/[id]/fulfillment. */
+type FulfillingEventView = {
+  id: number
+  content: string
+  eventTime: string
+  isManual: boolean
+}
+
 type Props = {
-  item: PeriodPlanItem
+  item: PlanItemRowData
   parentOptions?: PeriodPlanItem[]
   showParentSelector?: boolean
   canMoveUp?: boolean
@@ -37,6 +49,30 @@ export function PeriodPlanItemRow({
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
+  const [expanded, setExpanded] = useState(false)
+  const [events, setEvents] = useState<FulfillingEventView[] | null>(null)
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+
+  // Lazily load fulfilling events on first expansion so the plans list stays
+  // cheap for the common collapsed case.
+  const handleToggleFulfillment = async () => {
+    const next = !expanded
+    setExpanded(next)
+    if (!next || events !== null) return
+    setEventsLoading(true)
+    setEventsError(null)
+    try {
+      const response = await fetch(`/api/plan-items/${item.id}/fulfillment`)
+      if (!response.ok) throw new Error('Failed to load fulfilling events')
+      const data: { events?: FulfillingEventView[] } = await response.json()
+      setEvents(data.events ?? [])
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : 'Failed to load fulfilling events')
+    } finally {
+      setEventsLoading(false)
+    }
+  }
 
   const handleSaveEdit = () => {
     const next = editText.trim()
@@ -80,7 +116,13 @@ export function PeriodPlanItemRow({
 
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
-      <Badge className={PLAN_ITEM_STATUS_COLORS[item.status]}>{PLAN_ITEM_STATUS_LABELS[item.status]}</Badge>
+      <div className="flex flex-col items-start gap-1">
+        <Badge className={PLAN_ITEM_STATUS_COLORS[item.status]}>{PLAN_ITEM_STATUS_LABELS[item.status]}</Badge>
+        <Badge variant="outline" className="font-mono text-xs">%{item.id}</Badge>
+        {typeof item.fulfillmentCount === 'number' && (
+          <Badge variant="secondary" className="text-xs">{item.fulfillmentCount} fulfilled</Badge>
+        )}
+      </div>
 
       <div className="flex-1 space-y-2">
         {editing ? (
@@ -117,6 +159,16 @@ export function PeriodPlanItemRow({
         )}
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleToggleFulfillment}
+            aria-label="Toggle fulfillment events"
+            aria-expanded={expanded}
+          >
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </Button>
+
           <select
             value={item.status}
             onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
@@ -193,6 +245,32 @@ export function PeriodPlanItemRow({
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
+
+        {expanded && (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+            {eventsLoading ? (
+              <div role="status" className="text-xs text-muted-foreground">Loading…</div>
+            ) : eventsError ? (
+              <div role="alert" className="text-xs text-destructive">{eventsError}</div>
+            ) : !events || events.length === 0 ? (
+              <div className="text-xs text-muted-foreground">No fulfilling events</div>
+            ) : (
+              <ul className="space-y-2">
+                {events.map((event) => (
+                  <li key={event.id} className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <span>{formatSystemDateTime(event.eventTime)}</span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {event.isManual ? 'Manual' : 'Collected'}
+                      </Badge>
+                    </div>
+                    <div className="text-sm">{event.content}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

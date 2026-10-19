@@ -1,7 +1,10 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+
+const mockFetch = vi.fn()
+global.fetch = mockFetch as unknown as typeof fetch
 
 describe('PeriodPlanItemRow', () => {
   const mockItem = {
@@ -23,6 +26,7 @@ describe('PeriodPlanItemRow', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    mockFetch.mockReset()
   })
 
   afterEach(() => {
@@ -350,5 +354,110 @@ describe('PeriodPlanItemRow', () => {
 
     expect(screen.getByLabelText('Move up')).toBeDisabled()
     expect(screen.getByLabelText('Move down')).toBeDisabled()
+  })
+
+  it('shows the item id in %<id> form', () => {
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, id: 42 }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    expect(screen.getByText('%42')).toBeInTheDocument()
+  })
+
+  it('shows the fulfillment count when the API provides one', () => {
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, fulfillmentCount: 3 }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    expect(screen.getByText(/3 fulfilled/i)).toBeInTheDocument()
+  })
+
+  it('does not fetch fulfilling events until the row is expanded', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [
+          { id: 11, content: 'Shipped the feature', eventTime: '2026-10-14T09:00:00.000Z', isManual: true },
+        ],
+      }),
+    })
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, id: 7 }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    await user.click(screen.getByLabelText('Toggle fulfillment events'))
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/plan-items/7/fulfillment'),
+      )
+    })
+    expect(await screen.findByText('Shipped the feature')).toBeInTheDocument()
+  })
+
+  it('marks fulfilling events as manual or collected', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [
+          { id: 11, content: 'Manual work', eventTime: '2026-10-14T09:00:00.000Z', isManual: true },
+          { id: 12, content: 'Synced work', eventTime: '2026-10-15T09:00:00.000Z', isManual: false },
+        ],
+      }),
+    })
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, id: 7 }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    await user.click(screen.getByLabelText('Toggle fulfillment events'))
+
+    expect(await screen.findByText('Manual work')).toBeInTheDocument()
+    expect(screen.getByText('Synced work')).toBeInTheDocument()
+    expect(screen.getByText('Manual')).toBeInTheDocument()
+    expect(screen.getByText('Collected')).toBeInTheDocument()
+  })
+
+  it('shows an empty message when an item has no fulfilling events', async () => {
+    const user = userEvent.setup()
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ events: [] }) })
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, id: 7 }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    await user.click(screen.getByLabelText('Toggle fulfillment events'))
+
+    expect(await screen.findByText(/no fulfilling events/i)).toBeInTheDocument()
   })
 })
