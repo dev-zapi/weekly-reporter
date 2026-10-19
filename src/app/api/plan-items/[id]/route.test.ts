@@ -637,8 +637,10 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(item[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // Verify item is deleted
       const items = testDb.select().from(schema.periodPlanItems).all()
@@ -695,8 +697,10 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(parent[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // The child survives, but its dangling parent link is cleared.
       const remaining = testDb.select().from(schema.periodPlanItems).all()
@@ -746,14 +750,176 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(original[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // The historical deferral chain is kept as a dangling reference.
       const remaining = testDb.select().from(schema.periodPlanItems).all()
       expect(remaining).toHaveLength(1)
       expect(remaining[0].id).toBe(carried[0].id)
       expect(remaining[0].deferredFromItemId).toBe(original[0].id)
+    })
+
+    it('should return referrer information when events reference the plan item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event = testDb.insert(schema.rawEvents).values({
+        content: 'Worked on %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values({
+        eventId: event[0].id,
+        planItemId: item[0].id,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
+      expect(data.referrers).toHaveLength(1)
+      expect(data.referrers[0].id).toBe(event[0].id)
+      expect(data.referrers[0].content).toBe('Worked on %' + item[0].id)
+
+      // Verify item is actually deleted
+      const items = testDb.select().from(schema.periodPlanItems).all()
+      expect(items).toHaveLength(0)
+    })
+
+    it('should return empty referrers array when no events reference the plan item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Unreferenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
+      expect(data.referrers).toHaveLength(0)
+
+      // Verify item is actually deleted
+      const items = testDb.select().from(schema.periodPlanItems).all()
+      expect(items).toHaveLength(0)
+    })
+
+    it('should return multiple referrers when multiple events reference the plan item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event1 = testDb.insert(schema.rawEvents).values({
+        content: 'First event %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event2 = testDb.insert(schema.rawEvents).values({
+        content: 'Second event %' + item[0].id,
+        eventTime: new Date(now.getTime() + 1000),
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values([
+        { eventId: event1[0].id, planItemId: item[0].id, createdAt: now },
+        { eventId: event2[0].id, planItemId: item[0].id, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
+      expect(data.referrers).toHaveLength(2)
+      expect(data.referrers.map((r: any) => r.id)).toEqual(
+        expect.arrayContaining([event1[0].id, event2[0].id])
+      )
+
+      // Verify item is actually deleted
+      const items = testDb.select().from(schema.periodPlanItems).all()
+      expect(items).toHaveLength(0)
     })
   })
 })
