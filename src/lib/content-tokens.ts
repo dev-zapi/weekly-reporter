@@ -5,8 +5,12 @@
 // component just maps the tokens to elements. Both sigils reuse the canonical
 // server-side regexes (REFERENCE_MATCH_REGEX / PLAN_REFERENCE_MATCH_REGEX) so
 // the rendering boundary rules can never drift from the write-side parsers.
-import { REFERENCE_MATCH_REGEX } from '@/lib/references'
-import { PLAN_REFERENCE_MATCH_REGEX } from '@/lib/plan-references'
+//
+// Import the leaf parse modules directly (not the barrels): the plan-references
+// barrel re-exports fulfillment.ts, which runtime-imports the server-only db
+// module, and this file is reachable from a client component.
+import { REFERENCE_MATCH_REGEX } from '@/lib/references/parse'
+import { PLAN_REFERENCE_MATCH_REGEX } from '@/lib/plan-references/parse'
 
 export type ContentToken =
   | { type: 'text'; text: string }
