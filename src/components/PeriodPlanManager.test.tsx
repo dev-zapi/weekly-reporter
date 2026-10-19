@@ -36,7 +36,7 @@ function okJson(payload: unknown) {
  * items; GET /api/plans?scope=month returns parent options.
  */
 function setupApi(options: {
-  items?: PeriodPlanItem[]
+  items?: Array<PeriodPlanItem & { fulfillmentCount?: number }>
   parentItems?: PeriodPlanItem[]
   plan?: { id: number } | null
 }) {
@@ -301,6 +301,54 @@ describe('PeriodPlanManager', () => {
     })
     await waitFor(() => {
       expect(screen.queryByText('Remove me')).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens the month period named by a deep link', async () => {
+    setupApi({})
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-03-01" />)
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('scope=month')
+      )
+      expect(call).toBeDefined()
+      expect(call![0]).toContain('month=2026-03')
+    })
+  })
+
+  it('opens the week period named by a deep link', async () => {
+    setupApi({})
+    render(<PeriodPlanManager initialScope="week" initialStart="2026-10-12" />)
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('/api/plans?scope=week')
+      )
+      expect(call).toBeDefined()
+      expect(call![0]).toContain('weekStart=2026-10-12')
+    })
+  })
+
+  it('falls back to the current period when the deep link start is invalid', async () => {
+    setupApi({})
+    render(<PeriodPlanManager initialScope="week" initialStart="garbage" />)
+
+    await waitFor(() => {
+      const call = mockFetch.mock.calls.find(
+        (c) => typeof c[0] === 'string' && c[0].includes('/api/plans?scope=week')
+      )
+      expect(call).toBeDefined()
+      expect(call![0]).toContain('weekStart=')
+    })
+  })
+
+  it('shows the fulfillment count provided by the API', async () => {
+    setupApi({ items: [{ ...makeItem({ id: 1, text: 'Counted' }), fulfillmentCount: 4 }] })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => {
+      expect(screen.getByText(/4 fulfilled/i)).toBeInTheDocument()
     })
   })
 

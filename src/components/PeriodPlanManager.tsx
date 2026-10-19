@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
-import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+import { PeriodPlanItemRow, type PlanItemRowData } from './PeriodPlanItemRow'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
 import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
 
@@ -20,14 +20,26 @@ type Scope = 'week' | 'month'
 
 type PlanResponse = {
   plan: PeriodPlan | null
-  items: PeriodPlanItem[]
+  items: PlanItemRowData[]
 }
 
 type PeriodParams = Record<string, string>
 
-export function PeriodPlanManager() {
-  const [scope, setScope] = useState<Scope>('week')
-  const [currentDate, setCurrentDate] = useState<Date>(() => new Date())
+type Props = {
+  initialScope?: Scope
+  initialStart?: string | null
+}
+
+// The deep-link start is a yyyy-MM-dd period start; parse it as a local date.
+function parsePeriodStart(start: string | null | undefined): Date | null {
+  if (!start) return null
+  const date = new Date(`${start}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function PeriodPlanManager({ initialScope = 'week', initialStart = null }: Props = {}) {
+  const [scope, setScope] = useState<Scope>(initialScope)
+  const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
   const [items, setItems] = useState<PeriodPlanItem[]>([])
   const [parentOptions, setParentOptions] = useState<PeriodPlanItem[]>([])
   const [loading, setLoading] = useState(true)
