@@ -3,8 +3,7 @@
 // Post an event to the weekly-reporter timeline API
 // Usage: post.mjs "<content>" [--time <ISO8601-timestamp>]
 
-const WEEKLY_REPORTER_URL = process.env.WEEKLY_REPORTER_URL || 'http://localhost:6868'
-const API_ENDPOINT = `${WEEKLY_REPORTER_URL}/api/events`
+import { api, json } from './lib/client.mjs'
 
 let content = ''
 let eventTime = ''
@@ -32,26 +31,7 @@ if (!content) {
 // Build JSON payload
 const payload = eventTime ? { content, eventTime } : { content }
 
-let response
-try {
-  response = await fetch(API_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-} catch {
-  console.error(`Error: Cannot reach weekly-reporter at ${WEEKLY_REPORTER_URL}`)
-  console.error('Is the server running? Try: npm run dev')
-  process.exit(1)
-}
-
-const status = response.status
-let body = null
-try {
-  body = await response.json()
-} catch {
-  // Non-JSON response — body stays null
-}
+const { status, body } = await api('/api/events', json(payload))
 
 // Handle response
 if (status === 200 || status === 201) {
@@ -62,12 +42,6 @@ if (status === 200 || status === 201) {
     console.log('✓ Event created successfully')
   }
   process.exit(0)
-}
-
-if (status === 0) {
-  console.error(`Error: Cannot reach weekly-reporter at ${WEEKLY_REPORTER_URL}`)
-  console.error('Is the server running? Try: npm run dev')
-  process.exit(1)
 }
 
 if (status >= 400 && status < 500) {
