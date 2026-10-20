@@ -4,7 +4,7 @@ description: >-
   List, rename, and globally remove timeline tags (时间线标签) in the weekly-reporter app via Node.js scripts — see every tag with its event count, rename a tag across all events at once (merging into an existing tag when the target name is taken), or strip a tag from every event. Use this skill whenever the user mentions tags on timeline events or asks for tag-level operations: "有哪些标签", "哪个标签用得最多", "把 #调试 改成 #debug", "标签改个名", "这两个标签合并一下", "删掉 #临时 这个标签", "list my tags", "rename tag X to Y", "remove that tag from all events" — even if they never say the word "tag". Two boundaries: a tag on ONE event (add/change/remove on a single entry) means editing that event's content, which belongs to the timeline-events skill; 周报模板的标签字段 (template tags) belongs to the report-templates skill.
 ---
 
-Manage timeline tags through three Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`, the dev and systemd port for this app).
+Manage timeline tags through three Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`, the dev and systemd port for this app. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## What a tag is here
 
@@ -52,6 +52,7 @@ Placement in event content needs whitespace boundaries: a tag is recognized only
 
 | Message | Cause | Fix |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running | Start with `npm run dev` |
 | `no tag named '#x' exists` | Misspelled or already-gone tag | Run `list.mjs` to see what exists |
 | `Tag name ... is invalid` | Charset rule violation | Rename within 中文/letters/digits, not digits-only |

@@ -4,7 +4,7 @@ status: accepted
 
 # Authenticate the API with a startup password and PATs, and audit PAT calls
 
-The API surface gains two credential kinds and one record of who called what. A **startup password** is generated on first boot into `~/.config/weekly-reporter/auth.json` and gates browser access; a **Personal Access Token (PAT)** is issued per script or agent and stored server-side as a SHA-256 hash. Both are presented as `Authorization: Bearer <token>` on every `/api/**` request. Only PAT calls are recorded in a new `api_audit_log` table. Page HTML and static assets stay unprotected; `WR_AUTH_DISABLED=1` turns the whole thing off.
+The API surface gains two credential kinds and one record of who called what. A **startup password** is generated once at server startup — by `instrumentation.ts`'s `register()` on the Node.js runtime, before the first request — into `~/.config/weekly-reporter/auth.json`, and gates browser access; a **Personal Access Token (PAT)** is issued per script or agent and stored server-side as a SHA-256 hash. Both are presented as `Authorization: Bearer <token>` on every `/api/**` request. Only PAT calls are recorded in a new `api_audit_log` table. Page HTML and static assets stay unprotected; `WR_AUTH_DISABLED=1` turns the whole thing off.
 
 Authentication is enforced in two layers. `src/proxy.ts` (Next 16 renamed `middleware` to `proxy`; it always runs on the Node.js runtime) rejects requests that carry no `Authorization` header at all, so a route that forgets to opt in is still shielded from unauthenticated traffic. Each route handler is then wrapped by a `withAuth` HOF that makes the authoritative call, updates the PAT's `last_used_at`, and writes the audit row. The audit row is written by the HOF rather than the proxy because the proxy runs before the route handler and therefore cannot observe the handler's final HTTP status — a status field that records 200 for a request that actually returned 500 is worse than no field.
 
@@ -37,4 +37,4 @@ ADR-0015 accepted an audit gap: externally-authored final reports carry no autho
 - Route handlers must be wrapped with `withAuth`, and a test must assert that every exported handler under `src/app/api/**` is wrapped. The proxy alone is not sufficient: a route that forgets the wrapper would accept a request carrying a wrong credential.
 - Server Actions are not covered. `src/app/collect/actions.ts` is the repository's only `'use server'` file and does not live under `/api/**`, so it falls outside both the proxy matcher and the per-route guards.
 - The audit log grows without bound and is never pruned.
-- Seven vendored copies of the skill HTTP client must stay in sync; they are kept in sync by a marker-block rewrite script with a `--check` mode, not by hand.
+- Eight vendored copies of the skill HTTP client must stay in sync; they are kept in sync by a marker-block rewrite script with a `--check` mode, not by hand.

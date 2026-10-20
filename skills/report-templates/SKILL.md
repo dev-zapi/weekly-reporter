@@ -3,7 +3,7 @@ name: report-templates
 description: Read and manage weekly-report templates (周报模板) in this repo via Node.js scripts — list official and user templates, inspect a template's instruction text, create one from scratch, clone an official template into an editable copy, update its content/name/tags/AI style, or delete it. Use this skill whenever the user mentions 周报模板/report template/模板内容/官方模板/模板风格 or asks things like "有哪些周报模板", "看下技术研发模板写了什么", "新建一个模板", "把官方极简模板复制出来改一改", "改一下模板的章节", "这个模板用哪个 AI 风格", "删掉那个测试模板", or needs the template ID to start a final-generation session. For the reports themselves (原稿/终版/受众版本) use the weekly-reports skill; for single work-log entries use timeline-events.
 ---
 
-Manage weekly-report templates through six Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`, the dev and systemd port for this app).
+Manage weekly-report templates through six Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`, the dev and systemd port for this app. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## What a template actually is here
 
@@ -74,6 +74,7 @@ All scripts exit 0 on success and non-zero on failure, printing one actionable l
 
 | Message | Cause | What to do |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running, or wrong port | `npm run dev`, or set `WEEKLY_REPORTER_URL` |
 | `no template matches '<ref>'` | Wrong ID or name | Run `list.mjs` |
 | `'<ref>' matches N templates` | Name substring hit several | Rerun with one of the printed selection IDs |

@@ -13,7 +13,11 @@ description: >-
 Collect (同步) the local Git repo at the current working directory into the
 weekly-reporter timeline. Four Node.js scripts under `{baseDir}/scripts/` —
 they use built-in `fetch` (Node 18+), take no dependencies, and read
-`WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`).
+credentials from the env (`WEEKLY_REPORTER_PAT` for the token;
+`WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base
+URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`;
+the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**`
+call returns 401 — run the **configure-pat** skill to set one up.
 
 The repo is located solely by its normalized absolute path (`config.owner`);
 `name` is display-only. Branch config is empty on create, which means
@@ -86,6 +90,7 @@ Y new events` plus per-branch lines.
 
 | Message | Cause | Fix |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `source is busy [SOURCE_BUSY]` | Another sync/fetch is running for this source | Retry in a few seconds |
 | `sync failed and the source was auto-disabled` | Repo path gone or unreadable during sync | Check path exists and is readable |
 | `Source not found for path '...'` (exit 3) | No git-local source registered for that path | Normal onboarding path — not an error |
