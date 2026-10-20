@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import {
+  CLIENTS,
   diffBlocks,
   extractBlock,
   extractBlockBody,
@@ -177,5 +180,64 @@ describe('runSync', () => {
     const updated = readFileSync(clientPath, 'utf8')
     expect(updated).toContain("export const SKILL_NAME = 'x-skill'")
     expect(updated).not.toContain('old\n')
+  })
+})
+
+// The real gate: run the shipped CLI against the real 8 vendored clients under
+// skills/. This is what CI relies on - if any client drifts from the template,
+// the suite goes red. `npm run check:skills` runs the same command standalone.
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = join(SCRIPT_DIR, '..')
+const SYNC_SCRIPT = join(REPO_ROOT, 'scripts', 'sync-client-auth.mjs')
+const TEMPLATE_FILE = join(REPO_ROOT, 'scripts', 'templates', 'client-auth-block.template.mjs')
+
+describe('CLI --check (drift gate against the real skill clients)', () => {
+  it('exits 0 when every vendored skill client matches the template', () => {
+    const output = execFileSync(process.execPath, [SYNC_SCRIPT, '--check'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    })
+
+    expect(output).toContain(`All ${CLIENTS.length} skill clients match the AUTH-BLOCK template.`)
+  })
+
+  it('exits 1 and names the drifted client when a real client copy drifts (red case)', () => {
+    // Run the shipped CLI against an isolated copy of the repo layout, so the
+    // failure path is exercised end-to-end without mutating the working tree.
+    const root = mkdtempSync(join(tmpdir(), 'sync-client-auth-cli-'))
+    mkdirSync(join(root, 'scripts', 'templates'), { recursive: true })
+    copyFileSync(SYNC_SCRIPT, join(root, 'scripts', 'sync-client-auth.mjs'))
+    copyFileSync(TEMPLATE_FILE, join(root, 'scripts', 'templates', 'client-auth-block.template.mjs'))
+    for (const { path } of CLIENTS) {
+      const dest = join(root, path)
+      mkdirSync(dirname(dest), { recursive: true })
+      copyFileSync(join(REPO_ROOT, path), dest)
+    }
+
+    // Drift the first client's block by breaking its skill name.
+    const drifted = CLIENTS[0]
+    const target = join(root, drifted.path)
+    writeFileSync(
+      target,
+      readFileSync(target, 'utf8').replace(
+        `export const SKILL_NAME = '${drifted.skill}'`,
+        "export const SKILL_NAME = 'drifted'",
+      ),
+    )
+
+    let exitCode = 0
+    let output = ''
+    try {
+      execFileSync(process.execPath, [join(root, 'scripts', 'sync-client-auth.mjs'), '--check'], {
+        cwd: root,
+        encoding: 'utf8',
+      })
+    } catch (error) {
+      exitCode = error.status
+      output = `${error.stdout ?? ''}${error.stderr ?? ''}`
+    }
+
+    expect(exitCode).toBe(1)
+    expect(output).toContain(drifted.path)
   })
 })
