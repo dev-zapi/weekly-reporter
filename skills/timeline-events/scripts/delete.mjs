@@ -3,7 +3,7 @@
 // Delete an event from the weekly-reporter timeline API
 // Usage: delete.mjs <id>
 
-const WEEKLY_REPORTER_URL = process.env.WEEKLY_REPORTER_URL || 'http://localhost:6868'
+import { api } from './lib/client.mjs'
 
 const args = process.argv.slice(2)
 
@@ -19,29 +19,11 @@ if (isNaN(eventId)) {
   process.exit(1)
 }
 
-let response
-try {
-  response = await fetch(`${WEEKLY_REPORTER_URL}/api/events/${eventId}`, {
-    method: 'DELETE',
-  })
-} catch {
-  console.error(`Error: Cannot reach weekly-reporter at ${WEEKLY_REPORTER_URL}`)
-  console.error('Is the server running? Try: npm run dev')
-  process.exit(1)
-}
-
-const status = response.status
+const { status, body } = await api(`/api/events/${eventId}`, { method: 'DELETE' })
 
 if (status === 204) {
   console.log(`✓ Event #${eventId} deleted`)
   process.exit(0)
-}
-
-let body = null
-try {
-  body = await response.json()
-} catch {
-  // Non-JSON response
 }
 
 if (status === 404) {
