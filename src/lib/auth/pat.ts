@@ -4,6 +4,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { apiTokens, type ApiToken } from '@/lib/db/schema'
 import { randomBase62 } from './random'
+import type { CreatedPat, PatMetadata } from './pat-shared'
 
 /**
  * PAT（Personal Access Token）
@@ -19,23 +20,10 @@ export const TOKEN_DISPLAY_PREFIX_LENGTH = 8
 
 type DrizzleDb = ReturnType<typeof getDb>
 
-export interface CreatedPat {
-  id: number
-  name: string
-  /** 明文 token —— 只在创建时返回一次 */
-  token: string
-  createdAt: number
-}
-
-export interface PatMetadata {
-  id: number
-  name: string
-  prefix: string
-  createdAt: number
-  lastUsedAt: number | null
-  expiresAt: number | null
-  revokedAt: number | null
-}
+// 类型与状态推导与服务端 / 客户端共享；pat.ts 作为服务端入口继续 re-export，
+// 既有 `import { type PatMetadata } from '@/lib/auth/pat'` 调用方不受影响。
+export type { CreatedPat, PatMetadata } from './pat-shared'
+export { getPatStatus, type PatStatus } from './pat-shared'
 
 /**
  * SHA-256 十六进制哈希。PAT 只以哈希形式落盘。

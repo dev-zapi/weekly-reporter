@@ -14,51 +14,20 @@ import { Shield, Copy, Plus, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api-client'
 import { formatSystemDateTime } from '@/lib/time-format'
+import {
+  getPatStatus,
+  type AuditRecord,
+  type CreatedPat,
+  type PatMetadata,
+  type PatStatus,
+} from '@/lib/auth/pat-shared'
 
-interface PatMetadata {
-  id: number
-  name: string
-  prefix: string
-  createdAt: number
-  lastUsedAt: number | null
-  expiresAt: number | null
-  revokedAt: number | null
-}
-
-interface CreatedPat {
-  id: number
-  name: string
-  token: string
-  createdAt: number
-}
-
-interface AuditRecord {
-  id: number
-  createdAt: number
-  patName: string | null
-  method: string
-  apiPath: string
-  status: number
-  userAgent: string | null
-  agentIdentity: string | null
-  callerCwd: string | null
-  outcome: 'success' | 'unauthorized'
-}
-
-function getPatStatus(
-  pat: PatMetadata,
-): 'active' | 'revoked' | 'expired' {
-  if (pat.revokedAt !== null) return 'revoked'
-  if (pat.expiresAt !== null && pat.expiresAt < Date.now()) return 'expired'
-  return 'active'
-}
-
-function formatStatus(status: 'active' | 'revoked' | 'expired'): string {
+function formatStatus(status: PatStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
 function statusBadgeVariant(
-  status: 'active' | 'revoked' | 'expired',
+  status: PatStatus,
 ): 'default' | 'secondary' | 'destructive' {
   if (status === 'active') return 'default'
   if (status === 'revoked') return 'destructive'
