@@ -119,11 +119,15 @@ export function withAuth<H extends (...args: never[]) => unknown>(
     const auth = await requireAuth(req)
     if (!auth.ok) return auth.response as Response
     // 把判定结果交给 handler，省掉 handler 里对 requireAuth 的二次调用。
-    Object.defineProperty(req, AUTH_RESULT, {
-      value: auth,
-      enumerable: false,
-      configurable: true,
-    })
+    // handler 不接 request（例如无参 route、测试里 GET() 直呼）时无可挂载对象，
+    // 跳过即可——这类 handler 也不会去读 getAuthResult。
+    if (req && typeof req === 'object') {
+      Object.defineProperty(req, AUTH_RESULT, {
+        value: auth,
+        enumerable: false,
+        configurable: true,
+      })
+    }
     const res = (await handler(...args)) as Response
     await recordAudit(getDb, req, res.status, auth)
     return res

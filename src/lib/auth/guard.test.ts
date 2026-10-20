@@ -282,7 +282,7 @@ describe('guard', () => {
     it('exposes the resolved AuthResult to the handler via getAuthResult', async () => {
       const created = createPat(testDb, 'my-agent')
       let seen: ReturnType<typeof getAuthResult>
-      const handler = async (req: Request) => {
+      const handler = async (req: Request, _ctx?: unknown) => {
         seen = getAuthResult(req)
         return new Response('ok')
       }
@@ -297,7 +297,9 @@ describe('guard', () => {
     })
 
     it('does not attach an AuthResult when authentication fails', async () => {
-      const handler = vi.fn(async () => new Response('ok'))
+      const handler = vi.fn<(req: Request, ctx?: unknown) => Promise<Response>>(
+        async () => new Response('ok'),
+      )
       const wrapped = withAuth(handler)
       const request = plain()
 
@@ -306,6 +308,19 @@ describe('guard', () => {
       expect(response.status).toBe(401)
       expect(handler).not.toHaveBeenCalled()
       expect(getAuthResult(request)).toBeUndefined()
+    })
+
+    it('runs a request-less handler without throwing', async () => {
+      // Routes with no parameters (and tests that call the wrapped handler with
+      // no args) pass no request — attaching the AuthResult must be skipped.
+      process.env.WR_AUTH_DISABLED = '1'
+      const handler = vi.fn(async () => new Response('ok'))
+      const wrapped = withAuth(handler)
+
+      const response = await wrapped()
+
+      expect(response.status).toBe(200)
+      expect(handler).toHaveBeenCalled()
     })
   })
 
