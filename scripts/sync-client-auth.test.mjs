@@ -231,6 +231,7 @@ describe('CLI --check (drift gate against the real skill clients)', () => {
       execFileSync(process.execPath, [join(root, 'scripts', 'sync-client-auth.mjs'), '--check'], {
         cwd: root,
         encoding: 'utf8',
+        stdio: 'pipe',
       })
     } catch (error) {
       exitCode = error.status
