@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { apiAuditLog, apiTokens } from '@/lib/db/schema'
 import { createTestDbWithMigrations } from '@/test/db'
-import { createPat } from '@/lib/auth/pat'
+import { createPat, type PatMetadata } from '@/lib/auth/pat'
 
 vi.mock('@/lib/db', () => {
   const getDb = vi.fn()
@@ -84,7 +84,7 @@ describe('/api/auth/pats GET', () => {
     const data = await response.json()
     expect(data.pats).toHaveLength(3) // includes auth-pat
 
-    const pat1 = data.pats.find((p: any) => p.name === 'pat-1')
+    const pat1 = data.pats.find((p: PatMetadata) => p.name === 'pat-1')
     expect(pat1).toBeDefined()
     expect(pat1.id).toBeDefined()
     expect(pat1.name).toBe('pat-1')
@@ -110,7 +110,7 @@ describe('/api/auth/pats GET', () => {
     const response = await GET(bearer(authPat.token))
     const data = await response.json()
 
-    const retrievedPat = data.pats.find((p: any) => p.name === 'test-pat')
+    const retrievedPat = data.pats.find((p: PatMetadata) => p.name === 'test-pat')
     expect(retrievedPat.lastUsedAt).toBeDefined()
     expect(retrievedPat.expiresAt).toBeDefined()
     expect(retrievedPat.revokedAt).toBeNull()

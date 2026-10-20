@@ -15,13 +15,6 @@ const mockedGetDb = getDb as unknown as ReturnType<typeof vi.fn>
 
 const originalAuthDisabled = process.env.WR_AUTH_DISABLED
 
-function bearer(token: string): Request {
-  return new Request('http://localhost:6868/api/auth/pats/1', {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
-  })
-}
-
 function plain(): Request {
   return new Request('http://localhost:6868/api/auth/pats/1', { method: 'DELETE' })
 }
@@ -100,7 +93,6 @@ describe('/api/auth/pats/[id] DELETE', () => {
   })
 
   it('revoked PAT cannot be used (returns 401)', async () => {
-    const authPat = createPat(testDb, 'auth-pat')
     const targetPat = createPat(testDb, 'target-pat')
 
     // Revoke the target PAT
@@ -142,7 +134,6 @@ describe('/api/auth/pats/[id] DELETE', () => {
   })
 
   it('records audit with outcome=unauthorized when revoked PAT is used', async () => {
-    const authPat = createPat(testDb, 'auth-pat')
     const targetPat = createPat(testDb, 'target-pat')
 
     // Revoke the target PAT

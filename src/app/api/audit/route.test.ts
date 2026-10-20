@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { apiAuditLog, apiTokens } from '@/lib/db/schema'
+import { apiAuditLog } from '@/lib/db/schema'
 import { createTestDbWithMigrations } from '@/test/db'
 import { createPat } from '@/lib/auth/pat'
 import { writeAudit } from '@/lib/auth/audit'

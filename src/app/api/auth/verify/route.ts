@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { withAuth, requireAuth, isAuthDisabled } from '@/lib/auth/guard'
+import { withAuth, requireAuth } from '@/lib/auth/guard'
 
 /**
  * GET /api/auth/verify

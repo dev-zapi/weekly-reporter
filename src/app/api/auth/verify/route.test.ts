@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { eq } from 'drizzle-orm'
-import { apiAuditLog, apiTokens } from '@/lib/db/schema'
+import { apiAuditLog } from '@/lib/db/schema'
 import { createTestDbWithMigrations } from '@/test/db'
 import { createPat } from '@/lib/auth/pat'
 
