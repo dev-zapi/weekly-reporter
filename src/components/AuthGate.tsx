@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { verifyPassword } from '@/lib/api-client'
 
@@ -15,13 +15,17 @@ const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
 export function AuthGate() {
   const router = useRouter()
   const pathname = usePathname()
-  const [checked, setChecked] = useState(false)
 
   useEffect(() => {
     // Don't gate the login page itself
     if (pathname === '/login') {
-      setChecked(true)
       return
+    }
+
+    function redirectToLogin() {
+      // Preserve the originally-requested path so login can bounce back.
+      const target = pathname && pathname !== '/' ? pathname : ''
+      router.replace(target ? `/login?redirect=${encodeURIComponent(target)}` : '/login')
     }
 
     async function verify() {
@@ -38,26 +42,16 @@ export function AuthGate() {
         if (!ok) {
           localStorage.removeItem(AUTH_STORAGE_KEY)
           redirectToLogin()
-          return
         }
-
-        setChecked(true)
       } catch {
         // Network error — let the page render, apiFetch will handle 401s
-        setChecked(true)
       }
-    }
-
-    function redirectToLogin() {
-      // Preserve the originally-requested path so login can bounce back.
-      const target = pathname && pathname !== '/' ? pathname : ''
-      router.replace(target ? `/login?redirect=${encodeURIComponent(target)}` : '/login')
     }
 
     verify()
   }, [router, pathname])
 
-  // Don't render anything — just gate via redirect
-  // No blocking UI; page content renders behind the gate
+  // Don't render anything — just gate via redirect.
+  // No blocking UI; page content renders behind the gate.
   return null
 }

@@ -122,11 +122,8 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     mergedHeaders['Authorization'] = `Bearer ${password}`
   }
 
-  // Spread init but exclude headers to avoid overwriting our merged headers
-  const { headers: _, ...restInit } = init || {}
-
   const response = await fetch(path, {
-    ...restInit,
+    ...init,
     headers: mergedHeaders,
   })
 
