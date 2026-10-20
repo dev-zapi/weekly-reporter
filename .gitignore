@@ -63,3 +63,4 @@ blob-report/
 
 # skill eval workspaces (transient artifacts from skill-creator runs)
 skills/*-workspace/
+.e2e-worker-*/
