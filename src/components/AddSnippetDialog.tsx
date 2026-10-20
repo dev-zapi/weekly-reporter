@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState } from 'react'
 import {
@@ -59,7 +60,7 @@ export function AddSnippetDialog({ open, onClose, onAdd }: AddSnippetDialogProps
     setSubmitting(true)
 
     try {
-      const response = await fetch('/api/snippets', {
+      const response = await apiFetch('/api/snippets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

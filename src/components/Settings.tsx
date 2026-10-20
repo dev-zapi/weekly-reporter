@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -137,7 +138,7 @@ function AISettingsTab() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings/ai')
+      const res = await apiFetch('/api/settings/ai')
       const data = await res.json()
       if (data.configured) {
         setProtocol(data.protocol)
@@ -164,7 +165,7 @@ function AISettingsTab() {
     setSaved(false)
     setSaveError(null)
     try {
-      const res = await fetch('/api/settings/ai', {
+      const res = await apiFetch('/api/settings/ai', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ protocol, apiUrl, apiKey, model }),
@@ -191,13 +192,13 @@ function AISettingsTab() {
     try {
       let res
       if (apiKey) {
-        res = await fetch('/api/settings/ai/models', {
+        res = await apiFetch('/api/settings/ai/models', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ protocol, apiUrl, apiKey }),
         })
       } else {
-        res = await fetch('/api/settings/ai/models')
+        res = await apiFetch('/api/settings/ai/models')
       }
       const data = await res.json()
       if (data.models && data.models.length > 0) {
@@ -217,7 +218,7 @@ function AISettingsTab() {
       if (apiKey) {
         await handleSave()
       }
-      const res = await fetch('/api/settings/ai/test', { method: 'POST' })
+      const res = await apiFetch('/api/settings/ai/test', { method: 'POST' })
       const data = await res.json()
       setTestResult({ ok: data.ok, error: data.error })
     } catch (error) {

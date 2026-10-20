@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -375,7 +376,7 @@ Return:
 
   async function fetchPrompts() {
     try {
-      const res = await fetch('/api/prompts/system')
+      const res = await apiFetch('/api/prompts/system')
       const data = await res.json()
       setPrompts(data.prompts || [])
     } catch {
@@ -399,7 +400,7 @@ Return:
 
   async function saveEdit(key: string) {
     try {
-      const res = await fetch('/api/prompts/system', {
+      const res = await apiFetch('/api/prompts/system', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, promptText: editText }),

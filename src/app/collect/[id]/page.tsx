@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -14,7 +15,7 @@ export default function EditCollectSourcePage({ params }: { params: Promise<{ id
 
   const fetchSource = useCallback(async (sourceId: number) => {
     try {
-      const res = await fetch(`/api/collect/sources/${sourceId}`)
+      const res = await apiFetch(`/api/collect/sources/${sourceId}`)
       const data = await res.json()
       
       if (!res.ok) {

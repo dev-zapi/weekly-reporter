@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -35,7 +36,7 @@ export function ReferencePreviewDialog({ eventId, onClose, onLocate }: Reference
 
     setLoading(true)
     setNotFound(false)
-    fetch(`/api/events/${eventId}`)
+    apiFetch(`/api/events/${eventId}`)
       .then((res) => {
         if (res.status === 404) {
           setNotFound(true)

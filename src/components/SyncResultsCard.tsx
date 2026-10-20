@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState } from 'react'
 import {
@@ -57,7 +58,7 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
     setDeletingBranches(prev => new Set(prev).add(key))
 
     try {
-      const res = await fetch(`/api/collect/sources/${sourceId}`, {
+      const res = await apiFetch(`/api/collect/sources/${sourceId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ removeBranch: branchName }),

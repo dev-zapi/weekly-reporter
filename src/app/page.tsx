@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
@@ -90,7 +91,7 @@ export default function TimelinePage() {
       params.set('cursorTime', String(cursor.eventTime))
     }
 
-    const res = await fetch(`/api/events?${params}`)
+    const res = await apiFetch(`/api/events?${params}`)
     const data = await res.json()
     return {
       events: data.events || [],
@@ -155,7 +156,7 @@ export default function TimelinePage() {
   useEffect(() => {
     const loadHeatmap = async () => {
       try {
-        const res = await fetch('/api/events/heatmap')
+        const res = await apiFetch('/api/events/heatmap')
         const json = await res.json()
         setHeatmapData(json.data || [])
       } catch (error) {
@@ -259,7 +260,7 @@ export default function TimelinePage() {
 
   const handleLocateEvent = useCallback(async (eventId: number) => {
     // Fetch the event to get its date
-    const res = await fetch(`/api/events/${eventId}`)
+    const res = await apiFetch(`/api/events/${eventId}`)
     if (!res.ok) {
       setReferencePreviewId(null)
       return
@@ -291,7 +292,7 @@ export default function TimelinePage() {
   }, [router])
 
   const handleSubmit = async ({ content }: { content: string }) => {
-    await fetch('/api/events', {
+    await apiFetch('/api/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content }),
@@ -301,7 +302,7 @@ export default function TimelinePage() {
   }
 
   const handleEdit = async (id: number, data: Partial<RawEvent>) => {
-    await fetch(`/api/events/${id}`, {
+    await apiFetch(`/api/events/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -311,7 +312,7 @@ export default function TimelinePage() {
   }
 
   const handleDelete = async (id: number) => {
-    await fetch(`/api/events/${id}`, { method: 'DELETE' })
+    await apiFetch(`/api/events/${id}`, { method: 'DELETE' })
     loadEvents(undefined, false)
   }
 

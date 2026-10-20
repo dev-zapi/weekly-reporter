@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SyncAllSourcesProvider } from "@/components/SyncAllSources";
+import { AuthGate } from "@/components/AuthGate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +35,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
+        <AuthGate />
         <ThemeProvider>
           <SyncAllSourcesProvider>
             <Navigation />

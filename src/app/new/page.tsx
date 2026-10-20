@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -60,7 +61,7 @@ export default function NewReportPage() {
     async function loadPreview() {
       if (!baseDate) return
       try {
-        const response = await fetch('/api/reports/preview', {
+        const response = await apiFetch('/api/reports/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ weekStart, weekEnd }),
@@ -103,7 +104,7 @@ export default function NewReportPage() {
 
     setSaving(true)
     try {
-      const response = await fetch('/api/reports', {
+      const response = await apiFetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), weekStart, weekEnd }),

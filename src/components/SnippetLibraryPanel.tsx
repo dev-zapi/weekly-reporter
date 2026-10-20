@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -63,7 +64,7 @@ export function SnippetLibraryPanel({ onSelectSnippet }: SnippetLibraryPanelProp
       abortControllerRef.current = new AbortController()
 
       setLoading(true)
-      const response = await fetch('/api/snippets', {
+      const response = await apiFetch('/api/snippets', {
         signal: abortControllerRef.current.signal,
       })
       

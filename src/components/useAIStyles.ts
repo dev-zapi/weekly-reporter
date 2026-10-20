@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -29,7 +30,7 @@ export function useAIStyles() {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/prompts/styles')
+      const res = await apiFetch('/api/prompts/styles')
       const data = await res.json()
       setStyles(data.styles || [])
     } catch {
@@ -45,7 +46,7 @@ export function useAIStyles() {
 
   const create = useCallback(async (payload: StyleFormData): Promise<boolean> => {
     try {
-      const res = await fetch('/api/prompts/styles', {
+      const res = await apiFetch('/api/prompts/styles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -65,7 +66,7 @@ export function useAIStyles() {
 
   const update = useCallback(async (id: number, payload: StyleFormData): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/prompts/styles/${id}`, {
+      const res = await apiFetch(`/api/prompts/styles/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -85,7 +86,7 @@ export function useAIStyles() {
 
   const remove = useCallback(async (id: number): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/prompts/styles/${id}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/prompts/styles/${id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Style deleted')
         await refresh()
@@ -101,7 +102,7 @@ export function useAIStyles() {
 
   const setDefault = useCallback(async (id: number): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/prompts/styles/${id}`, { method: 'PATCH' })
+      const res = await apiFetch(`/api/prompts/styles/${id}`, { method: 'PATCH' })
       if (res.ok) {
         // Find the label before refresh mutates state; refresh then toast.
         const targetLabel = styles.find((s) => s.id === id)?.label ?? ''

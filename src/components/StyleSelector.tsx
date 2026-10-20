@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -30,7 +31,7 @@ export function StyleSelector({ value, onChange, templateId }: StyleSelectorProp
 
   // 加载风格列表
   useEffect(() => {
-    fetch('/api/prompts/styles')
+    apiFetch('/api/prompts/styles')
       .then(res => res.json())
       .then(data => {
         if (data.styles) {
@@ -53,7 +54,7 @@ export function StyleSelector({ value, onChange, templateId }: StyleSelectorProp
       setLoading(true)
 
       const timeoutId = setTimeout(() => {
-        fetch(`/api/templates/${templateId}`, {
+        apiFetch(`/api/templates/${templateId}`, {
           signal: abortControllerRef.current?.signal,
         })
           .then(res => {
