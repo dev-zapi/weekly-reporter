@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
@@ -7,7 +8,7 @@ interface SnippetQuery {
   category?: string
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -28,9 +29,9 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -76,4 +77,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

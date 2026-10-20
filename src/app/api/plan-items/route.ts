@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, sql } from 'drizzle-orm'
@@ -6,7 +7,7 @@ import { getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -157,4 +158,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

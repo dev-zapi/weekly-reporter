@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { GenerationServiceError, getGenerationSessionDetail } from '@/lib/generation/service'
 import { markTurnStopped } from '@/lib/generation/stream'
 
 type RouteContext = { params: Promise<{ id: string; sessionId: string; turnId: string }> }
 
-export async function POST(_request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(_request: Request, { params }: RouteContext) {
   const values = await params
   const reportId = Number.parseInt(values.id, 10)
   const sessionId = Number.parseInt(values.sessionId, 10)
@@ -24,4 +25,4 @@ export async function POST(_request: Request, { params }: RouteContext) {
     }
     return NextResponse.json({ error: '停止生成失败', code: 'STOP_ERROR' }, { status: 500 })
   }
-}
+})

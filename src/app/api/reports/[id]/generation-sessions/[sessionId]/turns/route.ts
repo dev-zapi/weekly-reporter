@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { GenerationServiceError } from '@/lib/generation/service'
 import { createGenerationEventStream, prepareGenerationTurn } from '@/lib/generation/stream'
@@ -6,7 +7,7 @@ export const runtime = 'nodejs'
 
 type RouteContext = { params: Promise<{ id: string; sessionId: string }> }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(request: Request, { params }: RouteContext) {
   const values = await params
   const reportId = Number.parseInt(values.id, 10)
   const sessionId = Number.parseInt(values.sessionId, 10)
@@ -35,4 +36,4 @@ export async function POST(request: Request, { params }: RouteContext) {
     console.error('generation turn route error:', error)
     return NextResponse.json({ error: 'Failed to start AI generation', code: 'GENERATION_START_ERROR' }, { status: 500 })
   }
-}
+})

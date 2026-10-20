@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -11,7 +12,7 @@ interface AuthorInfo {
   count: number
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || ''
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
   } catch {
     return NextResponse.json({ authors: [] })
   }
-}
+})
 
 async function getLocalAuthors(repoPath: string, branch?: string): Promise<AuthorInfo[]> {
   const args = ['log', '--pretty=format:%ae\t%an', '--no-merges', '-300']

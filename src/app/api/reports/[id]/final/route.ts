@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
@@ -5,7 +6,7 @@ import { aiStyles, generationMessageParts, generationProposals, generationSessio
 import { normalizeStructureCompletenessRule } from '@/lib/reports/structure-completeness'
 import { getTemplateSelection } from '@/lib/reports/service'
 
-export async function PUT(
+export const PUT = withAuth(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -137,4 +138,4 @@ export async function PUT(
       { status: 500 },
     )
   }
-}
+})

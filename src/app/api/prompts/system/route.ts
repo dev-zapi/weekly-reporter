@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { systemPrompts } from '@/lib/db/schema'
@@ -5,7 +6,7 @@ import { systemPromptSchema } from '@/lib/validations'
 import { ensureSeed } from '@/lib/ai/seed'
 import { eq } from 'drizzle-orm'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     await ensureSeed()
     const db = getDb()
@@ -19,9 +20,9 @@ export async function GET() {
       { status: 500 },
     )
   }
-}
+})
 
-export async function PUT(request: Request) {
+export const PUT = withAuth(async function PUT(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -64,4 +65,4 @@ export async function PUT(request: Request) {
       { status: 500 },
     )
   }
-}
+})

@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getStyleFromTemplate } from '@/lib/ai/style-helpers'
 import { getAIStyle } from '@/lib/ai/styles'
@@ -13,7 +14,7 @@ interface ExpandSectionRequest {
   styleOverride?: AIStyle
 }
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body: ExpandSectionRequest = await request.json()
 
@@ -75,4 +76,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

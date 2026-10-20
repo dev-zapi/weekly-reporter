@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { gte, desc } from 'drizzle-orm'
 import { rawEvents } from '@/lib/db/schema'
 
-export async function GET(request?: Request) {
+export const GET = withAuth(async function GET(request?: Request) {
   try {
     const db = getDb()
     const days = Math.min(
@@ -44,4 +45,4 @@ export async function GET(request?: Request) {
       { status: 500 }
     )
   }
-}
+})

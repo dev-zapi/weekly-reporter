@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getAIConfig, saveAIConfig, clearAIConfig } from '@/lib/ai/config'
 import type { AIProtocol } from '@/lib/db/schema'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     const db = getDb()
     const config = await getAIConfig(db)
@@ -28,9 +29,9 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})
 
-export async function PUT(request: Request) {
+export const PUT = withAuth(async function PUT(request: Request) {
   try {
     const body = await request.json()
     const { protocol, apiUrl, apiKey, model } = body
@@ -105,9 +106,9 @@ export async function PUT(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
-export async function DELETE() {
+export const DELETE = withAuth(async function DELETE() {
   try {
     const db = getDb()
     await clearAIConfig(db)
@@ -119,4 +120,4 @@ export async function DELETE() {
       { status: 500 }
     )
   }
-}
+})

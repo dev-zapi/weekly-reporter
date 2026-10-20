@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { GenerationServiceError, refreshHistoricalQuery } from '@/lib/generation/service'
 
 export const runtime = 'nodejs'
 type RouteContext = { params: Promise<{ id: string; sessionId: string }> }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(request: Request, { params }: RouteContext) {
   const values = await params
   const reportId = Number.parseInt(values.id, 10)
   const sessionId = Number.parseInt(values.sessionId, 10)
@@ -16,4 +17,4 @@ export async function POST(request: Request, { params }: RouteContext) {
     if (error instanceof GenerationServiceError) return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     return NextResponse.json({ error: 'Failed to refresh historical query', code: 'QUERY_REFRESH_FAILED' }, { status: 500 })
   }
-}
+})

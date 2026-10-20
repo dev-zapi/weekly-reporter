@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { templates } from '@/lib/db/schema'
 import { templateSchema } from '@/lib/validations'
 import { OFFICIAL_TEMPLATES } from '@/lib/official-templates'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     const db = getDb()
     console.log('Database obtained:', !!db)
@@ -23,9 +24,9 @@ export async function GET() {
       { status: 500 }
     )
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -56,4 +57,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

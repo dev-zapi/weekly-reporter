@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { eq, inArray } from 'drizzle-orm'
 import { format, parseISO, startOfWeek, subDays } from 'date-fns'
@@ -23,7 +24,7 @@ function enabled() {
   return process.env.E2E_FIXTURES === '1'
 }
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   if (!enabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const body = await request.json().catch(() => null) as { action?: string; marker?: string; mode?: string; targetReportId?: unknown } | null
   if (!body || !['historical', 'timeline', 'carry-forward', 'report-query'].includes(body.action ?? '') || typeof body.marker !== 'string' || !body.marker.trim()) {
@@ -358,9 +359,9 @@ export async function POST(request: Request) {
   }).returning().get()
   rows.push({ id: legacy.id, kind: 'legacy' })
   return NextResponse.json({ reports: rows }, { status: 201 })
-}
+})
 
-export async function DELETE(request: Request) {
+export const DELETE = withAuth(async function DELETE(request: Request) {
   if (!enabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const body = await request.json().catch(() => null) as { reportIds?: unknown; eventIds?: unknown } | null
   const ids = Array.isArray(body?.reportIds) ? body.reportIds.filter((value): value is number => Number.isInteger(value) && value > 0) : []
@@ -385,4 +386,4 @@ export async function DELETE(request: Request) {
     if (eventIds.length > 0) tx.delete(rawEvents).where(inArray(rawEvents.id, eventIds)).run()
   })
   return NextResponse.json({ deleted: ids.length + eventIds.length })
-}
+})

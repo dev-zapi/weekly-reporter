@@ -1,8 +1,9 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { previewReportSourceDrafts } from '@/lib/reports/service'
 import { reportWeekSchema } from '@/lib/validations'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const input = reportWeekSchema.parse(await request.json())
     const variants = await previewReportSourceDrafts(input)
@@ -20,4 +21,4 @@ export async function POST(request: Request) {
       { status: 500 },
     )
   }
-}
+})

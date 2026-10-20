@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import type { ZodError } from 'zod'
 import { getDb } from '@/lib/db'
@@ -6,7 +7,7 @@ import { collectSources } from '@/lib/db/schema'
 import { collectSourceSchema } from '@/lib/validations'
 import { mergeEditedBranches } from '@/lib/collect/branches'
 
-export async function GET(
+export const GET = withAuth(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -46,9 +47,9 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})
 
-export async function PUT(
+export const PUT = withAuth(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -157,9 +158,9 @@ export async function PUT(
       { status: 500 }
     )
   }
-}
+})
 
-export async function PATCH(
+export const PATCH = withAuth(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -251,9 +252,9 @@ export async function PATCH(
       { status: 500 }
     )
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -289,4 +290,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})

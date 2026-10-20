@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { desc } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { reportVariants, reports } from '@/lib/db/schema'
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -38,4 +39,4 @@ export async function GET(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Search failed', code: 'SEARCH_ERROR' }, { status: 500 })
   }
-}
+})
