@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import {
   createContext,
@@ -32,7 +33,7 @@ export function SyncAllSourcesProvider({ children }: { children: ReactNode }) {
     if (activeRequestRef.current) return activeRequestRef.current
 
     setIsSyncing(true)
-    const request = fetch('/api/collect/git-remote/sync', {
+    const request = apiFetch('/api/collect/git-remote/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}),

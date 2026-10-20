@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -75,7 +76,7 @@ export function ScanReposDialog({
   const fetchSuggestions = useCallback(async (currentPath: string) => {
     try {
       setFetchError(null)
-      const res = await fetch(`/api/collect/scan-path?path=${encodeURIComponent(currentPath)}`)
+      const res = await apiFetch(`/api/collect/scan-path?path=${encodeURIComponent(currentPath)}`)
       const data = await res.json()
 
       if (data.error) {

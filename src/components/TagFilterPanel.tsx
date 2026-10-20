@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -53,7 +54,7 @@ export function TagFilterPanel({
       try {
         setLoading(true)
         setError(null)
-        const res = await fetch('/api/tags')
+        const res = await apiFetch('/api/tags')
         if (!res.ok) throw new Error('Failed to fetch tags')
         const data = await res.json()
         if (!cancelled) {
@@ -90,7 +91,7 @@ export function TagFilterPanel({
       return
     }
     try {
-      const res = await fetch('/api/tags/rename', {
+      const res = await apiFetch('/api/tags/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: renameTarget.name, to: trimmed }),
@@ -116,7 +117,7 @@ export function TagFilterPanel({
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/tags?name=${encodeURIComponent(deleteTarget.name)}`,
         { method: 'DELETE' },
       )

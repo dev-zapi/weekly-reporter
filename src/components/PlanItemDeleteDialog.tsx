@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import {
@@ -37,7 +38,7 @@ export function PlanItemDeleteDialog({ itemId, onClose, onConfirm }: Props) {
 
     const controller = new AbortController()
     setLoading(true)
-    fetch(`/api/plan-items/${itemId}`, { signal: controller.signal })
+    apiFetch(`/api/plan-items/${itemId}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to load references')
         const data: { referrers?: PlanReferrerEvent[] } = await response.json()

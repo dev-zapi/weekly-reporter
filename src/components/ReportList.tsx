@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { ReportCard } from './ReportCard'
@@ -15,7 +16,7 @@ export function ReportList() {
 
   async function fetchReports() {
     try {
-      const response = await fetch('/api/reports')
+      const response = await apiFetch('/api/reports')
       const data = await response.json()
       setReports(data.reports || [])
     } catch (error) {
@@ -30,7 +31,7 @@ export function ReportList() {
 
     void (async () => {
       try {
-        const response = await fetch('/api/reports')
+        const response = await apiFetch('/api/reports')
         const data = await response.json()
         if (!cancelled) {
           setReports(data.reports || [])
@@ -58,7 +59,7 @@ export function ReportList() {
     }
 
     try {
-      const response = await fetch(`/api/reports/search?q=${encodeURIComponent(query)}`)
+      const response = await apiFetch(`/api/reports/search?q=${encodeURIComponent(query)}`)
       const data = await response.json()
       setReports(data.reports || [])
     } catch (error) {
@@ -70,7 +71,7 @@ export function ReportList() {
     if (!confirm('Delete this report?')) return
 
     try {
-      const response = await fetch(`/api/reports/${id}`, {
+      const response = await apiFetch(`/api/reports/${id}`, {
         method: 'DELETE',
       })
 

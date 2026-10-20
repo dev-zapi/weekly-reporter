@@ -435,6 +435,7 @@ describe('PeriodPlanItemRow', () => {
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/plan-items/7/fulfillment'),
+        expect.anything(),
       )
     })
     expect(await screen.findByText('Shipped the feature')).toBeInTheDocument()

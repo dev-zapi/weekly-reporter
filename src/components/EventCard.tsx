@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
@@ -81,7 +82,7 @@ export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanRef
     // Check if any events reference this one
     let referrers: Array<{ id: number; content: string }> = []
     try {
-      const res = await fetch(`/api/events/${event.id}/references`)
+      const res = await apiFetch(`/api/events/${event.id}/references`)
       if (res.ok) {
         const data = await res.json()
         referrers = data.referrers || []

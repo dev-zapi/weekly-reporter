@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -15,7 +16,7 @@ export default function NewTemplatePage() {
     description?: string
     tags?: string
   }) {
-    const response = await fetch('/api/templates', {
+    const response = await apiFetch('/api/templates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

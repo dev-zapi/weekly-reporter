@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
@@ -54,7 +55,7 @@ export function AuthorEmailPicker({
     if (repoParams.branch) params.set('branch', repoParams.branch)
 
     try {
-      const res = await fetch(`/api/collect/sources/emails?${params}`)
+      const res = await apiFetch(`/api/collect/sources/emails?${params}`)
       const data = await res.json()
       setAuthors(data.authors || [])
     } catch {

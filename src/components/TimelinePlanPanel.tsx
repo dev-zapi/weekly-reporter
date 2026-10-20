@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
@@ -44,7 +45,7 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
     const today = format(new Date(), 'yyyy-MM-dd')
     const url = `/api/plans?scope=week&date=${today}`
 
-    void fetch(url, { signal: controller.signal })
+    void apiFetch(url, { signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as ApiResponse & { error?: string }
         if (!response.ok) throw new Error(payload.error || 'Failed to load plan')

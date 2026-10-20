@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -82,9 +83,9 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     async function load() {
       try {
         const [reportResponse, templateResponse, styleResponse] = await Promise.all([
-          fetch(`/api/reports/${reportId}`),
-          fetch('/api/templates'),
-          fetch('/api/prompts/styles'),
+          apiFetch(`/api/reports/${reportId}`),
+          apiFetch('/api/templates'),
+          apiFetch('/api/prompts/styles'),
         ])
         if (!reportResponse.ok) throw new Error('Report not found')
         const reportData = await reportResponse.json()
@@ -137,7 +138,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     if (!currentVariant?.finalContent || !content.trim()) return
     setBusy('save')
     try {
-      const response = await fetch(`/api/reports/${reportId}/final`, {
+      const response = await apiFetch(`/api/reports/${reportId}/final`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -165,7 +166,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     if (!confirm('Regenerating the source draft will invalidate the current final version and old AI session baseline. Continue?')) return
     setBusy('regenerate')
     try {
-      const response = await fetch(`/api/reports/${reportId}/regenerate-source`, { method: 'POST' })
+      const response = await apiFetch(`/api/reports/${reportId}/regenerate-source`, { method: 'POST' })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to regenerate source draft')
       const normalized = normalizeBundle(data)
@@ -195,7 +196,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     if (!confirm('Delete this report? Related AI sessions, messages, and proposals will also be deleted.')) return
     setBusy('delete')
     try {
-      const response = await fetch(`/api/reports/${reportId}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Delete failed')
       toast.success('Report deleted')
       router.push('/reports')

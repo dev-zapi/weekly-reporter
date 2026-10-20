@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -29,7 +30,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
 
   async function fetchTemplates() {
     try {
-      const response = await fetch('/api/templates')
+      const response = await apiFetch('/api/templates')
       const data = await response.json()
       setOfficialTemplates(data.official || [])
       setUserTemplates(data.user || [])
@@ -42,7 +43,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
 
   async function handleClone(templateId: string) {
     try {
-      const response = await fetch('/api/templates/clone', {
+      const response = await apiFetch('/api/templates/clone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sourceId: templateId }),
@@ -82,7 +83,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
 
   async function handleCloneWithEdit(data: { sourceId: string; name: string; content: string }) {
     try {
-      const response = await fetch('/api/templates/clone', {
+      const response = await apiFetch('/api/templates/clone', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -106,7 +107,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
     if (!confirm('Delete this template?')) return
 
     try {
-      const response = await fetch(`/api/templates/${id}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/templates/${id}`, { method: 'DELETE' })
       if (response.ok) {
         setUserTemplates(userTemplates.filter((t) => t.id !== id))
         toast.success('Template deleted')

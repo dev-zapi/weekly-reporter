@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { getSectionStatus, parseSections } from '@/lib/utils'
@@ -24,7 +25,7 @@ export function CheckPanel({ content }: CheckPanelProps) {
       }
 
       try {
-        const response = await fetch('/api/reports/check', {
+        const response = await apiFetch('/api/reports/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ content }),

@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
@@ -87,7 +88,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
     if (firstBranch) params.set('branch', firstBranch)
 
     const timer = setTimeout(() => {
-      fetch(`/api/collect/sources/emails?${params}`)
+      apiFetch(`/api/collect/sources/emails?${params}`)
         .then(res => res.json())
         .then(data => setKnownEmails((data.authors || []).map((a: { email: string }) => a.email)))
         .catch(() => {})
@@ -113,7 +114,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
     const timer = setTimeout(() => {
       setBranchLoading(true)
       setBranchError(false)
-      fetch(`/api/collect/sources/branches?${params}`)
+      apiFetch(`/api/collect/sources/branches?${params}`)
         .then(async res => {
           const data = await res.json()
           if (!res.ok) throw new Error(data.error || 'Failed to load branches')
@@ -183,7 +184,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
         : '/api/collect/sources'
       const method = sourceId ? 'PUT' : 'POST'
       
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submitData),
