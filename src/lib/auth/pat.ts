@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { apiTokens, type ApiToken } from '@/lib/db/schema'
+import { randomBase62 } from './random'
 
 /**
  * PAT（Personal Access Token）
@@ -13,7 +14,6 @@ import { apiTokens, type ApiToken } from '@/lib/db/schema'
 
 const TOKEN_PREFIX = 'wrp_'
 const TOKEN_RANDOM_LENGTH = 32
-const BASE62_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 /** prefix 字段存明文前 8 位，如 `wrp_a1b2` */
 export const TOKEN_DISPLAY_PREFIX_LENGTH = 8
 
@@ -48,12 +48,7 @@ export function hashToken(token: string): string {
  * 生成明文 PAT：`wrp_` + 32 位 base62。
  */
 export function generateToken(): string {
-  const bytes = crypto.randomBytes(TOKEN_RANDOM_LENGTH)
-  let random = ''
-  for (let i = 0; i < TOKEN_RANDOM_LENGTH; i += 1) {
-    random += BASE62_ALPHABET[bytes[i] % BASE62_ALPHABET.length]
-  }
-  return `${TOKEN_PREFIX}${random}`
+  return `${TOKEN_PREFIX}${randomBase62(TOKEN_RANDOM_LENGTH)}`
 }
 
 export function getTokenPrefix(token: string): string {

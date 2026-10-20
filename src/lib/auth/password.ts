@@ -1,8 +1,8 @@
 import 'server-only'
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { CONFIG_DIR, ensureConfigDir } from '@/lib/paths'
+import { randomBase62 } from './random'
 
 /**
  * 启动密码（Startup Password）
@@ -13,7 +13,6 @@ import { CONFIG_DIR, ensureConfigDir } from '@/lib/paths'
  */
 
 const PASSWORD_LENGTH = 48
-const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 const AUTH_FILE_NAME = 'auth.json'
 
 export interface MachineCredential {
@@ -31,12 +30,7 @@ export function getAuthConfigPath(): string {
 }
 
 function generatePassword(): string {
-  const bytes = crypto.randomBytes(PASSWORD_LENGTH)
-  let password = ''
-  for (let i = 0; i < PASSWORD_LENGTH; i += 1) {
-    password += PASSWORD_ALPHABET[bytes[i] % PASSWORD_ALPHABET.length]
-  }
-  return password
+  return randomBase62(PASSWORD_LENGTH)
 }
 
 function readAuthConfig(): AuthConfig | null {
