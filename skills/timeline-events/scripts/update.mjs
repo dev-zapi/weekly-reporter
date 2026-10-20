@@ -3,7 +3,7 @@
 // Update an event in the weekly-reporter timeline API
 // Usage: update.mjs <id> [--content <text>] [--time <ISO8601>] [--important <true|false>]
 
-const WEEKLY_REPORTER_URL = process.env.WEEKLY_REPORTER_URL || 'http://localhost:6868'
+import { api, json } from './lib/client.mjs'
 
 const args = process.argv.slice(2)
 
@@ -57,26 +57,7 @@ if (Object.keys(body).length === 0) {
   process.exit(1)
 }
 
-let response
-try {
-  response = await fetch(`${WEEKLY_REPORTER_URL}/api/events/${eventId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-} catch {
-  console.error(`Error: Cannot reach weekly-reporter at ${WEEKLY_REPORTER_URL}`)
-  console.error('Is the server running? Try: npm run dev')
-  process.exit(1)
-}
-
-const status = response.status
-let responseBody = null
-try {
-  responseBody = await response.json()
-} catch {
-  // Non-JSON response
-}
+const { status, body: responseBody } = await api(`/api/events/${eventId}`, { ...json(body), method: 'PUT' })
 
 if (status === 200) {
   console.log(`✓ Event #${eventId} updated`)
