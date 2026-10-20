@@ -15,6 +15,16 @@ function getStoredPassword(): string | null {
 }
 
 /**
+ * Read the stored startup password / Bearer token from localStorage.
+ *
+ * Kept as a named export for compatibility with the interim shim that
+ * shipped with the security page (T5); callers only rely on `apiFetch`.
+ */
+export function getAuthToken(): string | null {
+  return getStoredPassword()
+}
+
+/**
  * Clear the stored password from localStorage.
  */
 export function clearStoredPassword(): void {
