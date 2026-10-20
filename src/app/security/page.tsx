@@ -321,9 +321,13 @@ function PatSection() {
 function AuditSection() {
   const [records, setRecords] = useState<AuditRecord[]>([])
   const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [limit] = useState(50)
   const [offset, setOffset] = useState(0)
+  // Input values vs. applied filters: typing does not refetch; the Search
+  // button (or pagination) commits the inputs into the applied state.
+  const [patNameInput, setPatNameInput] = useState('')
+  const [statusInput, setStatusInput] = useState('')
   const [patNameFilter, setPatNameFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
 
@@ -358,7 +362,8 @@ function AuditSection() {
 
   const handleSearch = () => {
     setOffset(0)
-    loadRecords(0, patNameFilter, statusFilter)
+    setPatNameFilter(patNameInput)
+    setStatusFilter(statusInput)
   }
 
   const handleNext = () => {
@@ -382,8 +387,8 @@ function AuditSection() {
           </label>
           <Input
             placeholder="PAT name"
-            value={patNameFilter}
-            onChange={(e) => setPatNameFilter(e.target.value)}
+            value={patNameInput}
+            onChange={(e) => setPatNameInput(e.target.value)}
           />
         </div>
         <div className="w-[100px]">
@@ -392,8 +397,8 @@ function AuditSection() {
           </label>
           <Input
             placeholder="Status"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={statusInput}
+            onChange={(e) => setStatusInput(e.target.value)}
           />
         </div>
         <Button onClick={handleSearch}>Search</Button>
