@@ -1,7 +1,7 @@
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { randomBase62 } from '../src/lib/auth/random'
 
 /**
  * Shared environment for the auth-enabled Playwright suite.
@@ -39,17 +39,11 @@ export function resetAuthE2eRoot(): void {
 
 /**
  * Generate the startup password file with a fresh 48-char base62 token.
- * Mirrors `src/lib/auth/password.ts` format so the server's
- * `ensureStartupPassword` treats it as already initialised.
+ * Uses the same `randomBase62` helper as `src/lib/auth/password.ts` so the
+ * server's `ensureStartupPassword` treats it as already initialised.
  */
 export function preparePassword(): string {
-  const PASSWORD_LENGTH = 48
-  const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  const bytes = crypto.randomBytes(PASSWORD_LENGTH)
-  let password = ''
-  for (let i = 0; i < PASSWORD_LENGTH; i += 1) {
-    password += PASSWORD_ALPHABET[bytes[i] % PASSWORD_ALPHABET.length]
-  }
+  const password = randomBase62(48)
   fs.mkdirSync(AUTH_CONFIG_DIR, { recursive: true, mode: 0o700 })
   fs.writeFileSync(AUTH_CONFIG_FILE, `${JSON.stringify({ password }, null, 2)}\n`, { mode: 0o600 })
   fs.chmodSync(AUTH_CONFIG_FILE, 0o600)

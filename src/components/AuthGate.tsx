@@ -2,9 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { verifyPassword } from '@/lib/api-client'
-
-const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
+import { verifyPassword, getStoredPassword, clearStoredPassword } from '@/lib/api-client'
 
 /**
  * Client-side auth gate for root layout.
@@ -29,7 +27,7 @@ export function AuthGate() {
     }
 
     async function verify() {
-      const password = localStorage.getItem(AUTH_STORAGE_KEY)
+      const password = getStoredPassword()
 
       if (!password) {
         redirectToLogin()
@@ -40,7 +38,7 @@ export function AuthGate() {
         const ok = await verifyPassword(password)
 
         if (!ok) {
-          localStorage.removeItem(AUTH_STORAGE_KEY)
+          clearStoredPassword()
           redirectToLogin()
         }
       } catch {

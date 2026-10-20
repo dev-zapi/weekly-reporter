@@ -17,6 +17,27 @@ import type { AuthResult } from './types'
 
 const BEARER_PREFIX = 'Bearer '
 
+/**
+ * 私有 key：`withAuth` 鉴权成功后把 `AuthResult` 挂到 request 上，handler 通过
+ * `getAuthResult` 读取，避免在 handler 里再跑一遍 `requireAuth`（重复 DB 查询 /
+ * 重复 `touchPat`，且可能写出与审计行不一致的判定）。Symbol key 不出现在
+ * `Object.keys` / JSON 序列化里，也不改 handler 签名，Next 16 的 route 类型校验
+ * 不受影响。
+ */
+const AUTH_RESULT = Symbol('weekly-reporter.auth-result')
+
+interface AuthenticatedRequest extends Request {
+  [AUTH_RESULT]?: AuthResult
+}
+
+/**
+ * 读取 `withAuth` 为本次请求解析出的 `AuthResult`；请求未经过 `withAuth` 时返回
+ * undefined。
+ */
+export function getAuthResult(request: Request): AuthResult | undefined {
+  return (request as AuthenticatedRequest)[AUTH_RESULT]
+}
+
 export function isAuthDisabled(): boolean {
   return process.env.WR_AUTH_DISABLED === '1'
 }
@@ -97,6 +118,16 @@ export function withAuth<H extends (...args: never[]) => unknown>(
     const [req] = args as unknown as [Request, ...unknown[]]
     const auth = await requireAuth(req)
     if (!auth.ok) return auth.response as Response
+    // 把判定结果交给 handler，省掉 handler 里对 requireAuth 的二次调用。
+    // handler 不接 request（例如无参 route、测试里 GET() 直呼）时无可挂载对象，
+    // 跳过即可——这类 handler 也不会去读 getAuthResult。
+    if (req && typeof req === 'object') {
+      Object.defineProperty(req, AUTH_RESULT, {
+        value: auth,
+        enumerable: false,
+        configurable: true,
+      })
+    }
     const res = (await handler(...args)) as Response
     await recordAudit(getDb, req, res.status, auth)
     return res

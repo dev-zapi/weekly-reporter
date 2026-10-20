@@ -1,27 +1,18 @@
 'use client'
 
-const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
+/** localStorage key holding the startup password / Bearer token. */
+export const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
 
 /**
  * Read the stored startup password from localStorage.
  */
-function getStoredPassword(): string | null {
+export function getStoredPassword(): string | null {
   if (typeof window === 'undefined') return null
   try {
     return localStorage.getItem(AUTH_STORAGE_KEY)
   } catch {
     return null
   }
-}
-
-/**
- * Read the stored startup password / Bearer token from localStorage.
- *
- * Kept as a named export for compatibility with the interim shim that
- * shipped with the security page (T5); callers only rely on `apiFetch`.
- */
-export function getAuthToken(): string | null {
-  return getStoredPassword()
 }
 
 /**
