@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import fs from 'node:fs'
 import path from 'path'
 import { describe, expect, it } from 'vitest'
 import { applyDatabaseMigrations } from './migrations'
@@ -143,6 +144,16 @@ function columnNames(sqlite: Database.Database, table: string): string[] {
     .map((row) => (row as { name: string }).name)
 }
 
+/**
+ * 迁移链最后一条的时间戳。直接读 journal，避免每加一个迁移就要改硬编码的魔数。
+ */
+function latestMigrationTimestamp(): number {
+  const journal = JSON.parse(
+    fs.readFileSync(path.join(migrationsFolder, 'meta/_journal.json'), 'utf-8'),
+  ) as { entries: { when: number }[] }
+  return Math.max(...journal.entries.map((entry) => entry.when))
+}
+
 describe('applyDatabaseMigrations', () => {
   it('applies the complete migration chain to a new SQLite database', () => {
     const sqlite = new Database(':memory:')
@@ -163,7 +174,9 @@ describe('applyDatabaseMigrations', () => {
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_tags'").get()).toBeTruthy()
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_references'").get()).toBeTruthy()
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_plan_references'").get()).toBeTruthy()
-    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 37 })
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_tokens'").get()).toBeTruthy()
+    expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_audit_log'").get()).toBeTruthy()
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 38 })
 
     sqlite.close()
   })
@@ -198,7 +211,7 @@ describe('applyDatabaseMigrations', () => {
     expect(sqlite.prepare('SELECT * FROM report_variants').all()).toEqual([])
     expect(sqlite.prepare('SELECT COUNT(*) AS count FROM report_event_snapshots').get()).toEqual({ count: 0 })
     expect(sqlite.prepare('SELECT MAX(created_at) AS createdAt FROM __drizzle_migrations').get()).toEqual({
-      createdAt: 1792410310548,
+      createdAt: latestMigrationTimestamp(),
     })
 
     sqlite.close()
