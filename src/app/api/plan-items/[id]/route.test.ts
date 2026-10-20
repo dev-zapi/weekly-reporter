@@ -89,6 +89,121 @@ describe('/api/plan-items/[id]', () => {
       expect(data.id).toBe(item[0].id)
       expect(data.text).toBe('Test item')
     })
+
+    it('should return period identity and deferral chain', async () => {
+      const now = new Date()
+
+      // Create plans for different weeks
+      await testDb.insert(schema.periodPlans).values([
+        { id: 1, scope: 'week', periodStart: '2026-10-05', periodEnd: '2026-10-11', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 2, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null, createdAt: now, updatedAt: now },
+        { id: 3, scope: 'week', periodStart: '2026-10-19', periodEnd: '2026-10-25', monthKey: null, createdAt: now, updatedAt: now },
+      ]).run()
+
+      // Create items with deferral chain: 30 -> 20 -> 10
+      await testDb.insert(schema.periodPlanItems).values([
+        { id: 10, periodPlanId: 1, text: 'Original', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: null, position: 1, createdAt: now, updatedAt: now },
+        { id: 20, periodPlanId: 2, text: 'Deferred once', status: 'deferred', projectScope: 'work', parentItemId: null, deferredFromItemId: 10, position: 1, createdAt: now, updatedAt: now },
+        { id: 30, periodPlanId: 3, text: 'Deferred twice', status: 'planned', projectScope: 'work', parentItemId: null, deferredFromItemId: 20, position: 1, createdAt: now, updatedAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plan-items/30')
+      const params = Promise.resolve({ id: '30' })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.id).toBe(30)
+      expect(data.period).toEqual({
+        id: 3,
+        scope: 'week',
+        periodStart: '2026-10-19',
+        periodEnd: '2026-10-25',
+      })
+      expect(data.deferralChain).toEqual([30, 20, 10])
+    })
+
+    it('should include referring events so deletion can warn before it happens', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event = testDb.insert(schema.rawEvents).values({
+        content: 'Did work on %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values({
+        eventId: event[0].id,
+        planItemId: item[0].id,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id)
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.referrers).toHaveLength(1)
+      expect(data.referrers[0].id).toBe(event[0].id)
+      expect(data.referrers[0].content).toBe('Did work on %' + item[0].id)
+    })
+
+    it('should return an empty referrers list when no events reference the item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Unreferenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id)
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await GET(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.referrers).toEqual([])
+    })
   })
 
   describe('PUT', () => {
@@ -637,8 +752,10 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(item[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // Verify item is deleted
       const items = testDb.select().from(schema.periodPlanItems).all()
@@ -695,8 +812,10 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(parent[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // The child survives, but its dangling parent link is cleared.
       const remaining = testDb.select().from(schema.periodPlanItems).all()
@@ -746,14 +865,236 @@ describe('/api/plan-items/[id]', () => {
       })
       const params = Promise.resolve({ id: String(original[0].id) })
       const response = await DELETE(request, { params })
+      const data = await response.json()
 
-      expect(response.status).toBe(204)
+      expect(response.status).toBe(200)
+      expect(data.deleted).toBe(true)
 
       // The historical deferral chain is kept as a dangling reference.
       const remaining = testDb.select().from(schema.periodPlanItems).all()
       expect(remaining).toHaveLength(1)
       expect(remaining[0].id).toBe(carried[0].id)
       expect(remaining[0].deferredFromItemId).toBe(original[0].id)
+    })
+
+    it('should clear inbound reference rows when the item is referenced', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event = testDb.insert(schema.rawEvents).values({
+        content: 'Worked on %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values({
+        eventId: event[0].id,
+        planItemId: item[0].id,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data).toEqual({ deleted: true })
+
+      // The item is gone and its inbound association rows are cleared so
+      // fulfillment reads never point at a dead item. The `%id` text stays in
+      // the event content (a dangling reference, per ADR-0019).
+      expect(testDb.select().from(schema.periodPlanItems).all()).toHaveLength(0)
+      expect(testDb.select().from(schema.eventPlanReferences).all()).toHaveLength(0)
+      const remainingEvents = testDb.select().from(schema.rawEvents).all()
+      expect(remainingEvents).toHaveLength(1)
+      expect(remainingEvents[0].content).toBe('Worked on %' + item[0].id)
+    })
+
+    it('should return only { deleted: true } when no events reference the item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Unreferenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data).toEqual({ deleted: true })
+
+      // Verify item is actually deleted
+      const items = testDb.select().from(schema.periodPlanItems).all()
+      expect(items).toHaveLength(0)
+    })
+
+    it('should clear all inbound reference rows for multiple referencing events', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Referenced item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event1 = testDb.insert(schema.rawEvents).values({
+        content: 'First event %' + item[0].id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const event2 = testDb.insert(schema.rawEvents).values({
+        content: 'Second event %' + item[0].id,
+        eventTime: new Date(now.getTime() + 1000),
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values([
+        { eventId: event1[0].id, planItemId: item[0].id, createdAt: now },
+        { eventId: event2[0].id, planItemId: item[0].id, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data).toEqual({ deleted: true })
+      expect(testDb.select().from(schema.eventPlanReferences).all()).toHaveLength(0)
+      expect(testDb.select().from(schema.periodPlanItems).all()).toHaveLength(0)
+    })
+
+    it('should leave other items reference rows intact', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [item1] = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Deleted item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [item2] = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Surviving item',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 2,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [event] = testDb.insert(schema.rawEvents).values({
+        content: 'Worked on %' + item1.id + ' and %' + item2.id,
+        eventTime: now,
+        source: 'manual',
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.eventPlanReferences).values([
+        { eventId: event.id, planItemId: item1.id, createdAt: now },
+        { eventId: event.id, planItemId: item2.id, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item1.id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item1.id) })
+      const response = await DELETE(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data).toEqual({ deleted: true })
+
+      // Only the surviving item's association row remains.
+      const refs = testDb.select().from(schema.eventPlanReferences).all()
+      expect(refs).toHaveLength(1)
+      expect(refs[0].planItemId).toBe(item2.id)
     })
   })
 })

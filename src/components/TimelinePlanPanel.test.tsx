@@ -108,6 +108,22 @@ describe('TimelinePlanPanel', () => {
     expect(screen.getByText(/personal/i)).toBeInTheDocument()
   })
 
+  it('shows each plan item id in %<id> form', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        plan: { id: 1, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18' },
+        items: [
+          { id: 42, text: 'Review PR', status: 'in_progress', projectScope: 'work', position: 0 },
+        ],
+      }),
+    })
+
+    render(<TimelinePlanPanel />)
+
+    expect(await screen.findByText('%42')).toBeInTheDocument()
+  })
+
   it('provides link to /plans page', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

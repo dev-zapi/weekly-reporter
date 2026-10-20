@@ -14,10 +14,11 @@ interface EventCardProps {
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
   onReferenceClick?: (referenceId: number) => void
+  onPlanReferenceClick?: (planItemId: number) => void
   highlightKey?: number | null
 }
 
-export function EventCard({ event, onEdit, onDelete, onReferenceClick, highlightKey }: EventCardProps) {
+export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightKey }: EventCardProps) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(event.content)
   const [loading, setLoading] = useState(false)
@@ -144,6 +145,7 @@ export function EventCard({ event, onEdit, onDelete, onReferenceClick, highlight
                   content={event.content}
                   isManual={isManual}
                   onReferenceClick={onReferenceClick}
+                  onPlanReferenceClick={onPlanReferenceClick}
                 />
               </p>
             )}

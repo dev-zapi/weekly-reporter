@@ -4,6 +4,7 @@ import { rawEvents, RawEvent, eventTags } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { parseTags, syncEventTags } from '@/lib/tags'
 import { parseReferences, syncEventReferences, deleteEventReferences } from '@/lib/references'
+import { parsePlanReferences, syncEventPlanReferences, deleteEventPlanReferences } from '@/lib/plan-references'
 
 type EventUpdateData = Partial<Pick<RawEvent, 'content' | 'eventTime' | 'isImportant' | 'updatedAt'>>
 
@@ -134,6 +135,7 @@ export async function PUT(
       if (body.content !== undefined && event[0].source === 'manual') {
         syncEventTags(tx, id, parseTags(body.content))
         syncEventReferences(tx, id, parseReferences(body.content))
+        syncEventPlanReferences(tx, id, parsePlanReferences(body.content))
       }
       return result
     })
@@ -182,6 +184,7 @@ export async function DELETE(
     db.transaction((tx) => {
       tx.delete(eventTags).where(eq(eventTags.eventId, id)).run()
       deleteEventReferences(tx, id)
+      deleteEventPlanReferences(tx, id)
       tx.delete(rawEvents).where(eq(rawEvents.id, id)).run()
     })
     return new NextResponse(null, { status: 204 })

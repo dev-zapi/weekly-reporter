@@ -63,7 +63,7 @@ if (items.length === 0) {
 }
 
 for (const item of items) {
-  const id = `#${item.id}`
+  const id = `%${item.id}`
   const statusStr = `[${item.status}]`
   const scopeStr = `[${item.projectScope}]`
   let line = `  ${id.padEnd(6)} ${statusStr.padEnd(14)} ${scopeStr.padEnd(10)} ${item.text}`
@@ -72,7 +72,7 @@ for (const item of items) {
     line += ` (parent=${item.parentItemId})`
   }
   if (item.deferredFromItemId) {
-    line += ` (deferred from #${item.deferredFromItemId})`
+    line += ` (deferred from %${item.deferredFromItemId})`
   }
 
   console.log(line)

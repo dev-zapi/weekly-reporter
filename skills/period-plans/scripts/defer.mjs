@@ -17,4 +17,4 @@ if (status !== 201) {
   failResponse(status, body, 'Plan item deferral')
 }
 
-console.log(`✓ Item deferred: #${body.id} created in next period (original #${id} marked deferred)`)
+console.log(`✓ Item deferred: %${body.id} created in next period (original %${id} marked deferred)`)

@@ -12,22 +12,32 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
-import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+import { PeriodPlanItemRow, type PlanItemRowData } from './PeriodPlanItemRow'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
-import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
-
-type Scope = 'week' | 'month'
+import type { PeriodPlan, PeriodPlanItem, PeriodPlanScope } from '@/lib/db/schema'
 
 type PlanResponse = {
   plan: PeriodPlan | null
-  items: PeriodPlanItem[]
+  items: PlanItemRowData[]
 }
 
 type PeriodParams = Record<string, string>
 
-export function PeriodPlanManager() {
-  const [scope, setScope] = useState<Scope>('week')
-  const [currentDate, setCurrentDate] = useState<Date>(() => new Date())
+type Props = {
+  initialScope?: PeriodPlanScope
+  initialStart?: string | null
+}
+
+// The deep-link start is a yyyy-MM-dd period start; parse it as a local date.
+function parsePeriodStart(start: string | null | undefined): Date | null {
+  if (!start) return null
+  const date = new Date(`${start}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function PeriodPlanManager({ initialScope = 'week', initialStart = null }: Props = {}) {
+  const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
+  const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
   const [items, setItems] = useState<PeriodPlanItem[]>([])
   const [parentOptions, setParentOptions] = useState<PeriodPlanItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -128,6 +138,10 @@ export function PeriodPlanManager() {
     try {
       const response = await fetch(`/api/plan-items/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete item')
+      // DELETE returns 200 JSON {deleted: true} (no longer 204). Referrer
+      // warnings are surfaced pre-deletion via the confirm dialog's GET.
+      const data: { deleted?: boolean } = await response.json()
+      if (data.deleted === false) throw new Error('Failed to delete item')
       setItems((prev) => prev.filter((item) => item.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item')
@@ -188,7 +202,7 @@ export function PeriodPlanManager() {
 
   return (
     <div className="space-y-6">
-      <Tabs value={scope} onValueChange={(value) => setScope(value as Scope)}>
+      <Tabs value={scope} onValueChange={(value) => setScope(value as PeriodPlanScope)}>
         <TabsList className="w-full">
           <TabsTrigger value="week">Week</TabsTrigger>
           <TabsTrigger value="month">Month</TabsTrigger>

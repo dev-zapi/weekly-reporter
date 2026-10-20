@@ -14,7 +14,7 @@ const id = requireId(positional[0], USAGE)
 const { status, body } = await api(`/api/plan-items/${id}`, { method: 'DELETE' })
 
 if (status === 204) {
-  console.log(`✓ Item #${id} deleted`)
+  console.log(`✓ Item %${id} deleted`)
   process.exit(0)
 }
 

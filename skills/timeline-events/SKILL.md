@@ -30,6 +30,17 @@ Tags parse anywhere the boundary holds; the house style is to append them at the
 
 Tags and references are orthogonal — `code review for @6999 #工作` parses both. Boundary failures are silent: in `see @6999, then ship` the trailing comma disables the reference, and in `(#@7008)` neither token parses.
 
+### Plan item references — `%id`
+
+`%` followed by a pure numeric plan-item id (`%42`) marks this event as fulfilling that item; the plans page and the timeline plan panel render the reference as a clickable token. Ids come from /plans output or from the period-plans skill (each item is shown as `%<id>`).
+
+- These scripts create manual events, and plan-item references parse in manual content — so `%id` tokens written here are always live. Any plan item, from any period (past week, future week, monthly parent, deferred original), can be referenced; in auto-collected content `%` stays plain text.
+- `%` followed by anything but digits is plain text, so `50%42` (no whitespace before `%`) parses as no reference — the boundary rule is identical to `#` tags and `@` references: the character before `%` must be whitespace or the start of content, and the character after the digits must be whitespace or the end of content.
+- A reference to a nonexistent item id writes fine and renders as a dangling link, which the app leaves in place — check the id against /plans output first. Writing a reference never changes the item's status; the reference is evidence, not a state transition.
+- When rewriting an event's content on update, carry `%id` tokens over verbatim; the id is the data.
+
+Tags, references, and plan-item references are all orthogonal — `finished %42 review for @6999 #工作` parses all three. Boundary failures are silent the same way: in `see %42, then ship` the trailing comma disables the plan-item reference, and in `(%42)` the opening paren disables it too.
+
 ## Query
 
 List events with optional filters. Output is one event per line with id, time, source, importance marker (★), content, and tags.

@@ -3,6 +3,11 @@ import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
 import { validateParentLink } from '@/lib/plan-items'
+import {
+  findPlanReferrers,
+  getFulfillmentChain,
+  deleteEventPlanReferencesByPlanItem,
+} from '@/lib/plan-references'
 
 export async function GET(
   request: Request,
@@ -32,7 +37,34 @@ export async function GET(
       )
     }
 
-    return NextResponse.json(items[0])
+    const item = items[0]
+
+    // Get the period plan
+    const plans = await db.select()
+      .from(periodPlans)
+      .where(eq(periodPlans.id, item.periodPlanId))
+      .all()
+
+    const period = plans.length > 0 ? {
+      id: plans[0].id,
+      scope: plans[0].scope,
+      periodStart: plans[0].periodStart,
+      periodEnd: plans[0].periodEnd,
+    } : null
+
+    // Get the deferral chain
+    const deferralChain = await getFulfillmentChain(itemId)
+
+    // Surface referring events so the plans UI can warn before deletion.
+    // Read-only: this never creates or removes associations.
+    const referrers = findPlanReferrers(db, itemId)
+
+    return NextResponse.json({
+      ...item,
+      period,
+      deferralChain,
+      referrers,
+    })
   } catch (error) {
     console.error('Error fetching plan item:', error)
     return NextResponse.json(
@@ -193,12 +225,19 @@ export async function DELETE(
       .where(eq(periodPlanItems.parentItemId, itemId))
       .run()
 
+    // Clear inbound association rows so fulfillment reads never point at a dead
+    // item. The `%id` text stays in event content (a dangling reference, per
+    // ADR-0019); only the index row is removed, mirroring deleteEventReferences.
+    deleteEventPlanReferencesByPlanItem(db, itemId)
+
     // Delete the item
     await db.delete(periodPlanItems)
       .where(eq(periodPlanItems.id, itemId))
       .run()
 
-    return new NextResponse(null, { status: 204 })
+    // Deletion proceeds regardless of references (dangling references align
+    // with ADR-0019); the referrer warning is surfaced before deletion via GET.
+    return NextResponse.json({ deleted: true })
   } catch (error) {
     console.error('Error deleting plan item:', error)
     return NextResponse.json(

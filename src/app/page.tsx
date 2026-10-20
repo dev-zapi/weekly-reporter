@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { QuickInputBar } from '@/components/QuickInputBar'
 import { TimelineView } from '@/components/TimelineView'
 import { SourceFilterPanel, type SourceFilter } from '@/components/SourceFilterPanel'
@@ -8,11 +9,13 @@ import { TagFilterPanel } from '@/components/TagFilterPanel'
 import { ActivityHeatmap, type HeatmapData } from '@/components/ActivityHeatmap'
 import { Button } from '@/components/ui/button'
 import { Loader2, Calendar, X } from 'lucide-react'
-import type { RawEvent } from '@/lib/db/schema'
+import type { RawEvent, PeriodPlanScope } from '@/lib/db/schema'
 import { useSyncAllSources } from '@/components/SyncAllSources'
 import { TimelinePlanPanel } from '@/components/TimelinePlanPanel'
 import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
+import { PlanItemPreviewDialog } from '@/components/PlanItemPreviewDialog'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
+import { buildPlansDeepLink } from '@/lib/plan-links'
 
 const EVENTS_PAGE_LIMIT = 30
 const REFERENCE_LOAD_MAX_PAGES = 5
@@ -31,6 +34,7 @@ function formatLocalDate(date: Date): string {
 }
 
 export default function TimelinePage() {
+  const router = useRouter()
   const [events, setEvents] = useState<RawEvent[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([])
   const [selectedHeatmapDate, setSelectedHeatmapDate] = useState<string | null>(null)
@@ -57,6 +61,7 @@ export default function TimelinePage() {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const { completionVersion } = useSyncAllSources()
   const [referencePreviewId, setReferencePreviewId] = useState<number | null>(null)
+  const [planReferencePreviewId, setPlanReferencePreviewId] = useState<number | null>(null)
   const [highlightEventId, setHighlightEventId] = useState<number | null>(null)
   // Monotonic counter used as a key to re-trigger highlight animation.
   const [highlightKey, setHighlightKey] = useState<number>(0)
@@ -274,6 +279,17 @@ export default function TimelinePage() {
     waitForAndScroll(eventId, 5000, () => setReferencePreviewId(eventId))
   }, [waitForAndScroll])
 
+  const handlePlanReferenceClick = useCallback((planItemId: number) => {
+    // Plan items are not part of the timeline event list, so there is nothing to
+    // locate in place — open the read-only preview directly.
+    setPlanReferencePreviewId(planItemId)
+  }, [])
+
+  const handleGoToPlans = useCallback((scope: PeriodPlanScope, periodStart: string) => {
+    setPlanReferencePreviewId(null)
+    router.push(buildPlansDeepLink(scope, periodStart))
+  }, [router])
+
   const handleSubmit = async ({ content }: { content: string }) => {
     await fetch('/api/events', {
       method: 'POST',
@@ -343,6 +359,7 @@ export default function TimelinePage() {
                 onEdit={handleEdit}
                 onDelete={handleDelete}
                 onReferenceClick={handleReferenceClick}
+                onPlanReferenceClick={handlePlanReferenceClick}
                 highlightEventId={highlightEventId}
                 highlightKey={highlightKey}
               />
@@ -404,6 +421,12 @@ export default function TimelinePage() {
         eventId={referencePreviewId}
         onClose={() => setReferencePreviewId(null)}
         onLocate={handleLocateEvent}
+      />
+
+      <PlanItemPreviewDialog
+        itemId={planReferencePreviewId}
+        onClose={() => setPlanReferencePreviewId(null)}
+        onGoToPlans={handleGoToPlans}
       />
     </div>
   )
