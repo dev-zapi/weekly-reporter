@@ -63,6 +63,29 @@ _Avoid_: AI settings, AI params, .env 配置
 OpenAI 协议下通过 `GET /models` 端点自动获取可用模型列表供用户选择。拉取失败时回退为手动输入。Anthropic 协议无此端点，始终手动输入模型名。
 _Avoid_: model discovery, model enumeration
 
+## 认证与访问控制
+
+### 启动密码 (Startup Password)
+服务端首次启动时随机生成的 48 位字符串，用于浏览器端登录。存放于 `~/.config/weekly-reporter/auth.json` 的 `password` 字段——**明文存盘**（单用户个人系统，威胁模型是磁盘泄露而非传输窃听）。仅当文件缺失或该字段为空时生成，跨重启稳定；重置方式是删除该文件后重启服务。它以 `Authorization: Bearer <密码>` 的形式随请求发出，与 PAT 共用同一套 Bearer 通道。浏览器调用**不写审计**。
+_Avoid_: 管理员密码、root 密码（本系统只有一个用户，没有多角色概念）、会话 token（它是长期凭据，不是会话）
+
+### 个人访问令牌 (Personal Access Token)
+签发给脚本与 agent 的 API 访问令牌。服务端**只存 SHA-256 哈希**，明文仅在创建时显示一次，丢失只能吊销重建。可设过期时间（默认永久），可随时吊销，**不做权限 scope**（一个 PAT 拥有全部 `/api/**` 权限）。每次鉴权成功会更新其 `last_used_at`。PAT 调用**写审计**（浏览器调用不写）。
+_Avoid_: API Key（会与 AI 配置里的 `api_key` 混淆）、访问 token（未限定主体）、refresh token
+
+### 机器级凭据 (Machine Credential)
+一台机器上「用哪个 PAT、打哪个服务地址」的配置，存放于 `~/.config/weekly-reporter/auth.json` 的 `machine` 字段（与启动密码同文件）。环境变量 `WEEKLY_REPORTER_PAT` / `WEEKLY_REPORTER_BASE_URL` 覆盖文件值，`WEEKLY_REPORTER_URL` 是 baseUrl 的向后兼容别名。全部 skill 脚本按同一顺序解析，因此一台机器只需配置一次。
+_Avoid_: 全局配置、环境配置（这两个说法都不区分「凭据」与「设置」）
+
+### 审计记录 (Audit Record)
+一次经 PAT 鉴权的 API 调用留下的痕迹，存于数据库表 `api_audit_log`，全量保留不清理。字段中三个易混概念：
+- **接口** = 被调用的 endpoint 路径（如 `/api/events`）
+- **路径** = 调用方自报的工作目录（`process.cwd()`），可空
+- **Agent** = 调用方自报的身份头（skill 名 + 从环境推断的 agent 名，认不出时为 `unknown`）
+
+后两者均为调用方自报，仅作归因线索，不作安全依据。认证失败的尝试同样记入审计（`status=401`），因为失效或被吊销的 PAT 是最常见的脚本故障。浏览器（启动密码）调用不记审计。
+_Avoid_: 日志（泛指服务端运行输出）、操作日志（泛指一切写操作）、访问日志（Nginx 那种按请求记录的层面日志）
+
 ## 周报内容
 
 ### 项目范围 (Project Scope)
