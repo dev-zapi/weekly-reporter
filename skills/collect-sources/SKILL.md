@@ -4,7 +4,7 @@ description: >-
   Manage collect sources (采集源) in the weekly-reporter app via Node.js scripts — list and filter them, show one source's full config, create a source of any type (git-local or remote GitHub/GitLab/Gitee), update fields safely (rename, add or replace author emails, aliases, branches, project scope, owner/repo), enable or disable, and delete with confirmation. Use this skill whenever the user mentions collect source records themselves: "有哪些采集源", "看下这个源的配置", "改一下采集源的名字", "删掉那个采集源", "给采集源加个邮箱", "启用/禁用采集源", "采集源列表", "list collect sources", "rename a source" — even if they never say the words "collect source". Two boundaries: triggering a sync (同步) or onboarding the current directory's repo is the collect-git-source skill; timeline events belong to timeline-events.
 ---
 
-Manage collect sources through six Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`, the dev and systemd port for this app). Most scripts take a `<ref>` — a numeric ID or a source name/alias (exact match first, substring as fallback); ambiguous names fail listing candidates.
+Manage collect sources through six Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`, the dev and systemd port for this app. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up. Most scripts take a `<ref>` — a numeric ID or a source name/alias (exact match first, substring as fallback); ambiguous names fail listing candidates.
 
 ## What a source actually is
 
@@ -62,6 +62,7 @@ Without `--confirm` prints what was matched (and that collected events survive, 
 
 | Message | Cause | Fix |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter at …` | Server down / wrong URL | Start it (`npm run dev`) or set `WEEKLY_REPORTER_URL` |
 | `no collect source matches '<ref>'` | Nothing by that ID/name/alias | Run `list.mjs` to see what exists |
 | `'…' matches N collect sources` | Name/alias is ambiguous | Pass one of the listed `#id`s instead |

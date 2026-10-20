@@ -3,7 +3,7 @@ name: timeline-events
 description: Query, create, update, and delete events on the weekly-reporter timeline. Use this skill whenever the user wants to log work, check what happened on a date, edit a past event, mark something important, remove a wrong entry, or interact with the timeline in any way — even if they don't say "timeline" or "event". Triggers on phrases like "log this", "what did I do on Tuesday", "change that event", "mark as important", "delete #123", "show this week's events", "add a tag to that event", "log this with a reference to #6999", or any reference to daily work history.
 ---
 
-Manage timeline events via four Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`).
+Manage timeline events via four Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 Content passed to create/update must be single-line plain text. Replace newlines with spaces before passing.
 
@@ -99,6 +99,7 @@ All scripts exit 0 on success, non-zero on failure. Common errors:
 
 | Message | Cause | Fix |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running | Start with `npm run dev` |
 | `Invalid request (HTTP 4xx)` | Bad input | Check the error detail and retry |
 | `Server error (HTTP 5xx)` | Backend issue | Check server logs |

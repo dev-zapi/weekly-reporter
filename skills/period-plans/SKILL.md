@@ -4,7 +4,7 @@ description: >-
   Manage period plans (周计划/月度计划) and plan items (计划条目). Use this skill whenever the user wants to create, view, update, defer (顺延), or delete weekly or monthly plans and their items. Triggers on phrases like "周计划", "月度计划", "计划条目", "顺延", "周期计划", "list plan items", "defer an item", "weekly plan", "monthly plan", "plan items for this week", "what's planned for next month", "mark this item as done", "move this to next week".
 ---
 
-Manage period plans via five Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`).
+Manage period plans via five Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## Boundary
 
@@ -114,6 +114,7 @@ All scripts exit 0 on success, non-zero on failure. Common errors:
 
 | Message | Cause | Fix |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running | Start with `npm run dev` |
 | `Invalid request (HTTP 4xx)` | Bad input | Check the error detail and retry |
 | `Server error (HTTP 5xx)` | Backend issue | Check server logs |

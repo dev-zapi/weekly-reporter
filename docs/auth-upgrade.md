@@ -132,6 +132,6 @@ make restart
 
 ## 日常维护
 
-- **新增 skill 脚本**：新脚本必须走 `scripts/lib/client.mjs` 的 `api()`（或自己实现同一套凭据解析），否则不会带 `Authorization` 头。7 份 vendored 拷贝由 `node scripts/sync-client-auth.mjs --check` 保证同步。
+- **新增 skill 脚本**：新脚本必须走 `scripts/lib/client.mjs` 的 `api()`（或自己实现同一套凭据解析），否则不会带 `Authorization` 头。8 份 vendored 拷贝由 `node scripts/sync-client-auth.mjs --check` 保证同步。
 - **轮换 PAT**：安全页创建新的 → 更新机器级凭据 → 吊销旧的。顺序反了会短暂断掉。
 - **机器换了**：在新机器上跑 `configure-pat` 即可，不需要重新创建 PAT（PAT 存在服务端数据库里）。
