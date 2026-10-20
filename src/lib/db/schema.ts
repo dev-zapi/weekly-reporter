@@ -453,3 +453,43 @@ export const periodPlanItems = sqliteTable('period_plan_items', {
 
 export type PeriodPlanItem = typeof periodPlanItems.$inferSelect
 export type NewPeriodPlanItem = typeof periodPlanItems.$inferInsert
+
+// --- 认证表（PAT + 审计） ---
+
+export const apiTokens = sqliteTable('api_tokens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  // SHA-256 十六进制哈希，明文只在创建时返回一次
+  tokenHash: text('token_hash').notNull().unique(),
+  // 明文前 8 位，仅供 UI 辨识
+  prefix: text('prefix').notNull(),
+  createdAt: integer('created_at').notNull(),
+  lastUsedAt: integer('last_used_at'),
+  // null = 永久有效
+  expiresAt: integer('expires_at'),
+  // null = 未吊销
+  revokedAt: integer('revoked_at'),
+})
+
+export type ApiToken = typeof apiTokens.$inferSelect
+export type NewApiToken = typeof apiTokens.$inferInsert
+
+export const apiAuditLog = sqliteTable('api_audit_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  createdAt: integer('created_at').notNull(),
+  // PAT 名称；浏览器调用为 null；认不出 PAT 的失败也为 null
+  patName: text('pat_name'),
+  method: text('method').notNull(),
+  // 接口 = endpoint 路径
+  apiPath: text('api_path').notNull(),
+  status: integer('status').notNull(),
+  userAgent: text('user_agent'),
+  // 调用方自报身份头
+  agentIdentity: text('agent_identity'),
+  // 调用方自报的 cwd
+  callerCwd: text('caller_cwd'),
+  outcome: text('outcome').notNull().$type<'success' | 'unauthorized'>(),
+})
+
+export type ApiAuditLog = typeof apiAuditLog.$inferSelect
+export type NewApiAuditLog = typeof apiAuditLog.$inferInsert
