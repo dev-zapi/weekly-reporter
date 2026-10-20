@@ -90,13 +90,15 @@ export async function requireAuth(request: Request): Promise<AuthResult> {
  * 校验与既有单测的调用形态都不受影响。第二参数 `ctx` 原样透传（含 Next 16 的
  * `params` Promise），不改其类型。
  */
-export function withAuth<H extends (...args: any[]) => any>(handler: H): H {
-  return (async (...args: any[]) => {
-    const [req, ctx] = args as [Request, unknown]
+export function withAuth<H extends (...args: never[]) => unknown>(
+  handler: H,
+): (...args: Parameters<H>) => Promise<Awaited<ReturnType<H>>> {
+  return (async (...args: Parameters<H>) => {
+    const [req] = args as unknown as [Request, ...unknown[]]
     const auth = await requireAuth(req)
     if (!auth.ok) return auth.response as Response
-    const res = await handler(...args)
+    const res = (await handler(...args)) as Response
     await recordAudit(getDb, req, res.status, auth)
     return res
-  }) as H
+  }) as (...args: Parameters<H>) => Promise<Awaited<ReturnType<H>>>
 }

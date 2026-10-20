@@ -224,7 +224,9 @@ describe('guard', () => {
 
   describe('withAuth', () => {
     it('returns a 401 without invoking the handler when authentication fails', async () => {
-      const handler = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      const handler = vi.fn<(req: Request, ctx?: unknown) => Promise<Response>>(
+        async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      )
       const wrapped = withAuth(handler)
 
       const response = await wrapped(plain())
@@ -235,7 +237,9 @@ describe('guard', () => {
 
     it('invokes the handler and records an audit with the real status', async () => {
       const created = createPat(testDb, 'my-agent')
-      const handler = vi.fn(async () => new Response('not found', { status: 404 }))
+      const handler = vi.fn<(req: Request, ctx?: unknown) => Promise<Response>>(
+        async () => new Response('not found', { status: 404 }),
+      )
       const wrapped = withAuth(handler)
 
       const response = await wrapped(bearer(created.token), {})
@@ -250,7 +254,9 @@ describe('guard', () => {
 
     it('does not record an audit row for a password (browser) call', async () => {
       mockedReadPassword.mockReturnValue('pw')
-      const handler = vi.fn(async () => new Response('ok', { status: 200 }))
+      const handler = vi.fn<(req: Request, ctx?: unknown) => Promise<Response>>(
+        async () => new Response('ok', { status: 200 }),
+      )
       const wrapped = withAuth(handler)
 
       await wrapped(bearer('pw'), {})
