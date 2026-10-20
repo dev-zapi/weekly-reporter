@@ -4,7 +4,7 @@ description: >-
   Read and manage weekly report (周报) data in this repo via Node.js scripts — list and search reports, inspect a report's source draft and adopted final for either audience variant, preview what a date range would produce, create a report, rebuild its source drafts, save a final, or delete one. Use this skill whenever the user asks about weekly reports rather than individual timeline events: "show me last week's report", "写一份上周的周报", "what's in the leadership version", "创建第 38 周周报", "find the report that mentioned Nexus", "save this as the final", "重新生成原稿", "delete report 23", or any request to read or change 周报/report/原稿/终版/受众版本 data. For single work-log entries on the timeline, use the timeline-events skill instead.
 ---
 
-Manage weekly report data through seven Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read `WEEKLY_REPORTER_URL` from env (defaults to `http://localhost:6868`, the dev and systemd port for this app).
+Manage weekly report data through seven Node.js scripts under `{baseDir}/scripts/`. They use built-in `fetch` (Node 18+), take no dependencies, and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`, the dev and systemd port for this app. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## The data model you're working with
 
@@ -86,6 +86,7 @@ All scripts exit 0 on success and non-zero on failure, printing one actionable l
 
 | Message | Cause | What to do |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running, or wrong port | `npm run dev`, or set `WEEKLY_REPORTER_URL` |
 | `Report not found [NOT_FOUND]` | Bad ID | Confirm with `list.mjs` |
 | `SOURCE_REVISION_CONFLICT` (409) | Draft changed since you read it | Re-read with `show.mjs`, rebuild the final from the current draft |
