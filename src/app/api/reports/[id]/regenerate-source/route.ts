@@ -1,7 +1,8 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { regenerateSourceDrafts } from '@/lib/reports/service'
 
-export async function POST(
+export const POST = withAuth(async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -20,4 +21,4 @@ export async function POST(
     console.error('POST /api/reports/[id]/regenerate-source error:', error)
     return NextResponse.json({ error: 'Failed to regenerate source draft', code: 'REGENERATE_ERROR' }, { status: 500 })
   }
-}
+})

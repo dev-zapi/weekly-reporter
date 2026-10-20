@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, and, asc } from 'drizzle-orm'
@@ -6,7 +7,7 @@ import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } fro
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 import { getFulfillmentCount } from '@/lib/plan-references'
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -136,4 +137,4 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})

@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { appendPlanOverride } from '@/lib/generation/plan-override'
 import { GenerationServiceError } from '@/lib/generation/service'
@@ -13,7 +14,7 @@ function failure(error: unknown) {
   return NextResponse.json({ error: 'Failed to record plan override', code: 'PLAN_OVERRIDE_ERROR' }, { status: 500 })
 }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(request: Request, { params }: RouteContext) {
   const values = await params
   const reportId = Number.parseInt(values.id, 10)
   const sessionId = Number.parseInt(values.sessionId, 10)
@@ -40,4 +41,4 @@ export async function POST(request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})

@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import {
   archiveGenerationSession,
@@ -22,7 +23,7 @@ function failure(error: unknown) {
   return NextResponse.json({ error: 'Generation session operation failed', code: 'GENERATION_SESSION_ERROR' }, { status: 500 })
 }
 
-export async function GET(_request: Request, { params }: RouteContext) {
+export const GET = withAuth(async function GET(_request: Request, { params }: RouteContext) {
   const ids = idsFrom(await params)
   if (!ids) return NextResponse.json({ error: 'Invalid ID', code: 'INVALID_ID' }, { status: 400 })
   try {
@@ -32,9 +33,9 @@ export async function GET(_request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})
 
-export async function PATCH(request: Request, { params }: RouteContext) {
+export const PATCH = withAuth(async function PATCH(request: Request, { params }: RouteContext) {
   const ids = idsFrom(await params)
   if (!ids) return NextResponse.json({ error: 'Invalid ID', code: 'INVALID_ID' }, { status: 400 })
   try {
@@ -46,9 +47,9 @@ export async function PATCH(request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export const DELETE = withAuth(async function DELETE(_request: Request, { params }: RouteContext) {
   const ids = idsFrom(await params)
   if (!ids) return NextResponse.json({ error: '无效的ID', code: 'INVALID_ID' }, { status: 400 })
   try {
@@ -56,4 +57,4 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})

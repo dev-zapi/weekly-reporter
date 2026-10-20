@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { periodPlanItems } from '@/lib/db/schema'
 import { getFulfillingEvents } from '@/lib/plan-references'
 
-export async function GET(
+export const GET = withAuth(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -44,4 +45,4 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})

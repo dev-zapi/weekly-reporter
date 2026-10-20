@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { templates } from '@/lib/db/schema'
@@ -5,7 +6,7 @@ import { OFFICIAL_TEMPLATES } from '@/lib/official-templates'
 import { cloneTemplateSchema } from '@/lib/validations'
 import { eq } from 'drizzle-orm'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -61,4 +62,4 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: 'Failed to clone template', code: 'CLONE_ERROR' }, { status: 500 })
   }
-}
+})

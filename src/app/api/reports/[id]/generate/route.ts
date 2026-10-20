@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getAIStyle } from '@/lib/ai/styles'
 import { generateFinalReport } from '@/lib/ai'
@@ -7,7 +8,7 @@ import { isEmptySourceDraft } from '@/lib/reports/source-draft'
 
 type RouteContext = { params: Promise<{ id: string }> }
 
-export async function POST(request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(request: Request, { params }: RouteContext) {
   try {
     const reportId = Number.parseInt((await params).id, 10)
     if (Number.isNaN(reportId)) {
@@ -72,4 +73,4 @@ export async function POST(request: Request, { params }: RouteContext) {
       { status: 500 },
     )
   }
-}
+})

@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { desc } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
@@ -5,7 +6,7 @@ import { reports, reportVariants } from '@/lib/db/schema'
 import { createReportSchema } from '@/lib/validations'
 import { createReportWithSourceDrafts } from '@/lib/reports/service'
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -55,9 +56,9 @@ export async function GET(request: Request) {
     console.error('[/api/reports] GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch reports', code: 'FETCH_ERROR' }, { status: 500 })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body = await request.json()
     const validated = createReportSchema.parse(body)
@@ -70,4 +71,4 @@ export async function POST(request: Request) {
     console.error('[/api/reports] POST error:', error)
     return NextResponse.json({ error: 'Failed to create report', code: 'CREATE_ERROR' }, { status: 500 })
   }
-}
+})

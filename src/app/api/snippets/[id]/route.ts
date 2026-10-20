@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { eq, and } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { sentenceSnippets } from '@/lib/db/schema'
 
-export async function DELETE(
+export const DELETE = withAuth(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -53,4 +54,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})

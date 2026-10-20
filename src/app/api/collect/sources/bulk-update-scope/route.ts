@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { collectSources, ProjectScope } from '@/lib/db/schema'
 import { inArray } from 'drizzle-orm'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -46,4 +47,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

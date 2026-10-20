@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, sql } from 'drizzle-orm'
@@ -5,7 +6,7 @@ import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getNextWeekPeriodRange, getNextMonthPeriodRange } from '@/lib/periods'
 import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
 
-export async function POST(
+export const POST = withAuth(async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -142,4 +143,4 @@ export async function POST(
       { status: 500 }
     )
   }
-}
+})

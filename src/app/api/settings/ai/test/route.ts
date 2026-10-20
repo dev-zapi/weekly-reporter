@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getAIConfig } from '@/lib/ai/config'
 import { testConnection } from '@/lib/ai/provider'
 
-export async function POST() {
+export const POST = withAuth(async function POST() {
   try {
     const db = getDb()
     const config = await getAIConfig(db)
@@ -28,4 +29,4 @@ export async function POST() {
       { status: 500 }
     )
   }
-}
+})

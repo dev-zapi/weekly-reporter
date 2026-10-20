@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getTimelinePlanProjection } from '@/lib/reports/timeline-plans'
 
 export const runtime = 'nodejs'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     return NextResponse.json(await getTimelinePlanProjection())
   } catch (error) {
@@ -13,4 +14,4 @@ export async function GET() {
       { status: 500 },
     )
   }
-}
+})

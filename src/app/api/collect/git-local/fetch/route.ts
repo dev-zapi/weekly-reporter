@@ -1,8 +1,9 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { fetchLocalSource } from '@/lib/collect/git-local-fetch'
 import { SourceOperationBusyError } from '@/lib/collect/source-operation-lock'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body = await request.json()
     const sourceId = Number(body?.sourceId)
@@ -41,4 +42,4 @@ export async function POST(request: Request) {
       { status: 500 },
     )
   }
-}
+})
