@@ -112,6 +112,18 @@ describe('/api/auth/verify', () => {
     expect(rows[0].outcome).toBe('success')
   })
 
+  it('authenticates a PAT exactly once (no double requireAuth / DB work)', async () => {
+    const created = createPat(testDb, 'test-pat')
+    mockedGetDb.mockClear()
+
+    const { GET } = await import('./route')
+    await GET(bearer(created.token))
+
+    // One lookup inside withAuth's requireAuth + one for the audit write.
+    // A second requireAuth from the handler would push this to three.
+    expect(mockedGetDb).toHaveBeenCalledTimes(2)
+  })
+
   it('returns 200 when auth is disabled', async () => {
     process.env.WR_AUTH_DISABLED = '1'
     vi.resetModules()

@@ -17,7 +17,7 @@ vi.mock('@/lib/auth/password', () => ({
 
 import { getDb } from '@/lib/db'
 import { readStartupPassword } from './password'
-import { isAuthDisabled, requireAuth, timingSafeEqualString, withAuth } from './guard'
+import { isAuthDisabled, getAuthResult, requireAuth, timingSafeEqualString, withAuth } from './guard'
 
 const mockedGetDb = getDb as unknown as ReturnType<typeof vi.fn>
 const mockedReadPassword = readStartupPassword as unknown as ReturnType<typeof vi.fn>
@@ -277,6 +277,35 @@ describe('guard', () => {
       await wrapped(bearer(created.token), fakeContext)
 
       expect(capturedCtx).toBe(fakeContext)
+    })
+
+    it('exposes the resolved AuthResult to the handler via getAuthResult', async () => {
+      const created = createPat(testDb, 'my-agent')
+      let seen: ReturnType<typeof getAuthResult>
+      const handler = async (req: Request) => {
+        seen = getAuthResult(req)
+        return new Response('ok')
+      }
+      const wrapped = withAuth(handler)
+
+      await wrapped(bearer(created.token), {})
+
+      expect(seen).toBeDefined()
+      expect(seen!.ok).toBe(true)
+      expect(seen!.mode).toBe('pat')
+      expect(seen!.patName).toBe('my-agent')
+    })
+
+    it('does not attach an AuthResult when authentication fails', async () => {
+      const handler = vi.fn(async () => new Response('ok'))
+      const wrapped = withAuth(handler)
+      const request = plain()
+
+      const response = await wrapped(request, {})
+
+      expect(response.status).toBe(401)
+      expect(handler).not.toHaveBeenCalled()
+      expect(getAuthResult(request)).toBeUndefined()
     })
   })
 
