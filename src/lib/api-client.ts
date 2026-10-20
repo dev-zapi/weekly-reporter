@@ -68,6 +68,23 @@ function handleUnauthorized(): void {
 }
 
 /**
+ * Verify a candidate password against GET /api/auth/verify.
+ *
+ * Deliberately bypasses `apiFetch`: a failed verify is an expected 401 and
+ * must NOT trigger the global clear-and-redirect side effect (that would
+ * loop the login page and wipe its inline error). Throws on network error so
+ * callers can distinguish "wrong password" (false) from "unreachable".
+ */
+export async function verifyPassword(password: string): Promise<boolean> {
+  const response = await fetch('/api/auth/verify', {
+    headers: {
+      Authorization: `Bearer ${password}`,
+    },
+  })
+  return response.ok
+}
+
+/**
  * Unified API fetch wrapper for client-side code.
  *
  * - Reads the startup password from localStorage

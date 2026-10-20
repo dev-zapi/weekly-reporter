@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { apiFetch, setStoredPassword, clearStoredPassword } from './api-client'
+import { apiFetch, setStoredPassword, clearStoredPassword, verifyPassword } from './api-client'
 
 describe('api-client', () => {
   const mockFetch = vi.fn()
@@ -123,6 +123,33 @@ describe('api-client', () => {
 
       clearStoredPassword()
       expect(localStorage.getItem('weekly-reporter.auth')).toBeNull()
+    })
+  })
+
+  describe('verifyPassword', () => {
+    it('returns true when the server accepts the password', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, status: 200 })
+
+      await expect(verifyPassword('good-password')).resolves.toBe(true)
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/auth/verify', {
+        headers: { Authorization: 'Bearer good-password' },
+      })
+    })
+
+    it('returns false on 401 without touching localStorage or redirecting', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 401 })
+
+      await expect(verifyPassword('bad-password')).resolves.toBe(false)
+
+      // Must not trigger the apiFetch clear-and-redirect side effect
+      expect(localStorage.getItem('weekly-reporter.auth')).toBeNull()
+    })
+
+    it('rejects on network error', async () => {
+      mockFetch.mockRejectedValueOnce(new Error('network down'))
+
+      await expect(verifyPassword('any')).rejects.toThrow('network down')
     })
   })
 })

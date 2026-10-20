@@ -2,7 +2,7 @@
 
 import { Suspense, useState, FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { setStoredPassword } from '@/lib/api-client'
+import { setStoredPassword, verifyPassword } from '@/lib/api-client'
 import { Lock, AlertCircle } from 'lucide-react'
 
 /**
@@ -26,13 +26,9 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const response = await fetch('/api/auth/verify', {
-        headers: {
-          Authorization: `Bearer ${password}`,
-        },
-      })
+      const ok = await verifyPassword(password)
 
-      if (response.ok) {
+      if (ok) {
         setStoredPassword(password)
         router.replace(redirectTo)
       } else {

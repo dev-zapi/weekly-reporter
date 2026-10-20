@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
+import { verifyPassword } from '@/lib/api-client'
 
 const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
 
@@ -32,13 +33,9 @@ export function AuthGate() {
       }
 
       try {
-        const response = await fetch('/api/auth/verify', {
-          headers: {
-            Authorization: `Bearer ${password}`,
-          },
-        })
+        const ok = await verifyPassword(password)
 
-        if (!response.ok) {
+        if (!ok) {
           localStorage.removeItem(AUTH_STORAGE_KEY)
           redirectToLogin()
           return
