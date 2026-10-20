@@ -4,8 +4,7 @@
 // Usage: query.mjs [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD>] [--week-end <YYYY-MM-DD>]
 //                  [--tags <tag1,tag2>] [--source <manual|auto>] [--limit <n>]
 
-const WEEKLY_REPORTER_URL = process.env.WEEKLY_REPORTER_URL || 'http://localhost:6868'
-const API_ENDPOINT = `${WEEKLY_REPORTER_URL}/api/events`
+import { api } from './lib/client.mjs'
 
 const args = process.argv.slice(2)
 const params = new URLSearchParams()
@@ -36,22 +35,11 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-const url = params.size > 0 ? `${API_ENDPOINT}?${params}` : API_ENDPOINT
+const path = params.size > 0 ? `/api/events?${params}` : '/api/events'
 
-let response
-try {
-  response = await fetch(url)
-} catch {
-  console.error(`Error: Cannot reach weekly-reporter at ${WEEKLY_REPORTER_URL}`)
-  console.error('Is the server running? Try: npm run dev')
-  process.exit(1)
-}
+const { status, body, bodyParsed } = await api(path)
 
-const status = response.status
-let body = null
-try {
-  body = await response.json()
-} catch {
+if (!bodyParsed) {
   console.error(`Error: Unexpected response (HTTP ${status})`)
   process.exit(1)
 }
