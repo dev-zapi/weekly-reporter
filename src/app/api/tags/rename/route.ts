@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { tagRenameSchema } from '@/lib/validations'
 import { renameTagGlobally } from '@/lib/tags'
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body = await request.json()
     const result = tagRenameSchema.safeParse(body)
@@ -24,4 +25,4 @@ export async function POST(request: Request) {
     console.error('Error renaming tag:', error)
     return NextResponse.json({ error: 'Failed to rename tag', code: 'RENAME_ERROR' }, { status: 500 })
   }
-}
+})

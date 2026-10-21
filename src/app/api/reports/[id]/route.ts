@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
@@ -13,7 +14,7 @@ import {
 } from '@/lib/db/schema'
 import { getReportBundle } from '@/lib/reports/service'
 
-export async function GET(
+export const GET = withAuth(async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -55,9 +56,9 @@ export async function GET(
     console.error('GET /api/reports/[id] error:', error)
     return NextResponse.json({ error: 'Failed to fetch report', code: 'FETCH_ERROR' }, { status: 500 })
   }
-}
+})
 
-export async function PUT(
+export const PUT = withAuth(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -82,9 +83,9 @@ export async function PUT(
   } catch {
     return NextResponse.json({ error: 'Failed to update report', code: 'UPDATE_ERROR' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -134,4 +135,4 @@ export async function DELETE(
   } catch {
     return NextResponse.json({ error: 'Failed to delete report', code: 'DELETE_ERROR' }, { status: 500 })
   }
-}
+})

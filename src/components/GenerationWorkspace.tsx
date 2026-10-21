@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { memo, useCallback, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -573,7 +574,7 @@ export function GenerationWorkspace({
   } = useStreamingReveal({ detail, streaming, liveUser })
 
   const loadSessions = useCallback(async (preferredId?: number) => {
-    const response = await fetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
+    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Failed to load generation sessions')
     const rows = (data.sessions ?? []) as SessionSummary[]
@@ -586,7 +587,7 @@ export function GenerationWorkspace({
   }, [reportId, variant])
 
   const loadDetail = useCallback(async (sessionId: number, settleLiveStream = false) => {
-    const response = await fetch(`/api/reports/${reportId}/generation-sessions/${sessionId}`)
+    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${sessionId}`)
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Failed to load session')
     setDetail(data)
@@ -603,7 +604,7 @@ export function GenerationWorkspace({
     let cancelled = false
     async function initializeSessions() {
       try {
-        const response = await fetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
+        const response = await apiFetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'Failed to load generation sessions')
         if (cancelled) return
@@ -625,7 +626,7 @@ export function GenerationWorkspace({
     let cancelled = false
     async function fetchDetail() {
       try {
-        const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`)
+        const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`)
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'Failed to load session')
         if (!cancelled) setDetail(data)
@@ -644,7 +645,7 @@ export function GenerationWorkspace({
     resetLiveOutput()
     setLiveProposal(null)
     try {
-      const response = await fetch(`/api/reports/${reportId}/generation-sessions/${sessionId}/turns`, {
+      const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${sessionId}/turns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message }),
@@ -699,7 +700,7 @@ export function GenerationWorkspace({
     if (!templateId || !composer.trim()) return
     setCreating(true)
     try {
-      const response = await fetch(`/api/reports/${reportId}/generation-sessions`, {
+      const response = await apiFetch(`/api/reports/${reportId}/generation-sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ variant, templateId, styleOverride: styleOverride || undefined }),
@@ -728,7 +729,7 @@ export function GenerationWorkspace({
   async function stopTurn() {
     const turnId = liveTurnId ?? detail?.activeTurn?.id
     if (!activeSessionId || !turnId) return
-    const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/turns/${turnId}/stop`, { method: 'POST' })
+    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/turns/${turnId}/stop`, { method: 'POST' })
     if (!response.ok) toast.error('Failed to stop generation')
   }
 
@@ -737,7 +738,7 @@ export function GenerationWorkspace({
     if (reportVariant.finalContent && !confirm('Accepting will replace the current final version. Continue?')) return
     setAccepting(true)
     try {
-      const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/proposals/${proposal.id}/accept`, { method: 'POST' })
+      const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/proposals/${proposal.id}/accept`, { method: 'POST' })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Failed to save proposed final version')
       onAccepted(data.variant)
@@ -755,7 +756,7 @@ export function GenerationWorkspace({
     if (!activeSessionId || streaming) return false
     setSavingOverride(true)
     try {
-      const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/plan-overrides`, {
+      const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/plan-overrides`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, itemId, text }),
@@ -776,7 +777,7 @@ export function GenerationWorkspace({
 
   async function archiveSession() {
     if (!activeSessionId || !confirm('After archiving, the record remains viewable but cannot continue chatting. Archive this session?')) return
-    const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, { method: 'DELETE' })
+    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, { method: 'DELETE' })
     const data = await response.json()
     if (!response.ok) return toast.error(data.error || 'Archive failed')
     await loadSessions(activeSessionId)
@@ -787,7 +788,7 @@ export function GenerationWorkspace({
     if (!activeSessionId || !detail) return
     const title = prompt('Session title', detail.title)
     if (!title || title.trim() === detail.title) return
-    const response = await fetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, {
+    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
@@ -841,7 +842,7 @@ export function GenerationWorkspace({
             </div>
               {!detail.sourceIsCurrent && <div className="border-b border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-500">The source draft has changed. This session is retained for audit; create a new session from the latest draft.</div>}
             <div ref={transcriptRef} onScroll={handleTranscriptScroll} className="generation-transcript max-h-[calc(100vh-15rem)] min-h-[520px] space-y-4 overflow-y-auto p-4">
-              <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await fetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败'); return } await loadDetail(detail.id) })() }} />
+              <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败'); return } await loadDetail(detail.id) })() }} />
               <PlanOverridePanel detail={detail} disabled={!canChat || streaming} saving={savingOverride} onAction={recordPlanOverride} />
               {detail.messages.map((part) => <TranscriptPart key={part.id} part={part} onRetry={part.partType === 'tool-result' ? () => { const message = detail.messages.filter((item) => item.role === 'user').at(-1)?.content; if (message) void streamTurn(detail.id, message) } : undefined} />)}
               {liveUser && <TranscriptPart part={{ id: -1, turnId: liveTurnId, sequence: Number.MAX_SAFE_INTEGER, role: 'user', partType: 'text', content: liveUser, data: null }} />}

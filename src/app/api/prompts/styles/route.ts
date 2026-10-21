@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { listAIStyles, createAIStyle } from '@/lib/ai/styles'
 import { aiStyleSchema } from '@/lib/validations'
 import { ensureSeed } from '@/lib/ai/seed'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     await ensureSeed()
     const styles = await listAIStyles()
@@ -15,9 +16,9 @@ export async function GET() {
       { status: 500 },
     )
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body = await request.json()
     const validated = aiStyleSchema.parse(body)
@@ -37,4 +38,4 @@ export async function POST(request: Request) {
       { status: 500 },
     )
   }
-}
+})

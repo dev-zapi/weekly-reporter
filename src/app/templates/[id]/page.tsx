@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
@@ -24,7 +25,7 @@ export default function EditTemplatePage() {
 
   async function fetchTemplate() {
     try {
-      const response = await fetch(`/api/templates/${id}`)
+      const response = await apiFetch(`/api/templates/${id}`)
       if (response.ok) {
         const data = await response.json()
         setTemplate(data.template)
@@ -45,7 +46,7 @@ export default function EditTemplatePage() {
     setAiStyle(style)
     
     try {
-      const response = await fetch(`/api/templates/${id}`, {
+      const response = await apiFetch(`/api/templates/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ aiStyle: style }),
@@ -76,7 +77,7 @@ export default function EditTemplatePage() {
     description?: string
     tags?: string
   }) {
-    const response = await fetch(`/api/templates/${id}`, {
+    const response = await apiFetch(`/api/templates/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

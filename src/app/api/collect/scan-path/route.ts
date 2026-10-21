@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { expandInputPath } from '@/lib/collect/paths'
 // Runtime-only fs/path — loaded via eval('require') so NFT static analysis
@@ -130,7 +131,7 @@ function collectDirs(basePath: string, query: string, maxDepth: number = 3, curr
   return results
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const raw = searchParams.get('path') || ''
@@ -237,4 +238,4 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})

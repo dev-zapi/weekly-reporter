@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { getAIConfig, updateModelListCache } from '@/lib/ai/config'
 import { fetchModelList } from '@/lib/ai/provider'
 import type { AIProtocol, AIConfig } from '@/lib/db/schema'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     const db = getDb()
     const config = await getAIConfig(db)
@@ -45,9 +46,9 @@ export async function GET() {
       error: error instanceof Error ? error.message : String(error),
     })
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const body = await request.json()
     const { protocol, apiUrl, apiKey } = body
@@ -99,4 +100,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : String(error),
     })
   }
-}
+})

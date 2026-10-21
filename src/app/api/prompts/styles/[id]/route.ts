@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { aiStyles } from '@/lib/db/schema'
@@ -5,7 +6,7 @@ import { updateAIStyle, deleteAIStyle, setDefaultStyle } from '@/lib/ai/styles'
 import { aiStyleSchema } from '@/lib/validations'
 import { eq } from 'drizzle-orm'
 
-export async function GET(
+export const GET = withAuth(async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -28,9 +29,9 @@ export async function GET(
       { status: 500 },
     )
   }
-}
+})
 
-export async function PUT(
+export const PUT = withAuth(async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -62,9 +63,9 @@ export async function PUT(
       { status: 500 },
     )
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -87,10 +88,10 @@ export async function DELETE(
       { status: 500 },
     )
   }
-}
+})
 
 /** PATCH: 设为默认风格 */
-export async function PATCH(
+export const PATCH = withAuth(async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -112,4 +113,4 @@ export async function PATCH(
       { status: 500 },
     )
   }
-}
+})

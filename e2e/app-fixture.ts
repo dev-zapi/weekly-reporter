@@ -38,6 +38,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
       XDG_DATA_HOME: path.join(root, 'data'),
       XDG_CONFIG_HOME: path.join(root, 'config'),
       NEXT_TELEMETRY_DISABLED: '1',
+      WR_AUTH_DISABLED: '1',
     }
     if (nextServerMode === 'production') {
       await runToCompletion(nextBuildArgs(), { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'] })

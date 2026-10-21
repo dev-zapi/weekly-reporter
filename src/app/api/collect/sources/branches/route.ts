@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -9,7 +10,7 @@ import { getCurrentBranch } from '@/lib/collect/adapters/local-git-adapter'
 
 const execFileAsync = promisify(execFile)
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || ''
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
   } catch {
     return NextResponse.json({ branches: [] })
   }
-}
+})
 
 async function getLocalBranches(repoPath: string): Promise<string[]> {
   try {

@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -48,7 +49,7 @@ export function PlanItemPreviewDialog({ itemId, onClose, onGoToPlans }: PlanItem
 
     setLoading(true)
     setNotFound(false)
-    fetch(`/api/plan-items/${itemId}`)
+    apiFetch(`/api/plan-items/${itemId}`)
       .then((res) => {
         if (res.status === 404) {
           setNotFound(true)

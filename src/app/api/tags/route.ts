@@ -1,8 +1,9 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { listTagsWithCounts, removeTagGlobally, TAG_CHARSET_REGEX } from '@/lib/tags'
 
-export async function GET() {
+export const GET = withAuth(async function GET() {
   try {
     const db = getDb()
     const tags = listTagsWithCounts(db)
@@ -11,9 +12,9 @@ export async function GET() {
     console.error('Error fetching tags:', error)
     return NextResponse.json({ error: 'Failed to fetch tags', code: 'FETCH_ERROR' }, { status: 500 })
   }
-}
+})
 
-export async function DELETE(request: Request) {
+export const DELETE = withAuth(async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const name = searchParams.get('name') ?? ''
@@ -27,4 +28,4 @@ export async function DELETE(request: Request) {
     console.error('Error removing tag:', error)
     return NextResponse.json({ error: 'Failed to remove tag', code: 'DELETE_ERROR' }, { status: 500 })
   }
-}
+})

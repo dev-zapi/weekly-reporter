@@ -1,3 +1,4 @@
+import { apiFetch } from '@/lib/api-client'
 import { useEffect, useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { CollectSource } from '../CollectSourceList'
@@ -132,7 +133,7 @@ export function useSourceListQuery(): {
         params.set('sortBy', sortBy)
         params.set('sortOrder', sortOrder)
       }
-      const res = await fetch(`/api/collect/sources?${params}`)
+      const res = await apiFetch(`/api/collect/sources?${params}`)
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))

@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { rawEvents, RawEvent, eventTags } from '@/lib/db/schema'
@@ -8,7 +9,7 @@ import { parsePlanReferences, syncEventPlanReferences, deleteEventPlanReferences
 
 type EventUpdateData = Partial<Pick<RawEvent, 'content' | 'eventTime' | 'isImportant' | 'updatedAt'>>
 
-export async function GET(
+export const GET = withAuth(async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -49,9 +50,9 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})
 
-export async function PUT(
+export const PUT = withAuth(async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -147,9 +148,9 @@ export async function PUT(
       { status: 500 }
     )
   }
-}
+})
 
-export async function DELETE(
+export const DELETE = withAuth(async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -195,4 +196,4 @@ export async function DELETE(
       { status: 500 }
     )
   }
-}
+})

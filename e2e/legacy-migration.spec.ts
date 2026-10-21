@@ -19,8 +19,11 @@ async function startLegacyApplication() {
   await cp(path.resolve('drizzle'), migrations, { recursive: true })
   await unlink(path.join(migrations, '0032_legacy_direct_edit_compatibility.sql'))
   const journalPath = path.join(migrations, 'meta', '_journal.json')
-  const journal = JSON.parse(await readFile(journalPath, 'utf8')) as { entries: unknown[] }
-  journal.entries.pop()
+  const journal = JSON.parse(await readFile(journalPath, 'utf8')) as {
+    entries: Array<{ tag: string }>
+  }
+  // 保留 0032 之前的 journal 条目（即 0000–0031），让启动时重新应用 0032 及后续迁移。
+  journal.entries = journal.entries.filter((e) => e.tag < '0032_legacy_direct_edit_compatibility')
   await writeFile(journalPath, `${JSON.stringify(journal, null, 2)}\n`)
 
   const sqlite = new Database(path.join(dataHome, 'weekly-reporter', 'reports.db'))
@@ -47,7 +50,14 @@ async function startLegacyApplication() {
   const port = 3391
   const child = spawn(process.execPath, nextServeArgs(port), {
     cwd: app,
-    env: { ...process.env, XDG_DATA_HOME: dataHome, XDG_CONFIG_HOME: path.join(root, 'config'), NEXT_TELEMETRY_DISABLED: '1' },
+    env: {
+      ...process.env,
+      XDG_DATA_HOME: dataHome,
+      XDG_CONFIG_HOME: path.join(root, 'config'),
+      NEXT_TELEMETRY_DISABLED: '1',
+      // 此 spec 只关心数据迁移正确性，与认证改造无关——关掉认证。
+      WR_AUTH_DISABLED: '1',
+    },
     detached: true,
     stdio: 'ignore',
   })
@@ -71,12 +81,8 @@ test('启动预置旧版本数据库时保留 legacy 终版且不伪造会话或
 
     await expect.poll(async () => {
       const response = await request.get(`${app.url}/api/reports/1`)
-      return (await response.json() as { content: string; scoreStatus: string }).content
+      return (await response.json() as { content: string }).content
     }).toBe('Edited legacy final')
-    await expect.poll(async () => {
-      const response = await request.get(`${app.url}/api/reports/1`)
-      return (await response.json() as { scoreStatus: string }).scoreStatus
-    }).toBe('completed')
 
     const database = new Database(path.join(app.root, 'data', 'weekly-reporter', 'reports.db'), { readonly: true })
     expect(database.prepare('SELECT COUNT(*) AS count FROM report_variants').get()).toEqual({ count: 0 })

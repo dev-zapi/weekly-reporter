@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import type { ZodError } from 'zod'
 import { getDb } from '@/lib/db'
@@ -17,7 +18,7 @@ const COLUMN_MAP = {
   status: collectSources.status,
 }
 
-export async function GET(request: Request) {
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const { searchParams } = new URL(request.url)
@@ -94,9 +95,9 @@ export async function GET(request: Request) {
       { status: 500 }
     )
   }
-}
+})
 
-export async function POST(request: Request) {
+export const POST = withAuth(async function POST(request: Request) {
   try {
     const db = getDb()
     const body = await request.json()
@@ -169,4 +170,4 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-}
+})

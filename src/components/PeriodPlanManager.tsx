@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -65,7 +66,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     setError(null)
     try {
       const query = new URLSearchParams(getPeriodParams()).toString()
-      const response = await fetch(`/api/plans?${query}`)
+      const response = await apiFetch(`/api/plans?${query}`)
       if (!response.ok) throw new Error('Failed to load plan')
       const data: PlanResponse = await response.json()
       setItems(data.items)
@@ -89,7 +90,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     if (scope !== 'week') return
     const controller = new AbortController()
     const month = getWeekPeriodRange(currentDate).start.slice(0, 7)
-    void fetch(`/api/plans?scope=month&month=${month}`, { signal: controller.signal })
+    void apiFetch(`/api/plans?scope=month&month=${month}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to load parent options')
         const data: PlanResponse = await response.json()
@@ -105,7 +106,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     const text = newItemText.trim()
     if (!text) return
     try {
-      const response = await fetch('/api/plan-items', {
+      const response = await apiFetch('/api/plan-items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...getPeriodParams(), text, projectScope: 'work' }),
@@ -121,7 +122,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
 
   const handleUpdateItem = async (id: number, updates: Partial<PeriodPlanItem>) => {
     try {
-      const response = await fetch(`/api/plan-items/${id}`, {
+      const response = await apiFetch(`/api/plan-items/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
@@ -136,7 +137,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
 
   const handleDeleteItem = async (id: number) => {
     try {
-      const response = await fetch(`/api/plan-items/${id}`, { method: 'DELETE' })
+      const response = await apiFetch(`/api/plan-items/${id}`, { method: 'DELETE' })
       if (!response.ok) throw new Error('Failed to delete item')
       // DELETE returns 200 JSON {deleted: true} (no longer 204). Referrer
       // warnings are surfaced pre-deletion via the confirm dialog's GET.
@@ -150,7 +151,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
 
   const handleDeferItem = async (id: number) => {
     try {
-      const response = await fetch(`/api/plan-items/${id}/defer`, { method: 'POST' })
+      const response = await apiFetch(`/api/plan-items/${id}/defer`, { method: 'POST' })
       if (!response.ok) throw new Error('Failed to defer item')
       await fetchPlan()
     } catch (err) {
@@ -167,12 +168,12 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     const current = items[index]
     const neighbour = items[swapIndex]
     await Promise.all([
-      fetch(`/api/plan-items/${current.id}`, {
+      apiFetch(`/api/plan-items/${current.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ position: neighbour.position }),
       }),
-      fetch(`/api/plan-items/${neighbour.id}`, {
+      apiFetch(`/api/plan-items/${neighbour.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ position: current.position }),

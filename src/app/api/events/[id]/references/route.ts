@@ -1,10 +1,11 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { rawEvents } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { findReferrers } from '@/lib/references'
 
-export async function GET(
+export const GET = withAuth(async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -40,4 +41,4 @@ export async function GET(
       { status: 500 }
     )
   }
-}
+})

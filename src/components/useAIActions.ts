@@ -1,4 +1,5 @@
 'use client'
+import { apiFetch } from '@/lib/api-client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -137,7 +138,7 @@ export function useAIActions(props: UseAIActionsProps) {
     setError(null)
 
     try {
-      const response = await fetch(config.endpoint, {
+      const response = await apiFetch(config.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config.buildBody(content, props)),

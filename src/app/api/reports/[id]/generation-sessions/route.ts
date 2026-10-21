@@ -1,3 +1,4 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import type { AudienceVariant } from '@/lib/db/schema'
 import {
@@ -22,7 +23,7 @@ function failure(error: unknown) {
   return NextResponse.json({ error: 'Generation session operation failed', code: 'GENERATION_SESSION_ERROR' }, { status: 500 })
 }
 
-export async function GET(request: Request, { params }: RouteContext) {
+export const GET = withAuth(async function GET(request: Request, { params }: RouteContext) {
   const reportId = reportIdFrom((await params).id)
   if (reportId == null) return NextResponse.json({ error: 'Invalid report ID', code: 'INVALID_ID' }, { status: 400 })
   const value = new URL(request.url).searchParams.get('variant')
@@ -32,9 +33,9 @@ export async function GET(request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})
 
-export async function POST(request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(request: Request, { params }: RouteContext) {
   const reportId = reportIdFrom((await params).id)
   if (reportId == null) return NextResponse.json({ error: 'Invalid report ID', code: 'INVALID_ID' }, { status: 400 })
   try {
@@ -56,4 +57,4 @@ export async function POST(request: Request, { params }: RouteContext) {
   } catch (error) {
     return failure(error)
   }
-}
+})

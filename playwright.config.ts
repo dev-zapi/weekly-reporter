@@ -12,6 +12,9 @@ const e2eRunId = randomUUID()
  */
 export default defineConfig({
   testDir: './e2e',
+  // 认证专项用例在独立的 e2e/auth.config.ts 下跑（认证开启）。这里显式忽略，
+  // 避免默认套件（WR_AUTH_DISABLED=1）把它一起跑了导致断言失败。
+  testIgnore: /auth\.spec\.ts$/,
   globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -41,6 +44,9 @@ export default defineConfig({
       XDG_DATA_HOME: path.join(os.tmpdir(), `weekly-reporter-e2e-data-${e2eRunId}`),
       XDG_CONFIG_HOME: path.join(os.tmpdir(), `weekly-reporter-e2e-config-${e2eRunId}`),
       E2E_FIXTURES: '1',
+      // 默认关闭认证：现有 spec 不受认证改造影响（与 vitest 的 setup.ts 对齐）。
+      // 认证开启场景见 e2e/auth.config.ts。
+      WR_AUTH_DISABLED: '1',
     },
   },
 })

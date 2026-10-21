@@ -6,7 +6,7 @@ description: >-
 
 You are the writer. The weekly-reporter app has its own chat-driven generation AI, but through this skill you author finals as its **peer**: you consume the same inputs it does (source draft, template, AI style), write the final yourself, and save it through the same API. The user must get the same quality and the same safety guarantees either way.
 
-All scripts talk to a running weekly-reporter server (built-in `fetch`, Node 18+, no deps). They read `WEEKLY_REPORTER_URL` from env, defaulting to `http://localhost:6868`.
+All scripts talk to a running weekly-reporter server (built-in `fetch`, Node 18+, no deps). They read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`, defaulting the base URL to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## Prerequisites
 
@@ -97,6 +97,7 @@ Otherwise: apply only the requested changes to the existing text (it is the user
 
 | Situation | Meaning | What to do |
 |---|---|---|
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_URL` |
 | `SOURCE_REVISION_CONFLICT` (409) on save | Draft regenerated since you read it | Re-read source, rebase your text on the new draft, re-review, re-save |
 | Empty draft on preview/create | No events in range | Stop; suggest sync or date fix |

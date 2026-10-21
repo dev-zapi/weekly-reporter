@@ -1,9 +1,10 @@
+import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { acceptGenerationProposal, GenerationServiceError } from '@/lib/generation/service'
 
 type RouteContext = { params: Promise<{ id: string; sessionId: string; proposalId: string }> }
 
-export async function POST(_request: Request, { params }: RouteContext) {
+export const POST = withAuth(async function POST(_request: Request, { params }: RouteContext) {
   const values = await params
   const reportId = Number.parseInt(values.id, 10)
   const sessionId = Number.parseInt(values.sessionId, 10)
@@ -20,4 +21,4 @@ export async function POST(_request: Request, { params }: RouteContext) {
     console.error('accept generation proposal error:', error)
     return NextResponse.json({ error: '保存候选终版失败', code: 'ACCEPT_PROPOSAL_ERROR' }, { status: 500 })
   }
-}
+})
