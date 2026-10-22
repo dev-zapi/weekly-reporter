@@ -1,3 +1,5 @@
+import type { LucideIcon } from 'lucide-react'
+import { ArrowRight, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
 import type { PeriodPlanItemStatus } from '@/lib/db/schema'
 
 /**
@@ -24,3 +26,15 @@ export const PLAN_ITEM_STATUS_COLORS: Record<PeriodPlanItemStatus, string> = {
 export const PLAN_ITEM_STATUS_ORDER = Object.keys(
   PLAN_ITEM_STATUS_LABELS,
 ) as PeriodPlanItemStatus[]
+
+/**
+ * Icon for each status, used in filter checkboxes and inline status badges.
+ * Kept in the same key order as the labels so display stays consistent.
+ */
+export const PLAN_ITEM_STATUS_ICONS: Record<PeriodPlanItemStatus, LucideIcon> = {
+  planned: Circle,
+  in_progress: LoaderCircle,
+  done: CircleCheck,
+  cancelled: CircleX,
+  deferred: ArrowRight,
+}

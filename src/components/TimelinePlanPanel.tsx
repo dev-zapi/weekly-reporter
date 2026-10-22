@@ -4,34 +4,107 @@ import { apiFetch } from '@/lib/api-client'
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { Briefcase, LoaderCircle, User } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { PLAN_ITEM_STATUS_COLORS, PLAN_ITEM_STATUS_LABELS } from '@/lib/plan-item-display'
-import type { PeriodPlan, PeriodPlanItem } from '@/lib/db/schema'
+import {
+  PLAN_ITEM_STATUS_COLORS,
+  PLAN_ITEM_STATUS_ICONS,
+  PLAN_ITEM_STATUS_LABELS,
+  PLAN_ITEM_STATUS_ORDER,
+} from '@/lib/plan-item-display'
+import type { PeriodPlan, PeriodPlanItem, PeriodPlanItemStatus } from '@/lib/db/schema'
 
 type ApiResponse = {
   plan: PeriodPlan | null
   items: PeriodPlanItem[]
 }
 
-function ProjectScopeBadge({ scope }: { scope: PeriodPlanItem['projectScope'] }) {
-  const Icon = scope === 'personal' ? User : Briefcase
+const DEFAULT_STATUS_FILTER: PeriodPlanItemStatus[] = ['planned', 'in_progress']
+
+type IconBadgeProps = {
+  Icon: LucideIcon
+  label: string
+  className?: string
+  /** Constrained to the two variants this helper actually renders. */
+  variant?: 'default' | 'outline'
+}
+
+/**
+ * A focusable, icon-only tooltip trigger. role="img" makes aria-label naming
+ * valid on this non-interactive display element; tabIndex gives native
+ * keyboard focus and lets the Tooltip primitive handle hover/focus uniformly.
+ */
+function IconBadge({ Icon, label, className, variant }: IconBadgeProps) {
   return (
-    <Badge variant="outline" className="gap-1">
-      <Icon className="h-3 w-3" />
-      {scope === 'personal' ? 'Personal' : 'Work'}
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Badge
+            variant={variant}
+            className={cn('gap-1 align-middle', className)}
+            role="img"
+            tabIndex={0}
+            aria-label={label}
+          />
+        }
+      >
+        <Icon className="h-3 w-3" aria-hidden="true" />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
-function StatusBadge({ status }: { status: PeriodPlanItem['status'] }) {
+function ProjectScopeBadge({ scope }: { scope: PeriodPlanItem['projectScope'] }) {
+  const Icon = scope === 'personal' ? User : Briefcase
   return (
-    <Badge className={PLAN_ITEM_STATUS_COLORS[status]}>
-      {PLAN_ITEM_STATUS_LABELS[status]}
-    </Badge>
+    <IconBadge
+      Icon={Icon}
+      label={`Project scope: ${scope === 'personal' ? 'Personal' : 'Work'}`}
+      variant="outline"
+    />
+  )
+}
+
+function StatusBadge({ status }: { status: PeriodPlanItemStatus }) {
+  return (
+    <IconBadge
+      Icon={PLAN_ITEM_STATUS_ICONS[status]}
+      label={`Status: ${PLAN_ITEM_STATUS_LABELS[status]}`}
+      className={PLAN_ITEM_STATUS_COLORS[status]}
+    />
+  )
+}
+
+function StatusFilter({
+  selected,
+  onToggle,
+}: {
+  selected: PeriodPlanItemStatus[]
+  onToggle: (status: PeriodPlanItemStatus) => void
+}) {
+  return (
+    <div role="group" aria-label="Filter plan items by status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      {PLAN_ITEM_STATUS_ORDER.map((status) => {
+        const Icon = PLAN_ITEM_STATUS_ICONS[status]
+        return (
+          <label key={status} className="flex cursor-pointer items-center gap-1.5 text-xs">
+            <Checkbox
+              checked={selected.includes(status)}
+              onCheckedChange={() => onToggle(status)}
+            />
+            <Icon className="h-3 w-3" aria-hidden="true" />
+            <span>{PLAN_ITEM_STATUS_LABELS[status]}</span>
+          </label>
+        )
+      })}
+    </div>
   )
 }
 
@@ -39,6 +112,8 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  // Status selection is panel-local and survives refetches; a full mount resets it.
+  const [selectedStatuses, setSelectedStatuses] = useState<PeriodPlanItemStatus[]>(DEFAULT_STATUS_FILTER)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -62,6 +137,24 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
 
     return () => controller.abort()
   }, [refreshKey])
+
+  const toggleStatus = (status: PeriodPlanItemStatus) => {
+    setSelectedStatuses((previous) => {
+      const next = previous.includes(status)
+        ? previous.filter((value) => value !== status)
+        : [...previous, status]
+      // Keep shared display order regardless of click order.
+      return PLAN_ITEM_STATUS_ORDER.filter((value) => next.includes(value))
+    })
+  }
+
+  // An empty selection means "no status filter applied" rather than "show nothing".
+  const visibleItems = !data
+    ? []
+    : selectedStatuses.length === 0
+      ? data.items
+      : data.items.filter((item) => selectedStatuses.includes(item.status))
+  const hasItemsButNoFilterMatches = !!data && data.items.length > 0 && visibleItems.length === 0
 
   return (
     <Card role="region" aria-label="Timeline plan table">
@@ -100,20 +193,26 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
           </div>
         ) : (
           <div className="space-y-3">
-            <ul className="space-y-2">
-              {data.items.map((item) => (
-                <li key={item.id} className="flex items-start gap-2 text-sm">
-                  <div className="flex-1 space-y-1">
-                    <div className="font-medium">{item.text}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <Badge variant="outline" className="font-mono text-xs">%{item.id}</Badge>
+            <StatusFilter selected={selectedStatuses} onToggle={toggleStatus} />
+            {hasItemsButNoFilterMatches ? (
+              <div className="py-3 text-sm text-muted-foreground">
+                No plan items match this filter.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {visibleItems.map((item) => (
+                  <li key={item.id} className="flex items-start gap-2 text-sm">
+                    <Badge variant="outline" className="shrink-0 font-mono text-xs">%{item.id}</Badge>
+                    <div className="flex-1 font-medium">
+                      {item.text}{' '}
                       <StatusBadge status={item.status} />
+                      {' '}
                       <ProjectScopeBadge scope={item.projectScope} />
                     </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
             <div className="pt-2 border-t">
               <Link
                 href="/plans"
