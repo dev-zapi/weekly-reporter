@@ -90,7 +90,7 @@ function StatusFilter({
   onToggle: (status: PeriodPlanItemStatus) => void
 }) {
   return (
-    <div role="group" aria-label="Filter plan items by status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+    <div role="group" aria-label="Filter plan items by status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b pb-3">
       {PLAN_ITEM_STATUS_ORDER.map((status) => {
         const Icon = PLAN_ITEM_STATUS_ICONS[status]
         return (
@@ -213,7 +213,7 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                 ))}
               </ul>
             )}
-            <div className="pt-2 border-t">
+            <div className="pt-2">
               <Link
                 href="/plans"
                 className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}
