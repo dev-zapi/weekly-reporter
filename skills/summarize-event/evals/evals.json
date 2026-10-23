@@ -1,0 +1,55 @@
+{
+  "skill_name": "summarize-event",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "week-plan-clear-match",
+      "prompt": "帮我把刚做完的这段工作总结记录到时间线：在 retail-platform 项目里完成了支付渠道沙箱环境的对接，联调和回归测试都过了。",
+      "expected_output": "Queries the current week plan (and month plan) via period-plans before composing, matches the work to the open '对接支付渠道沙箱环境' item, previews, and creates one manual event whose content carries a whitespace-bounded %id of that item. Distractor and done items are not referenced.",
+      "files": [],
+      "assertions": [
+        "event_created: exactly one new manual event exists on the server",
+        "plan_queried_first: a period-plans list (list.mjs or GET /api/plans) ran before the event create",
+        "correct_item_referenced: the created event contains a whitespace-bounded %1 reference to the sandbox-integration item",
+        "distractors_untouched: the created event contains no %2 or %3 reference"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "user-named-month-item",
+      "prompt": "总结记录一下：月度计划里“上线灰度发布能力”这条总算做完了，retail-platform 的灰度发布今天全量放开了。帮我记一条。",
+      "expected_output": "The user names a month-plan item by text, not id. The run queries the month plan (no week plan exists), resolves the named item to its %id from the list output only, and creates one manual event carrying a whitespace-bounded %id of the named item.",
+      "files": [],
+      "assertions": [
+        "event_created: exactly one new manual event exists on the server",
+        "month_plan_queried: the month plan list (list.mjs --scope month or GET /api/plans?scope=month) ran before the create",
+        "named_item_referenced: the created event contains a whitespace-bounded %1 reference to the 灰度发布 item"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "no-plan-skip",
+      "prompt": "帮我把这段工作总结一下记到时间线：把本地开发环境的依赖脚本重写了，从 yarn 切到 pnpm，构建时间快了一半。",
+      "expected_output": "No plans exist for the period. The plan lookup quietly finds nothing and the flow is unaffected: one manual event is created, with no %id token in it and no plan-related blocker or error derailing the run.",
+      "files": [],
+      "assertions": [
+        "event_created: exactly one new manual event exists on the server",
+        "no_plan_reference: the created event contains no %<digits> token",
+        "no_plan_derail: result.md shows no unresolved plan-related blocker (the summary completed normally)"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "ambiguous-ask",
+      "prompt": "总结一下记录：支付渠道那边收尾了，联调通过，回归也全绿。",
+      "expected_output": "The week plan holds two competing open items (联调 and 回归测试) that both plausibly match. The run surfaces the ambiguity — states the question it would ask the user with both candidates listed — rather than silently guessing; whatever it proceeds with, any %id in the created event is one of the two candidates, whitespace-bounded.",
+      "files": [],
+      "assertions": [
+        "event_created: exactly one new manual event exists on the server",
+        "ambiguity_surfaced: result.md presents both competing plan items (ids or texts) as candidates for the user to choose",
+        "no_wrong_guess: any %id in the created event is %1 or %2, whitespace-bounded",
+        "plan_queried_first: a plan list ran before the event create"
+      ]
+    }
+  ]
+}
