@@ -12,3 +12,18 @@
 
 > [!NOTE]
 > 本项目仍在开发中，且面向个人使用：未做任何认证与访问限制，仅建议在可信环境（如个人 Linux 服务器）中部署，不要直接暴露到公网。
+
+## 测试资源限制
+
+本项目没有 CI，测试全在本机跑，因此默认就压住资源占用（e2e 曾因并发过高触发 OOM，连累机器上的无关进程）：
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `E2E_WORKERS` | `1` | Playwright 并发 worker 数 |
+| `E2E_DEV_MEM` | `2048` | dev server 的 `--max-old-space-size`（MB） |
+| `E2E_MEM_MAX` | `8G` | 整跑 cgroup 内存硬上限 |
+| `E2E_CPU_QUOTA` | `300%` | 整跑 cgroup CPU 配额（3 核） |
+| `E2E_BUNDLER` | 空 | 设为 `webpack` 时 dev server 回退到 webpack |
+| `VITEST_MAX_WORKERS` | `2` | vitest 并发 worker 数 |
+
+`npm run test:e2e` 通过 `scripts/run-e2e.mjs` 把整个测试进程树包进 `systemd-run --user --scope`：撞到上限时 OOM kill 只发生在 scope 内部（测试死、机器活）。机器上没有 `systemd-run` 时自动降级为直接跑 Playwright，config 里的 worker / 堆上限依然生效；`E2E_NO_SCOPE=1` 可强制跳过包装。`npm run test:e2e:ui` 是人工交互模式，不包装。

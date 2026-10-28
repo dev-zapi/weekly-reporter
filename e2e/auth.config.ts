@@ -54,6 +54,10 @@ export default defineConfig({
       XDG_DATA_HOME: AUTH_XDG_DATA_HOME,
       XDG_CONFIG_HOME: AUTH_XDG_CONFIG_HOME,
       E2E_FIXTURES: '1',
+      // 与默认套件同样的 dev server 堆上限（见 playwright.config.ts / README）。
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 2048}`]
+        .filter(Boolean)
+        .join(' '),
       // 注意：刻意不设置 WR_AUTH_DISABLED——认证开启模式
     },
   },
