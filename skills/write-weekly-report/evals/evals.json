@@ -5,14 +5,14 @@
       "id": 1,
       "name": "author-new-week-approval-gate",
       "prompt": "帮我写第 38 周（2026-09-14 到 2026-09-20）的周报，领导版和个人版都要。模板用官方的技术研发模板。写好先给我看全文，我确认了再保存。",
-      "expected_output": "Agent previews the week, reuses/creates the report, reads both variants' source drafts, shows two complete final drafts (technical template structure, plan section ≤5 items), and asks for approval. No save happens because no approval was given: both variants' finalStatus remain 'none' in the app.",
+      "expected_output": "Agent previews the week, reuses/creates the report, reads both variants' source drafts, shows two complete final drafts (technical template structure, plan section as a concise plain list with no item cap), and asks for approval. No save happens because no approval was given: both variants' finalStatus remain 'none' in the app.",
       "files": []
     },
     {
       "id": 2,
-      "name": "carry-forward-reference",
-      "prompt": "该写这周的周报了（2026-09-14 到 2026-09-20），先只要领导版。上周的终版你参考一下，下周计划该结转的结转、该丢的丢，说清楚理由。写完给我过目再存。",
-      "expected_output": "Agent reads the previous week's (2026-09-07..13) current leadership final, extracts its 下周计划 items, drafts this week's leadership final whose plan carries still-relevant items and drops finished ones, and presents an explicit carry/drop list with one-line reasons alongside the full draft. No save without approval.",
+      "name": "plan-section-follows-template",
+      "prompt": "该写这周的周报了（2026-09-14 到 2026-09-20），先只要领导版。上周的终版你可以参考一下，但不是事实来源。写完给我过目再存。",
+      "expected_output": "Agent reads the week's leadership source draft, treats the previous week's (2026-09-07..13) current leadership final as optional reference rather than fact, and writes a 下周计划 section as a concise plain-text list when the chosen template includes it (no item cap). It presents the full draft for approval; if it consulted last week's final it also lists what it carried and dropped with one-line reasons. No save without approval.",
       "files": []
     },
     {

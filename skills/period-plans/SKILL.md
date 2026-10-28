@@ -10,7 +10,7 @@ Manage period plans via five Node.js scripts. All scripts use built-in `fetch` (
 
 This skill covers the independent period-plan entity (week and month plans with items, statuses, deferral). It does NOT cover:
 
-- The "下周计划" (next week plan) section inside weekly reports — that belongs to the `weekly-reports` / `write-weekly-report` skill
+- The "下周计划" (next week plan) section inside weekly reports — that is plain report prose, not a plan mechanism; it belongs to the `weekly-reports` / `write-weekly-report` skill
 - Single timeline events — those belong to the `timeline-events` skill
 
 Period plans are independent entities that exist before, during, and after reports. They are not attached to any report.

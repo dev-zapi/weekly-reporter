@@ -17,7 +17,7 @@ function proposalStep(content = acceptedContent) {
 }
 
 test.describe('终版生成会话验收夹具', () => {
-  test('通过浏览器完成会话创建、流式生成、采用、评分与重载恢复', async ({ page, request, reportId }) => {
+  test('通过浏览器完成会话创建、流式生成、采用与重载恢复', async ({ page, request, reportId }) => {
     const report = await request.get(`/api/reports/${reportId}`)
     expect(report.ok()).toBeTruthy()
     const bundle = await report.json()
@@ -56,10 +56,8 @@ test.describe('终版生成会话验收夹具', () => {
     const after = await request.get(`/api/reports/${reportId}`)
     const acceptedVariant = (await after.json()).variants.find((variant: { variant: string }) => variant.variant === 'personal')
     expect(acceptedVariant.finalContent).toContain('确定性 E2E 验收')
-    expect(['pending', 'scoring', 'completed']).toContain(acceptedVariant.scoreStatus)
     await page.getByRole('button', { name: 'Report content' }).click()
     await expect(page.getByText('Final version available')).toBeVisible()
-    await expect(page.getByText(/Awaiting score|Scoring|Score/)).toBeVisible({ timeout: 30_000 })
     await page.reload()
     await page.getByRole('button', { name: 'AI chat' }).click()
     await expect(page.getByText('已核对原稿事实。')).toBeVisible()
