@@ -11,7 +11,17 @@ function scenarioWeek(scenario: string): { weekStart: string; weekEnd: string } 
   return { weekStart: `2027-01-${String(day).padStart(2, '0')}`, weekEnd: `2027-01-${String(day + 6).padStart(2, '0')}` }
 }
 
-export const test = base.extend<Fixtures>({
+export const test = base.extend<Fixtures & { generousTimeout: void }>({
+  /**
+   * 自动放宽用例超时（30s → 90s）：走 worker app 夹具的用例都是「创建会话 →
+   * 多轮流式往返 → 采用/重载」的重流程，dev 模式下还可能吃到路由冷编译
+   * （app-fixture 已预热，这里再留余量）。放在共享 fixture 而不是各 spec 的
+   * beforeEach 里重复。
+   */
+  generousTimeout: [async ({}, use, testInfo) => {
+    testInfo.setTimeout(90_000)
+    await use()
+  }, { auto: true }],
   scenario: async ({}, use, testInfo) => {
     await use(`e2e-${testInfo.workerIndex}-${testInfo.retry}-${testInfo.testId}`)
   },
