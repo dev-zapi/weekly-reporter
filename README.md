@@ -23,7 +23,9 @@
 | `E2E_DEV_MEM` | `2048` | dev server 的 `--max-old-space-size`（MB） |
 | `E2E_MEM_MAX` | `8G` | 整跑 cgroup 内存硬上限 |
 | `E2E_CPU_QUOTA` | `300%` | 整跑 cgroup CPU 配额（3 核） |
-| `E2E_BUNDLER` | 空 | 设为 `webpack` 时 dev server 回退到 webpack |
+| `E2E_BUNDLER` | `webpack` | `turbopack` 时 dev server 改用 Turbopack（默认 webpack，见下） |
 | `VITEST_MAX_WORKERS` | `2` | vitest 并发 worker 数 |
 
 `npm run test:e2e` 通过 `scripts/run-e2e.mjs` 把整个测试进程树包进 `systemd-run --user --scope`：撞到上限时 OOM kill 只发生在 scope 内部（测试死、机器活）。机器上没有 `systemd-run` 时自动降级为直接跑 Playwright，config 里的 worker / 堆上限依然生效；`E2E_NO_SCOPE=1` 可强制跳过包装。`npm run test:e2e:ui` 是人工交互模式，不包装。
+
+dev server 用 `--webpack` 而不是 Next 16 默认的 Turbopack：实测（#64）Turbopack 的 `next dev` 在 2.5 / 4.1 分钟就把 8G 上限吃穿（native 内存，`--max-old-space-size` 管不到），整跑被 OOM kill；webpack 能跑完整套件且 `memory.peak` 不超上限。升级 Next 后想重测用 `E2E_BUNDLER=turbopack`。

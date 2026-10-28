@@ -122,12 +122,12 @@ if (process.env[IN_SCOPE_FLAG] === '1') {
         `max=${stats.maxEvents} oom_kill=${stats.oomKill}`,
     )
   }
-  process.exit(status)
-}
-
-if (process.env.E2E_NO_SCOPE === '1' || !canUseSystemdScope()) {
+  // Exit code only: `process.exit()` here would truncate the stats line when
+  // stdout is a pipe (the write is still buffered).
+  process.exitCode = status
+} else if (process.env.E2E_NO_SCOPE === '1' || !canUseSystemdScope()) {
   console.log('[run-e2e] running playwright without a cgroup scope (workers/heap caps still apply)')
-  process.exit(runPlaywright(extraArgs))
+  process.exitCode = runPlaywright(extraArgs)
+} else {
+  process.exitCode = runInsideScope(extraArgs)
 }
-
-process.exit(runInsideScope(extraArgs))
