@@ -329,21 +329,4 @@ describe('TimelinePlanPanel', () => {
 
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
-
-  it('does not call /api/timeline/plans', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve({ plan: null, items: [] }),
-    })
-
-    render(<TimelinePlanPanel />)
-
-    await waitFor(() => {
-      expect(mockFetch).toHaveBeenCalled()
-    })
-
-    const calls = mockFetch.mock.calls
-    const hasOldApiCall = calls.some(call => call[0].includes('/api/timeline/plans'))
-    expect(hasOldApiCall).toBe(false)
-  })
 })

@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEffectiveGenerationSystemPrompt,
-  buildCarryForwardContext,
   buildModelSystemContext,
   buildSourceOverview,
 } from './context'
-import { normalizeCarryForwardSnapshot } from './carry-forward'
 
 describe('generation context', () => {
   it('creates a deterministic compact overview without replacing the full source', () => {
@@ -36,6 +34,8 @@ describe('generation context', () => {
     expect(context).toContain('- 完整事实 A\n- 完整事实 B')
     expect(context).toContain('# 本周成果')
     expect(context).toContain('# 上一版')
+    expect(context).not.toContain('计划结转')
+    expect(context).not.toContain('计划覆盖记录')
   })
 
   it('makes the configured generation prompt visible inside the effective prompt', () => {
@@ -44,34 +44,10 @@ describe('generation context', () => {
     expect(result).toContain('propose_final_report')
   })
 
-  it('labels the carry-forward input as untrusted historical reference', () => {
-    const context = buildCarryForwardContext({
-      ...normalizeCarryForwardSnapshot(null),
-      status: 'found',
-      source: {
-        reportId: 12,
-        title: 'Previous report',
-        audience: 'personal',
-        weekStart: '2026-08-03',
-        weekEnd: '2026-08-09',
-        finalStatus: 'current',
-        acceptedProposalId: 4,
-        updatedAt: '2026-08-09T00:00:00.000Z',
-      },
-      planText: '## 下周计划\n- Carry this item',
-      parseStatus: 'found',
-      parseReason: null,
-      candidates: [{
-        candidateId: 'carry-forward-test',
-        text: 'Carry this item',
-        normalizedText: 'carry this item',
-        source: 'carry-forward',
-        judgment: null,
-        reason: null,
-      }],
-    })
-    expect(context).toContain('历史参考·不可信')
-    expect(context).toContain('carry-forward-test')
-    expect(context).toContain('不是本周事实')
+  it('applies the next-week plan only as a soft template-governed style rule', () => {
+    const result = buildEffectiveGenerationSystemPrompt('只允许原稿事实')
+    expect(result).toContain('若模板包含「下周计划」章节，以简洁列表陈述下周重点事项；模板未包含或明确禁止时，不添加该章节。')
+    expect(result).not.toContain('plan.judgments')
+    expect(result).not.toContain('最多保留五项')
   })
 })

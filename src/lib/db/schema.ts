@@ -1,5 +1,4 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
-import type { StructureCompletenessRule } from '@/lib/reports/structure-completeness'
 
 export type AudienceVariant = 'leadership' | 'personal'
 export type FinalStatus = 'none' | 'current' | 'stale'
@@ -19,9 +18,21 @@ export type GenerationMessagePartType =
   | 'error'
   | 'proposal-accepted'
 export type GenerationProposalStatus = 'pending' | 'accepted' | 'superseded'
+/** @deprecated 报告侧计划机制已随 ADR-0021 移除；仅用于历史 generation_plan_judgments 行。 */
 export type PlanJudgment = 'carry' | 'drop' | 'uncertain'
+/** @deprecated 报告侧计划机制已随 ADR-0021 移除；仅用于历史 generation_plan_overrides 行。 */
 export type PlanOverrideAction = 'keep' | 'drop' | 'rewrite' | 're-add'
+/** @deprecated 报告侧计划机制已随 ADR-0021 移除；仅用于历史 generation_plan_overrides 行。 */
 export type PlanOverrideSource = 'carry-forward' | 'this-week-new' | 'baseline'
+
+/**
+ * @deprecated ADR-0021 移除了下周计划结构完整度契约；此类型仅为已弃用的
+ * `report_variants.structure_completeness_rule` 列保留，不再写入新值。
+ */
+export interface StructureCompletenessRule {
+  version: string
+  nextWeekPlan: 'required' | 'forbidden'
+}
 
 export const reports = sqliteTable('reports', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -50,7 +61,7 @@ export const reportVariants = sqliteTable('report_variants', {
   templateId: text('template_id'),
   templateName: text('template_name'),
   templateContent: text('template_content'),
-  /** Immutable structure-completeness contract captured when this final is adopted. */
+  /** @deprecated ADR-0021 移除了下周计划结构完整度契约；历史终版保留旧值，不再写入。 */
   structureCompletenessRule: text('structure_completeness_rule', { mode: 'json' }).$type<StructureCompletenessRule>(),
   aiStyle: text('ai_style').$type<AIStyle>(),
   acceptedProposalId: integer('accepted_proposal_id'),
@@ -106,9 +117,10 @@ export const generationSessions = sqliteTable('generation_sessions', {
   temperature: text('temperature').notNull(),
   systemPrompt: text('system_prompt').notNull(),
   toolRules: text('tool_rules').notNull(),
+  /** @deprecated ADR-0021 移除了报告侧计划机制；历史会话保留旧值，不再写入。 */
   planPolicy: text('plan_policy').$type<'forbidden' | 'required'>(),
   baselineFinalContent: text('baseline_final_content'),
-  /** JSON snapshot of the exact previous-cycle plan reference, nullable for legacy sessions. */
+  /** @deprecated ADR-0021 移除了计划结转快照；历史会话保留旧 JSON，不再写入。 */
   carryForwardSnapshot: text('carry_forward_snapshot'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
@@ -161,6 +173,7 @@ export const generationProposals = sqliteTable('generation_proposals', {
   summary: text('summary', { mode: 'json' }).notNull().$type<string[]>(),
   sourceRevision: integer('source_revision').notNull(),
   status: text('status').notNull().default('pending').$type<GenerationProposalStatus>(),
+  /** @deprecated ADR-0021 移除了报告侧计划状态；历史提案保留旧 JSON，不再写入。 */
   planState: text('plan_state', { mode: 'json' }).$type<Record<string, unknown>>(),
   /** Structured public audit summary; null only for proposals created before issue #23. */
   publicSummary: text('public_summary', { mode: 'json' }).$type<Record<string, unknown>>(),
@@ -173,7 +186,10 @@ export const generationProposals = sqliteTable('generation_proposals', {
 export type GenerationProposal = typeof generationProposals.$inferSelect
 export type NewGenerationProposal = typeof generationProposals.$inferInsert
 
-/** First-session-only, publicly explained judgments for carry-forward candidates. */
+/**
+ * @deprecated ADR-0021 移除了报告侧计划机制；此表仅保留历史数据，不再写入。
+ * 报告删除时仍会清理对应行。
+ */
 export const generationPlanJudgments = sqliteTable('generation_plan_judgments', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sessionId: integer('session_id').notNull(),
@@ -190,7 +206,10 @@ export const generationPlanJudgments = sqliteTable('generation_plan_judgments', 
 export type GenerationPlanJudgment = typeof generationPlanJudgments.$inferSelect
 export type NewGenerationPlanJudgment = typeof generationPlanJudgments.$inferInsert
 
-/** User-authored, append-only plan decisions scoped to one generation session. */
+/**
+ * @deprecated ADR-0021 移除了报告侧计划机制；此表仅保留历史数据，不再写入。
+ * 报告删除时仍会清理对应行。
+ */
 export const generationPlanOverrides = sqliteTable('generation_plan_overrides', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   sessionId: integer('session_id').notNull(),

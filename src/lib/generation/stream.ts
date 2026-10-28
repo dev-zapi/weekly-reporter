@@ -16,7 +16,6 @@ import {
   startGenerationTurn,
   updateGenerationPart,
 } from './service'
-import type { PlanState } from './plan'
 import type { PublicGenerationSummary } from './public-summary'
 import {
   type ReportListToolResult,
@@ -33,7 +32,6 @@ export type GenerationStreamProposal = {
   status: string
   sourceRevision: number
   createdAt: Date
-  planState?: PlanState | null
   publicSummary?: PublicGenerationSummary | null
   baselineContent?: string | null
 }
@@ -51,7 +49,6 @@ export type ReviewableProposal = {
   status: string
   sourceRevision: number
   createdAt: string | Date
-  planState?: PlanState | null
   publicSummary?: PublicGenerationSummary | null
   baselineContent?: string | null
   referenceChanged?: boolean
@@ -191,11 +188,6 @@ export async function prepareGenerationTurn(input: {
   const transcriptCharacters = detail.messages.reduce((total, part) => total
     + (part.content?.length ?? 0)
     + (part.data ? JSON.stringify(part.data).length : 0), 0)
-  const overrideCharacters = (detail.planOverrides ?? []).reduce((total, item) => total
-    + item.itemId.length
-    + item.action.length
-    + item.source.length
-    + (item.replacementText?.length ?? 0), 0)
   const contextCharacters = detail.sourceDraftSnapshot.length
     + detail.templateContent.length
     + detail.systemPrompt.length
@@ -204,7 +196,6 @@ export async function prepareGenerationTurn(input: {
     + (detail.baselineFinalContent?.length ?? 0)
     + latestProposal.length
     + transcriptCharacters
-    + overrideCharacters
   if (contextCharacters > 450_000) {
     throw new GenerationServiceError('会话上下文接近上限，请从当前终版创建新会话后继续。', 'CONTEXT_LIMIT', 409)
   }
@@ -247,8 +238,6 @@ export function createGenerationEventStream(input: Awaited<ReturnType<typeof pre
       let lastTextFlush = 0
       let lastReasoningFlush = 0
       let finalStatus: 'completed' | 'aborted' = 'completed'
-      let providerFinished = false
-      let providerFinishReason: string | null = null
       const pendingToolNames = new Map<string, string>()
       const toolStartedAt = new Map<string, number>()
       const budget: GenerationToolBudget = { history: 0, content: 0 }
@@ -315,9 +304,6 @@ export function createGenerationEventStream(input: Awaited<ReturnType<typeof pre
           sourceDraft: input.detail.sourceDraftSnapshot,
           baselineFinalContent: input.detail.baselineFinalContent,
           latestProposalContent: latestProposal?.content,
-          carryForwardSnapshot: input.detail.carryForwardSnapshot,
-          planJudgments: input.detail.planJudgments,
-          planOverrides: input.detail.planOverrides,
           historicalReportListResults: persistedReportListResults(input.detail),
           historicalReportContentResults: persistedReportContentResults(input.detail),
         })
@@ -412,15 +398,11 @@ export function createGenerationEventStream(input: Awaited<ReturnType<typeof pre
                   status: proposal.status,
                   sourceRevision: proposal.sourceRevision,
                   createdAt: proposal.createdAt,
-                  planState: proposal.planState ? (proposal.planState as unknown as PlanState) : null,
                   publicSummary: proposal.publicSummary ? (proposal.publicSummary as unknown as PublicGenerationSummary) : null,
                   baselineContent: proposal.baselineContent,
                 },
               })
             }
-          } else if (part.type === 'finish') {
-            providerFinished = true
-            providerFinishReason = part.finishReason
           } else if (part.type === 'abort') {
             finalStatus = 'aborted'
           } else if (part.type === 'error') {
@@ -430,8 +412,7 @@ export function createGenerationEventStream(input: Awaited<ReturnType<typeof pre
 
         flushText(true)
         flushReasoning(true)
-        const partial = !providerFinished || (providerFinishReason !== 'stop' && providerFinishReason !== 'tool-calls')
-        await finishGenerationTurn(input.turn.id, finalStatus, undefined, partial && !proposalHolder.current)
+        await finishGenerationTurn(input.turn.id, finalStatus)
         send({ type: 'finish', status: finalStatus })
       } catch (streamError) {
         flushText(true)

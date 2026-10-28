@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { eq, inArray } from 'drizzle-orm'
-import { format, parseISO, startOfWeek, subDays } from 'date-fns'
+import { format, parseISO, subDays } from 'date-fns'
 import { getDb } from '@/lib/db'
 import {
   generationMessageParts,
@@ -27,7 +27,7 @@ function enabled() {
 export const POST = withAuth(async function POST(request: Request) {
   if (!enabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const body = await request.json().catch(() => null) as { action?: string; marker?: string; mode?: string; targetReportId?: unknown } | null
-  if (!body || !['historical', 'timeline', 'carry-forward', 'report-query'].includes(body.action ?? '') || typeof body.marker !== 'string' || !body.marker.trim()) {
+  if (!body || !['historical', 'report-query'].includes(body.action ?? '') || typeof body.marker !== 'string' || !body.marker.trim()) {
     return NextResponse.json({ error: 'A marker and historical action are required', code: 'INVALID_INPUT' }, { status: 400 })
   }
 
@@ -167,164 +167,6 @@ export const POST = withAuth(async function POST(request: Request) {
       unacceptedReportId,
     }, { status: 201 })
   }
-  if (body.action === 'carry-forward') {
-    const empty = body.mode === 'empty'
-    const excludedStatus = body.mode === 'stale' ? 'stale' : body.mode === 'none' ? 'none' : 'current'
-    const targetWeekStart = empty ? '2027-02-01' : '2027-01-11'
-    const targetWeekEnd = empty ? '2027-02-07' : '2027-01-17'
-    const reportIds: number[] = []
-    const eventIds: number[] = []
-    if (!empty) {
-      const previous = db.insert(reports).values({
-        title: `${marker} previous cycle`,
-        content: `# ${marker} previous cycle`,
-        weekStart: '2027-01-04',
-        weekEnd: '2027-01-10',
-        createdAt: now,
-        updatedAt: now,
-      }).returning().get()
-      if (body.mode !== 'legacy') {
-        db.insert(reportVariants).values([
-          {
-            reportId: previous.id,
-            variant: 'leadership' as const,
-            sourceDraft: `- ${marker} leadership source`,
-            finalContent: `# ${marker} leadership final\n\n## 下周计划\n\n- ${marker} leadership carry`,
-            finalStatus: excludedStatus as 'current' | 'stale' | 'none',
-            acceptedProposalId: excludedStatus === 'current' ? 101 : null,
-            sourceRevision: 1,
-            createdAt: now,
-            updatedAt: now,
-          },
-          {
-            reportId: previous.id,
-            variant: 'personal' as const,
-            sourceDraft: `- ${marker} personal source`,
-            finalContent: `# ${marker} personal final\n\n## 下周计划\n\n- ${marker} personal carry`,
-            finalStatus: excludedStatus as 'current' | 'stale' | 'none',
-            acceptedProposalId: excludedStatus === 'current' ? 102 : null,
-            sourceRevision: 1,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ]).run()
-      }
-      reportIds.push(previous.id)
-    } else {
-      const older = db.insert(reports).values({
-        title: `${marker} older cycle`,
-        content: `# ${marker} older cycle`,
-        weekStart: '2027-01-18',
-        weekEnd: '2027-01-24',
-        createdAt: now,
-        updatedAt: now,
-      }).returning().get()
-      db.insert(reportVariants).values({
-        reportId: older.id,
-        variant: 'personal' as const,
-        sourceDraft: `- ${marker} older source`,
-        finalContent: `## 下周计划\n- ${marker} must not backfill`,
-        finalStatus: 'current' as const,
-        sourceRevision: 1,
-        createdAt: now,
-        updatedAt: now,
-      }).run()
-      reportIds.push(older.id)
-    }
-    const event = db.insert(rawEvents).values({
-      eventTime: new Date(`${targetWeekStart}T12:00:00.000Z`),
-      source: 'e2e',
-      content: `${marker} current source fact`,
-      metadata: null,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    eventIds.push(event.id)
-    const target = db.insert(reports).values({
-      title: `${marker} target report`,
-      content: `# ${marker} target report`,
-      weekStart: targetWeekStart,
-      weekEnd: targetWeekEnd,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    db.insert(reportVariants).values([
-    ]).run()
-    reportIds.push(target.id)
-    return NextResponse.json({ targetReportId: target.id, reportIds, eventIds }, { status: 201 })
-  }
-  if (body.action === 'timeline') {
-    const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 })
-    const previousWeekEnd = subDays(currentWeekStart, 1)
-    const previousWeekStart = subDays(currentWeekStart, 7)
-    const weekStart = format(previousWeekStart, 'yyyy-MM-dd')
-    const weekEnd = format(previousWeekEnd, 'yyyy-MM-dd')
-    const report = db.insert(reports).values({
-      title: `${marker} timeline history`,
-      content: `# ${marker} timeline history`,
-      weekStart,
-      weekEnd,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    db.insert(reportVariants).values([
-      {
-        reportId: report.id,
-        variant: 'leadership' as const,
-        sourceDraft: `- ${marker} leadership source`,
-        finalContent: `## 下周计划\n- ${marker} leadership plan\n## 下周计划\n- ${marker} ignored duplicate`,
-        finalStatus: 'current' as const,
-        acceptedProposalId: report.id * 100 + 1,
-        sourceRevision: 1,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        reportId: report.id,
-        variant: 'personal' as const,
-        sourceDraft: `- ${marker} personal source`,
-        finalContent: `## 下周计划\n- ${marker} personal plan`,
-        finalStatus: 'current' as const,
-        acceptedProposalId: report.id * 100 + 2,
-        sourceRevision: 1,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ]).run()
-    rows.push({ id: report.id, kind: 'current' })
-
-    const staleReport = db.insert(reports).values({
-      title: `${marker} stale timeline history`,
-      content: `# ${marker} stale timeline history`,
-      weekStart,
-      weekEnd,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    db.insert(reportVariants).values(['leadership', 'personal'].map((variant) => ({
-      reportId: staleReport.id,
-      variant: variant as 'leadership' | 'personal',
-      sourceDraft: `- ${marker} stale source`,
-      finalContent: `## 下周计划\n- ${marker} stale excluded`,
-      finalStatus: 'stale' as const,
-      sourceRevision: 1,
-      createdAt: now,
-      updatedAt: now,
-    }))).run()
-    rows.push({ id: staleReport.id, kind: 'stale' })
-
-    const legacyReport = db.insert(reports).values({
-      title: `${marker} legacy timeline history`,
-      content: `## 下周计划\n- ${marker} legacy excluded`,
-      weekStart: format(subDays(previousWeekStart, 7), 'yyyy-MM-dd'),
-      weekEnd: format(subDays(previousWeekStart, 1), 'yyyy-MM-dd'),
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    rows.push({ id: legacyReport.id, kind: 'legacy' })
-    return NextResponse.json({ reports: rows }, { status: 201 })
-  }
-
   const createModern = (kind: 'current' | 'stale') => {
     const report = db.insert(reports).values({
       title: `${marker} ${kind} history`,

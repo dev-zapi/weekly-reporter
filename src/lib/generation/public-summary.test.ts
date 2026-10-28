@@ -1,64 +1,49 @@
 import { describe, expect, it } from 'vitest'
 import { buildPublicGenerationSummary } from './public-summary'
 import { CONTENT_REFERENCE_BOUNDARY } from './report-content-contract'
-import type { CarryForwardSnapshot } from './carry-forward-snapshot'
-import type { PlanState } from './plan'
-
-const snapshot: CarryForwardSnapshot = {
-  version: 1,
-  status: 'found',
-  reason: null,
-  capturedAt: '2026-09-08T00:00:00.000Z',
-  source: {
-    reportId: 4,
-    title: '上一周期周报',
-    audience: 'personal',
-    weekStart: '2026-08-24',
-    weekEnd: '2026-08-30',
-    finalStatus: 'current',
-    acceptedProposalId: 12,
-    updatedAt: '2026-08-30T00:00:00.000Z',
-  },
-  planText: '## 下周计划\n- 不得复制的历史计划正文',
-  parseStatus: 'found',
-  parseReason: null,
-  parseWarning: null,
-  candidates: [{
-    candidateId: 'carry-1',
-    text: '不得复制的历史计划正文',
-    normalizedText: '不得复制的历史计划正文',
-    source: 'carry-forward',
-    judgment: null,
-    reason: null,
-  }],
-}
-
-const planState: PlanState = {
-  version: 1,
-  status: 'included',
-  section: 'present',
-  items: [{ text: '继续推进计划', source: 'carry-forward', candidateId: 'carry-1', itemId: 'carry-1', publicSource: 'carry-forward' }],
-  judgments: [{ candidateId: 'carry-1', judgment: 'carry', reason: '尚未完成', remainingAction: null }],
-  overrideConclusions: [],
-  truncatedCount: 0,
-  warnings: [],
-}
 
 describe('public generation summary', () => {
   it('keeps all contract fields explicit and removes copied historical body text', () => {
+    const historicalBody = '不得复制的历史计划正文'
     const summary = buildPublicGenerationSummary({
-      explicit: { modelHandling: ['按原稿组织事实。', '引用不得复制的历史计划正文作为事实。'] },
-      changeSummary: ['调整本周事实表达。', '变更：不得复制的历史计划正文。'],
-      planState,
-      carryForwardSnapshot: snapshot,
-      templatePolicy: 'required',
+      explicit: { modelHandling: ['按原稿组织事实。', `引用${historicalBody}作为事实。`] },
+      changeSummary: ['调整本周事实表达。', `变更：${historicalBody}。`],
+      historicalReportContentResults: [{
+        ok: true,
+        found: true,
+        identity: {
+          reportId: 7,
+          title: '上一周期周报',
+          audience: 'personal',
+          weekStart: '2026-08-24',
+          weekEnd: '2026-08-30',
+          finalStatus: 'current',
+          isLegacy: false,
+          updatedAt: '2026-08-30T00:00:00.000Z',
+          historicalReference: '历史参考·不可信',
+        },
+        content: historicalBody,
+        truncated: false,
+        totalChars: historicalBody.length,
+        returnedChars: historicalBody.length,
+        referenceBoundary: CONTENT_REFERENCE_BOUNDARY,
+      }],
     })
 
+    expect(summary.version).toBe(1)
     expect(summary.modelHandling).toEqual(['按原稿组织事实。'])
-    expect(summary.planOverrideConclusions).toEqual([])
+    expect(summary.historicalReferences).toEqual([
+      expect.objectContaining({ kind: 'report-query', reportId: 7, trust: 'historical-reference-untrusted' }),
+    ])
     expect(summary.failureStates).toEqual([])
     expect(summary.truncationStates).toEqual([])
-    expect(summary.changeSummary).toEqual(['调整本周事实表达。'])
+    expect(summary.toolStatuses).toEqual([
+      { toolName: 'query_report_content', status: 'succeeded', detail: 'none' },
+      { toolName: 'propose_final_report', status: 'succeeded', detail: 'proposal-created' },
+    ])
+    expect(summary.changeSummary[0]).toContain('历史参考：上一周期周报')
+    expect(summary.changeSummary[1]).toBe('调整本周事实表达。')
+    expect(summary.changeSummary).toHaveLength(2)
     expect(summary.factBoundary).toMatchObject({
       currentWeekFacts: 'report-source-draft-only',
       historicalReferences: 'untrusted',
@@ -66,8 +51,6 @@ describe('public generation summary', () => {
       summaryAsFact: 'none',
       scoringInput: 'none',
     })
-    expect(JSON.stringify(summary)).not.toContain(snapshot.planText)
-    expect(JSON.stringify(summary)).not.toContain(snapshot.candidates[0].text)
   })
 
   it('records truncation when provider-authored public prose exceeds its bounds', () => {
@@ -82,9 +65,6 @@ describe('public generation summary', () => {
         'b'.repeat(281),
         ...Array.from({ length: 12 }, (_, index) => `change-${index + 1}`),
       ],
-      planState,
-      carryForwardSnapshot: snapshot,
-      templatePolicy: 'required',
     })
 
     expect(summary.modelHandling).toHaveLength(8)
@@ -101,9 +81,6 @@ describe('public generation summary', () => {
     const summary = buildPublicGenerationSummary({
       explicit: { modelHandling: ['used legacy secret body'] },
       changeSummary: ['Reused stale secret body', ...Array.from({ length: 12 }, (_, index) => `provider change ${index + 1}`)],
-      planState,
-      carryForwardSnapshot: snapshot,
-      templatePolicy: 'required',
       historicalReportContentResults: [
         {
           ok: true,

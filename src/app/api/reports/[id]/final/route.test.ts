@@ -112,7 +112,7 @@ describe('PUT /api/reports/[id]/final', () => {
     await expect(response.json()).resolves.toMatchObject({ id: 10, variant: 'leadership', finalContent: '新终版' })
   })
 
-  it('retains the adopted contract when a direct edit submits different template text', async () => {
+  it('does not rewrite the deprecated structure contract on a direct edit', async () => {
     mocks.transactionReturning.mockReturnValue({ ...existingVariant, finalContent: '新终版', scoreStatus: 'pending' })
     const response = await PUT(new Request('http://localhost/api/reports/3/final', {
       method: 'PUT',
@@ -124,9 +124,9 @@ describe('PUT /api/reports/[id]/final', () => {
     }), { params: Promise.resolve({ id: '3' }) })
 
     expect(response.status).toBe(200)
-    expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({
-      structureCompletenessRule: { version: 'next-week-plan-structure/v1', nextWeekPlan: 'required' },
-    }))
+    const setCall = mocks.set.mock.calls.find((call: unknown[]) => (call[0] as Record<string, unknown>).finalContent === '新终版')
+    expect(setCall).toBeDefined()
+    expect((setCall![0] as Record<string, unknown>).structureCompletenessRule).toBeUndefined()
   })
 
   it('saves a legacy personal final without creating a variant or generation record', async () => {
@@ -246,7 +246,7 @@ describe('PUT /api/reports/[id]/final', () => {
     expect(setValues.aiStyle).toBeUndefined()
   })
 
-  it('normalizes structureCompletenessRule from the new template content when a template is written back', async () => {
+  it('writes back the template snapshot without a structure completeness rule', async () => {
     mocks.transactionReturning.mockReturnValue({ ...existingVariant, finalContent: '新终版' })
 
     const response = await PUT(new Request('http://localhost/api/reports/3/final', {
@@ -262,6 +262,9 @@ describe('PUT /api/reports/[id]/final', () => {
     expect(mocks.set).toHaveBeenCalledWith(expect.objectContaining({
       templateContent: expect.stringContaining('极简'),
     }))
+    const setCall = mocks.set.mock.calls.find((call: unknown[]) => (call[0] as Record<string, unknown>).templateId === 'official-minimal')
+    expect(setCall).toBeDefined()
+    expect((setCall![0] as Record<string, unknown>).structureCompletenessRule).toBeUndefined()
   })
 
   it('returns 400 INVALID_INPUT when templateId is not a string', async () => {

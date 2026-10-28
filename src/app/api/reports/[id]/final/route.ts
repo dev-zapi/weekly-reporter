@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { aiStyles, generationMessageParts, generationProposals, generationSessions, reportVariants, reports } from '@/lib/db/schema'
-import { normalizeStructureCompletenessRule } from '@/lib/reports/structure-completeness'
 import { getTemplateSelection } from '@/lib/reports/service'
 
 export const PUT = withAuth(async function PUT(
@@ -75,14 +74,9 @@ export const PUT = withAuth(async function PUT(
     }
 
     const now = new Date()
-    const templateContentForNormalization = resolvedTemplate ? resolvedTemplate.content : existing.templateContent
     const finalValues = {
       finalContent: body.content.trim(),
       finalStatus: 'current',
-      structureCompletenessRule: normalizeStructureCompletenessRule(
-        existing.structureCompletenessRule,
-        templateContentForNormalization,
-      ),
       updatedAt: now,
       ...(resolvedTemplate ? {
         templateId: resolvedTemplate.id,

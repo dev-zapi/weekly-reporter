@@ -142,15 +142,15 @@ export function withAuth<C>(handler: Handler<C>): Handler<C> {
 }
 ```
 
-**与现有 handler 签名的兼容性**（实测复核：53 文件 / **82 handler**，形态分布为 **单参 35 / 双参 37 / 无参 10**）：
+**与现有 handler 签名的兼容性**（实测复核：**55 文件 / 85 handler**，形态分布为 **单参 38 / 双参 37 / 无参 10**）：
 
-| 现有形态 | 数量 | `withAuth` 改造 |
+| 现有形态（以 `GET` 为例，计数含全部方法） | 数量 | `withAuth` 改造 |
 | --- | --- | --- |
-| `export async function GET(request: Request)` | 35 | `export const GET = withAuth(async function GET(request: Request) {...})` |
+| `export async function GET(request: Request)` | 38 | `export const GET = withAuth(async function GET(request: Request) {...})` |
 | `export async function GET(request: Request, { params }: {...})` | 37 | `export const GET = withAuth(async function GET(request: Request, ctx: {...}) {...})` —— **第二参数原样透传，不动其类型** |
-| `export async function GET()` （无参） | 10 | `export const GET = withAuth(async function GET() {...})` |
+| `export async function GET()` （无参，其中 `GET` 为 8 个） | 10 | `export const GET = withAuth(async function GET() {...})` |
 
-> **与 #50 研究报告的出入**：#50 记的是「3 个无参 `GET()`」，本次逐文件复核为 **10 个**（分布在 `prompts/styles`、`prompts/system`、`settings/ai`（3 个）、`settings/ai/models`、`settings/ai/test`、`tags`、`templates`、`templates/[id]/render`、`timeline/plans`）。以本规格的实测数为准。
+> **与 #50 研究报告的出入**：#50 记的是「3 个无参 `GET()`」，本次逐文件复核实测为 **无参 handler 共 10 个，其中无参 `GET()` 为 8 个**——10 个无参 handler 分布在 `auth/pats`、`prompts/styles`、`prompts/system`、`settings/ai`（2 个）、`settings/ai/models`、`settings/ai/test`、`tags`、`templates`、`templates/[id]/render`；其中 `settings/ai` 的 `DELETE` 与 `settings/ai/test` 的 `POST` 也是无参（故无参 `GET()` 为 8 个）。`timeline/plans` 的无参 `GET()` 已随 ADR-0021 删除。以本规格的实测数为准。
 
 > ⚠️ **无参 handler 的一个后果**：无参 handler 拿不到 `Request`，因此**无法读取 `Authorization` 头**。`withAuth` 包装后，它们从 wrapper 收到 `req` 再传给 handler——但 handler 签名是 `function GET()`，**接不到 `req`**。因此 wrapper 必须**自己**完成认证判定（它拿得到 `req`），这正是 `withAuth` 的设计：`requireAuth(req)` 在 wrapper 内执行，与 handler 签名无关。**无参 handler 不需要改签名。**
 
@@ -158,7 +158,7 @@ export function withAuth<C>(handler: Handler<C>): Handler<C> {
 
 **流式响应**：本仓库当前**没有**返回 `ReadableStream` 的 API route（`src/app/api/**` 全量搜索无命中），故 `withAuth` 只需处理普通 `Response`。**若将来新增流式路由**，`await handler(...)` 返回的 `res.status` 仍是最终状态码（流未消费不影响 status），`withAuth` 无需改动。
 
-**每文件改动量**：**2 行**（1 行 import + 1 行导出行），handler 本体一行不动。共 53 个文件。
+**每文件改动量**：**2 行**（1 行 import + 1 行导出行），handler 本体一行不动。共 55 个文件（ADR-0021 已移除 `timeline/plans` 与 `plan-overrides`，该数为移除后的实测值）。
 
 ### 1.4 `src/proxy.ts`（乐观拦截，兜底漏改）
 
@@ -281,7 +281,7 @@ export function proxy(request: NextRequest) {
 
 ### 1.7 保护范围与总开关（Charter #3 #4）
 
-**保护范围**：**全部 53 个 `/api/**` route 文件**（含新加的 `/api/auth/**`、`/api/audit`）。
+**保护范围**：**全部 55 个 `/api/**` route 文件**（含新加的 `/api/auth/**`、`/api/audit`；ADR-0021 已移除 `timeline/plans` 与 `plan-overrides`，该数为移除后的实测值）。
 
 **不设防**：页面 HTML、静态资源、`/_next/*`。
 
@@ -637,7 +637,7 @@ Charter #8 只提 `WEEKLY_REPORTER_BASE_URL`。实际保留 `WEEKLY_REPORTER_URL
 1. **服务端核心**：`src/lib/auth/{password,pat,guard,audit,types}.ts` + `src/lib/db/schema.ts` 加表 + drizzle 迁移 + `instrumentation.ts` 加 `ensureStartupPassword()`。
 2. **proxy**：`src/proxy.ts`（注意放 `src/` 下）+ build 验证 `ƒ Proxy (Middleware)` 出现。
 3. **API route**：`/api/auth/verify`、`/api/auth/pats`、`/api/auth/pats/[id]`、`/api/audit`。
-4. **53 个 route 套 `withAuth`**（脚本化改导出行）+ **CI 断言测试**（§1.7）。
+4. **55 个 route 套 `withAuth`**（脚本化改导出行）+ **CI 断言测试**（§1.7）。
 5. **前端**：`src/lib/api-client.ts` + 34 个文件 / 92 处 `fetch` 改造 + 登录屏 + 根 layout 拦截 + 401 跳转。
 6. **安全页**：`/security` + 导航项 + PAT 管理 + 审计表格。
 7. **skill 侧**：7 份 client.mjs 标记块化 + `scripts/sync-client-auth.mjs` + timeline-events 新建 client.mjs + 4 个脚本改造。

@@ -3,8 +3,6 @@ import { getDb } from '@/lib/db'
 import {
   generationMessageParts,
   generationQuerySnapshots,
-  generationPlanJudgments,
-  generationPlanOverrides,
   generationProposals,
   generationSessions,
   generationTurns,
@@ -20,28 +18,12 @@ import {
 import { getSystemPrompt } from '@/lib/ai'
 import { getAIStyle } from '@/lib/ai/styles'
 import { getTemplateSelection, getReportBundle } from '@/lib/reports/service'
-import { createStructureCompletenessRule } from '@/lib/reports/structure-completeness'
 import {
   buildEffectiveGenerationSystemPrompt,
   buildSourceOverview,
   FINAL_REPORT_TOOL_RULES,
 } from './context'
 import { isEmptySourceDraft } from '@/lib/reports/source-draft'
-import {
-  createCarryForwardSnapshot,
-  normalizeCarryForwardSnapshot,
-  serializeCarryForwardSnapshot,
-} from './carry-forward'
-import {
-  mergeProposalPlan,
-  getPlanTemplatePolicy,
-  normalizePlanJudgments,
-  summarizePlanOverrides,
-  buildBaselineItemsMap,
-  type PlanOverrideRecord,
-  type PlanJudgmentRecord,
-  type ProposalPlanInput,
-} from './plan'
 import {
   buildPublicGenerationSummary,
   normalizePublicGenerationSummary,
@@ -53,7 +35,6 @@ import { listQuerySnapshots } from './query-snapshots'
 import { persistQuerySnapshot } from './query-snapshots'
 import { queryReportListForSession } from './report-list-tool'
 import { queryReportContentForSession } from './report-content-tool'
-import { persistUncertainPlanJudgments } from './plan-override'
 
 const MAX_PROPOSAL_CHARACTERS = 200_000
 
@@ -137,7 +118,6 @@ export async function createGenerationSession(input: {
   const styleKey = input.styleOverride || template.aiStyle || 'formal'
   const style = await getAIStyle(styleKey)
   const now = new Date()
-  const carryForwardSnapshot = await createCarryForwardSnapshot(bundle, input.variant, now)
   const timeLabel = new Intl.DateTimeFormat(undefined, {
     month: '2-digit',
     day: '2-digit',
@@ -166,9 +146,7 @@ export async function createGenerationSession(input: {
       temperature: String(style.temperature),
       systemPrompt: buildEffectiveGenerationSystemPrompt(basePrompt),
       toolRules: FINAL_REPORT_TOOL_RULES,
-      planPolicy: getPlanTemplatePolicy(template.content),
       baselineFinalContent: reportVariant.finalContent,
-      carryForwardSnapshot: serializeCarryForwardSnapshot(carryForwardSnapshot),
       createdAt: now,
       updatedAt: now,
     }).returning().get()
@@ -199,7 +177,6 @@ export async function listGenerationSessions(reportId: number, variant?: Audienc
     ])
     return {
       ...session,
-      carryForwardSnapshot: normalizeCarryForwardSnapshot(session.carryForwardSnapshot),
       latestTurn: latestTurn[0] ?? null,
       latestProposal: latestProposal[0] ? {
         ...latestProposal[0],
@@ -216,24 +193,17 @@ export async function getGenerationSessionDetail(reportId: number, sessionId: nu
   })
   if (!session) return null
 
-  const [messages, turns, proposals, currentVariant, planJudgments, planOverrides] = await Promise.all([
+  const [messages, turns, proposals, currentVariant] = await Promise.all([
     db.select().from(generationMessageParts).where(eq(generationMessageParts.sessionId, sessionId)).orderBy(asc(generationMessageParts.sequence)),
     db.select().from(generationTurns).where(eq(generationTurns.sessionId, sessionId)).orderBy(asc(generationTurns.id)),
     db.select().from(generationProposals).where(eq(generationProposals.sessionId, sessionId)).orderBy(asc(generationProposals.id)),
     db.query.reportVariants.findFirst({ where: eq(reportVariants.id, session.reportVariantId) }),
-    db.select().from(generationPlanJudgments).where(eq(generationPlanJudgments.sessionId, sessionId)).orderBy(asc(generationPlanJudgments.id)),
-    db.select().from(generationPlanOverrides).where(eq(generationPlanOverrides.sessionId, sessionId)).orderBy(asc(generationPlanOverrides.id)),
   ])
 
-  const carryForwardSnapshot = normalizeCarryForwardSnapshot(session.carryForwardSnapshot)
   const querySnapshots = listQuerySnapshots(sessionId)
-
-  // Build baseline items map for planOverrideState
-  const baselineItemsMap = buildBaselineItemsMap(session.baselineFinalContent)
 
   return {
     ...session,
-    carryForwardSnapshot,
     messages,
     turns,
     proposals: proposals.map((proposal) => ({
@@ -241,11 +211,8 @@ export async function getGenerationSessionDetail(reportId: number, sessionId: nu
       publicSummary: normalizePublicGenerationSummary(proposal.publicSummary),
       referenceChanged: proposalReferenceChanged(proposal, querySnapshots),
     })),
-    planJudgments,
-    planOverrides,
     querySnapshots,
     historicalReferencesChanged: proposals.some((proposal) => proposalReferenceChanged(proposal, querySnapshots)),
-    planOverrideState: summarizePlanOverrides(carryForwardSnapshot, planOverrides, baselineItemsMap),
     sourceIsCurrent: currentVariant?.sourceRevision === session.sourceRevision,
     activeTurn: turns.find((turn) => turn.status === 'working') ?? null,
   }
@@ -342,11 +309,10 @@ export function startGenerationTurn(input: {
   })
 }
 
-export async function finishGenerationTurn(turnId: number, status: 'completed' | 'failed' | 'aborted', errorMessage?: string, partial = false) {
+export async function finishGenerationTurn(turnId: number, status: 'completed' | 'failed' | 'aborted', errorMessage?: string) {
   const db = getDb()
   const turn = await db.query.generationTurns.findFirst({ where: eq(generationTurns.id, turnId) })
   if (!turn) return null
-  if (partial || status === 'failed' || status === 'aborted') persistUncertainPlanJudgments(turn.sessionId, turnId)
   const now = new Date()
   const updated = await db.update(generationTurns).set({
     status,
@@ -378,7 +344,6 @@ export async function createGenerationProposal(input: {
   content: string
   summary: string[]
   publicSummary?: PublicGenerationSummaryInput
-  plan?: ProposalPlanInput
 }): Promise<GenerationProposal> {
   const content = input.content.trim()
   const summary = input.summary.map((item) => item.trim()).filter(Boolean)
@@ -400,49 +365,7 @@ export async function createGenerationProposal(input: {
     const existingForTurn = tx.select().from(generationProposals).where(eq(generationProposals.turnId, input.turnId)).get()
     if (existingForTurn) error('Only one proposal may be submitted per turn', 'PROPOSAL_LIMIT', 409)
 
-    const snapshot = normalizeCarryForwardSnapshot(storedSession.carryForwardSnapshot)
-    const existingJudgmentRows = tx.select().from(generationPlanJudgments)
-      .where(eq(generationPlanJudgments.sessionId, storedSession.id)).orderBy(asc(generationPlanJudgments.id)).all()
-    const existingJudgments: PlanJudgmentRecord[] = existingJudgmentRows.map((row) => ({
-      candidateId: row.candidateId,
-      judgment: row.judgment,
-      reason: row.reason,
-      remainingAction: row.remainingAction,
-    }))
-    const overrides: PlanOverrideRecord[] = tx.select().from(generationPlanOverrides)
-      .where(eq(generationPlanOverrides.sessionId, storedSession.id)).orderBy(asc(generationPlanOverrides.id)).all()
-    const normalizedJudgments = existingJudgments.length > 0
-      ? existingJudgments
-      : normalizePlanJudgments(snapshot, input.plan)
-    if (existingJudgmentRows.length === 0) {
-      for (const judgment of normalizedJudgments) {
-        tx.insert(generationPlanJudgments).values({
-          sessionId: storedSession.id,
-          candidateId: judgment.candidateId,
-          judgment: judgment.judgment,
-          reason: judgment.reason,
-          remainingAction: judgment.remainingAction,
-          turnId: input.turnId,
-          createdAt: new Date(),
-        }).run()
-      }
-    }
-    const merged = mergeProposalPlan({
-      content,
-      templateContent: storedSession.templateContent,
-      snapshot,
-      plan: input.plan,
-      overrides,
-      baselineFinalContent: storedSession.baselineFinalContent,
-      existingJudgments: normalizedJudgments,
-    })
-    const planSummary = merged.state.status === 'forbidden'
-      ? '模板约束：章节禁止'
-      : merged.state.status === 'empty'
-        ? '下周计划：无可用事项，保留明确空计划表达'
-        : `下周计划：应用 ${merged.state.items.length} 项，${merged.state.judgments.filter((item) => item.judgment === 'carry').length} 项 carry、${merged.state.judgments.filter((item) => item.judgment === 'uncertain').length} 项 uncertain`
-    const effectiveSummary = [...summary, planSummary, ...merged.state.warnings].filter(Boolean).slice(0, 8)
-    const templatePolicy = storedSession.planPolicy ?? getPlanTemplatePolicy(storedSession.templateContent)
+    const effectiveSummary = summary.slice(0, 8)
     const toolResults = tx.select({ data: generationMessageParts.data }).from(generationMessageParts).where(
       and(eq(generationMessageParts.sessionId, storedSession.id), eq(generationMessageParts.partType, 'tool-result')),
     ).all()
@@ -451,10 +374,6 @@ export async function createGenerationProposal(input: {
     const publicSummary = buildPublicGenerationSummary({
       explicit: input.publicSummary,
       changeSummary: summary,
-      planState: merged.state,
-      carryForwardSnapshot: snapshot,
-      templatePolicy,
-      proposalPlanParseFailure: merged.proposalPlanParseFailure,
       historicalReportListResults,
       historicalReportContentResults,
     })
@@ -463,11 +382,10 @@ export async function createGenerationProposal(input: {
     return tx.insert(generationProposals).values({
       sessionId: storedSession.id,
       turnId: input.turnId,
-      content: merged.content,
+      content,
       summary: effectiveSummary,
       sourceRevision: storedSession.sourceRevision,
       status: 'pending',
-      planState: merged.state as unknown as Record<string, unknown>,
       publicSummary: publicSummary as unknown as Record<string, unknown>,
       baselineContent: storedSession.baselineFinalContent ?? '',
       createdAt: new Date(),
@@ -510,7 +428,6 @@ export async function acceptGenerationProposal(input: {
       templateId: session.templateId,
       templateName: session.templateName,
       templateContent: session.templateContent,
-      structureCompletenessRule: createStructureCompletenessRule(session.templateContent),
       aiStyle: session.aiStyleKey,
       acceptedProposalId: proposal.id,
       updatedAt: now,
