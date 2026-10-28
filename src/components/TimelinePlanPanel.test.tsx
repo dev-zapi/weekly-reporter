@@ -66,6 +66,7 @@ describe('TimelinePlanPanel', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -81,8 +82,10 @@ describe('TimelinePlanPanel', () => {
   })
 
   it('fetches current week plan on mount', async () => {
-    const today = new Date()
-    const dateStr = today.toISOString().split('T')[0]
+    // 固定时钟：组件按本地时区取「今天」（date-fns），断言若另取一次时间，
+    // 在 UTC/本地错位窗口与跨午夜时会拿到不同日期（曾致 flake）。
+    vi.setSystemTime(new Date('2026-10-15T12:00:00'))
+    const dateStr = '2026-10-15'
 
     mockFetch.mockResolvedValueOnce({
       ok: true,
