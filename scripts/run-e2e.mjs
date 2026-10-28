@@ -22,7 +22,10 @@ import { fileURLToPath } from 'node:url'
 
 const MEM_MAX = process.env.E2E_MEM_MAX ?? '8G'
 const CPU_QUOTA = process.env.E2E_CPU_QUOTA ?? '300%'
-const PLAYWRIGHT_CLI = path.resolve('node_modules/@playwright/test/cli.js')
+// Anchored to this file, not to cwd: `npm --prefix`/editor runs from another
+// directory must still find the same Playwright install.
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const PLAYWRIGHT_CLI = path.resolve(SCRIPT_DIR, '../node_modules/@playwright/test/cli.js')
 const IN_SCOPE_FLAG = 'E2E_WRAPPED_IN_SCOPE'
 
 function readScopeStats() {
@@ -39,7 +42,10 @@ function readScopeStats() {
         return null
       }
     }
-    const peak = Number(read('memory.peak'))
+    // null (unreadable) must not become 0: "peak 0 MiB" reads as a real low
+    // peak, which is the opposite of what a missing counter means.
+    const peakRaw = read('memory.peak')
+    const peak = peakRaw === null ? null : Number(peakRaw)
     const events = read('memory.events')
     // oom_kill > 0 means the ceiling actually had to kill something inside
     // the scope — that is the whole point of the wrapper, so surface it.
@@ -52,6 +58,7 @@ function readScopeStats() {
 }
 
 function formatBytes(bytes) {
+  if (bytes === null) return 'n/a'
   return `${(bytes / 1024 / 1024).toFixed(0)} MiB`
 }
 
@@ -60,10 +67,14 @@ function runPlaywright(extraArgs) {
     stdio: 'inherit',
     env: process.env,
   })
+  if (result.error) console.error(`[run-e2e] ${result.error.message}`)
   return result.status ?? 1
 }
 
-function canUseSystemdScope() {
+// Returns null when the scope probe works, else a human-readable reason. The
+// reason matters: a bad E2E_MEM_MAX or an unreachable user manager used to
+// degrade silently, i.e. the run quietly lost its hard memory ceiling.
+function scopeProbeFailure() {
   // Probe with the same properties as the real run: this also catches
   // systemd-run that exists but has no reachable user manager (no session
   // bus), where `--user --scope` fails before the tests start.
@@ -82,9 +93,12 @@ function canUseSystemdScope() {
       '-e',
       '',
     ],
-    { stdio: 'ignore' },
+    { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' },
   )
-  return !probe.error && probe.status === 0
+  if (probe.status === 0) return null
+  if (probe.error?.code === 'ENOENT') return 'systemd-run is not installed'
+  const detail = probe.error?.message ?? probe.stderr?.trim() ?? `exit status ${probe.status}`
+  return `scope probe failed (${detail})`
 }
 
 function runInsideScope(extraArgs) {
@@ -94,6 +108,7 @@ function runInsideScope(extraArgs) {
     [
       '--user',
       '--scope',
+      '--quiet',
       '--collect',
       '-p',
       `MemoryMax=${MEM_MAX}`,
@@ -125,9 +140,17 @@ if (process.env[IN_SCOPE_FLAG] === '1') {
   // Exit code only: `process.exit()` here would truncate the stats line when
   // stdout is a pipe (the write is still buffered).
   process.exitCode = status
-} else if (process.env.E2E_NO_SCOPE === '1' || !canUseSystemdScope()) {
+} else if (process.env.E2E_NO_SCOPE === '1') {
   console.log('[run-e2e] running playwright without a cgroup scope (workers/heap caps still apply)')
   process.exitCode = runPlaywright(extraArgs)
 } else {
-  process.exitCode = runInsideScope(extraArgs)
+  const scopeFailure = scopeProbeFailure()
+  if (scopeFailure === null) {
+    process.exitCode = runInsideScope(extraArgs)
+  } else {
+    console.log(
+      `[run-e2e] running playwright without a cgroup scope (workers/heap caps still apply): ${scopeFailure}`,
+    )
+    process.exitCode = runPlaywright(extraArgs)
+  }
 }
