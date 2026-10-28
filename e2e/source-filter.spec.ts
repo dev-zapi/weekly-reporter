@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test'
 
+// 勾选框用可访问名定位（SourceFilterPanel 的 checkbox 带 aria-label）：
+// 时间线页上还有 TimelinePlanPanel 的状态过滤勾选框（默认有两项勾选），
+// 此前 `getByRole('checkbox').first()` 依赖面板加载顺序，撞上计划面板先渲染
+// 时会把「已勾选」的计划项点成未勾选，导致用例随机变红。
 test.describe('采集源过滤记忆功能', () => {
   test('刷新页面后应该保留筛选状态', async ({ page }) => {
     await page.goto('/')
 
-    // 点击"手动录入"复选框
-    const manualCheckbox = page.getByRole('checkbox').first()
+    const manualCheckbox = page.getByRole('checkbox', { name: 'Manual source filter' })
     await manualCheckbox.click()
 
     // 验证复选框已选中
@@ -21,9 +24,7 @@ test.describe('采集源过滤记忆功能', () => {
   test('应该能够从 sessionStorage 恢复筛选状态', async ({ page }) => {
     await page.goto('/')
 
-    // 先设置一个筛选状态
-    const checkboxes = page.getByRole('checkbox')
-    const manualCheckbox = checkboxes.first()
+    const manualCheckbox = page.getByRole('checkbox', { name: 'Manual source filter' })
     await manualCheckbox.click()
 
     // 验证 sessionStorage 中已保存

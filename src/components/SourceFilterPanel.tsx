@@ -37,7 +37,11 @@ export function SourceFilterPanel({
       <div className="space-y-2">
         {sources.map((s) => (
           <div key={s} className="flex items-center gap-2">
+            {/* 可访问名：勾选框与旁边的纯文本 span 未做 label 关联，
+                无障碍树里原本是无名勾选框，role/name 定位（e2e、屏幕阅读器）
+                都无法区分 manual 与 auto。 */}
             <Checkbox
+              aria-label={`${SOURCE_LABELS[s]} source filter`}
               checked={selectedSources.includes(s)}
               onCheckedChange={() => onSourceSelect(s)}
             />
