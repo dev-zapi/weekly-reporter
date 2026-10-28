@@ -8,7 +8,9 @@ import { createPat, listPats } from '@/lib/auth/pat'
  *
  * List all PAT metadata (no token_hash, no plaintext).
  */
-export const GET = withAuth(async function GET() {
+// _request 未使用，但必须声明：withAuth 从第一个参数取请求做鉴权与审计挂载，
+// Next 运行时也总是会把请求传进来（与其它 route 及其单测的调用形态一致）。
+export const GET = withAuth(async function GET(_request: Request) {
   try {
     const db = getDb()
     const pats = listPats(db)

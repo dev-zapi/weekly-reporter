@@ -26,6 +26,10 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://127.0.0.1:3100',
+    // 固定 locale：specs 断言本地化文案（如报告卡片的 Intl medium 日期
+    // 「Jan 8, 2024」）。无头 Chromium 默认就是 en-US，这里显式钉住，
+    // 断言不随宿主环境漂移。
+    locale: 'en-US',
     trace: 'on-first-retry',
   },
 

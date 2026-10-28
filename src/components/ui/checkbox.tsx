@@ -1,17 +1,18 @@
 'use client'
 
-import * as React from 'react'
+import { type ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
-interface CheckboxProps {
+/** 原生 button 属性全部透传（aria-*、data-* 等），仅追加受控勾选状态。 */
+type CheckboxProps = ComponentProps<'button'> & {
   checked?: boolean
   onCheckedChange?: (checked: boolean) => void
-  className?: string
 }
 
-export function Checkbox({ checked, onCheckedChange, className }: CheckboxProps) {
+export function Checkbox({ checked, onCheckedChange, className, ...rest }: CheckboxProps) {
   return (
     <button
+      {...rest}
       type="button"
       role="checkbox"
       aria-checked={checked}

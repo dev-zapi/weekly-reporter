@@ -45,7 +45,8 @@ test.describe('周报列表页', () => {
     await expect(page.getByText('E2E 测试周报 2')).toBeVisible()
 
     // Verify each card displays its week range
-    await expect(page.getByText('01/08 - 01/14')).toBeVisible()
-    await expect(page.getByText('01/15 - 01/21')).toBeVisible()
+    // (formatSystemDate renders Intl medium dates — "Jan 8, 2024" in en-US)
+    await expect(page.getByText('Jan 8, 2024 - Jan 14, 2024')).toBeVisible()
+    await expect(page.getByText('Jan 15, 2024 - Jan 21, 2024')).toBeVisible()
   })
 })

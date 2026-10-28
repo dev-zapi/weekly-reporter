@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { withAuth } from '@/lib/auth/guard'
 import { revokePat } from '@/lib/auth/pat'
@@ -10,8 +10,10 @@ import { apiTokens } from '@/lib/db/schema'
  *
  * Revoke a PAT (set revoked_at, keep row for audit trail).
  */
+// Request（而非 NextRequest）：本 handler 不读任何 Next 扩展字段，取最小类型，
+// 单测也可以直接用原生 Request 构造调用。
 export const DELETE = withAuth(async function DELETE(
-  _request: NextRequest,
+  _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {

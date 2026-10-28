@@ -24,7 +24,7 @@ describe('AuthGate', () => {
   })
 
   it('redirects to /login when no password is stored', async () => {
-    render(<AuthGate />)
+    render(<AuthGate authEnabled />)
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/login')
@@ -35,7 +35,7 @@ describe('AuthGate', () => {
 
   it('preserves the requested path in the redirect param', async () => {
     mockPathname = '/reports'
-    render(<AuthGate />)
+    render(<AuthGate authEnabled />)
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/login?redirect=%2Freports')
@@ -46,7 +46,7 @@ describe('AuthGate', () => {
     localStorage.setItem('weekly-reporter.auth', 'good-password')
     mockFetch.mockResolvedValueOnce({ ok: true, status: 200 })
 
-    render(<AuthGate />)
+    render(<AuthGate authEnabled />)
 
     await waitFor(() => {
       expect(mockFetch).toHaveBeenCalledWith('/api/auth/verify', {
@@ -61,7 +61,7 @@ describe('AuthGate', () => {
     localStorage.setItem('weekly-reporter.auth', 'bad-password')
     mockFetch.mockResolvedValueOnce({ ok: false, status: 401 })
 
-    render(<AuthGate />)
+    render(<AuthGate authEnabled />)
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/login')
@@ -72,7 +72,18 @@ describe('AuthGate', () => {
 
   it('does not gate the login page itself', async () => {
     mockPathname = '/login'
-    render(<AuthGate />)
+    render(<AuthGate authEnabled />)
+
+    // Give the effect a tick to run
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockReplace).not.toHaveBeenCalled()
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('does not gate at all when auth is disabled', async () => {
+    localStorage.clear()
+    render(<AuthGate authEnabled={false} />)
 
     // Give the effect a tick to run
     await new Promise((resolve) => setTimeout(resolve, 0))

@@ -58,6 +58,29 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
         if (child.exitCode !== null) throw new Error(logs)
         return fetch(`${url}/api/settings/ai`).then((response) => response.status === 200).catch(() => false)
       }, { timeout: 90_000, message: 'Next.js worker app did not become ready' }).toBeTruthy()
+      // 预热编译（仅 dev 模式需要）：dev server 冷启动时按需编译每个路由——首个
+      // 浏览器用例曾把整笔编译成本（/edit 页 ~17s、templates/reports 等 API 各
+      // ~12s，受 run-e2e 的 CPU 配额约束）烧进 30s 的用例预算里，generation-
+      // sessions 请求还没回来就被超时杀掉。这里在 worker fixture（预算独立于
+      // 用例）里把重路由编译一遍。GET 打在只有 POST 的路由上返回 405、带无效
+      // id 的请求返回 400/404——但路由模块照常完成编译，预热目的已达到，故
+      // .catch() 静默（预热失败留给用例自身去报）。
+      if (nextServerMode === 'development') {
+        const warmUpPaths = [
+          '/edit/0',
+          '/api/templates',
+          '/api/prompts/styles',
+          '/api/events',
+          '/api/reports',
+          '/api/reports/0',
+          '/api/reports/0/generation-sessions?variant=personal',
+          '/api/reports/0/generation-sessions/0/turns',
+          '/api/reports/0/generation-sessions/0/proposals/0/accept',
+        ]
+        await Promise.all(warmUpPaths.map((warmUpPath) =>
+          fetch(`${url}${warmUpPath}`, { signal: AbortSignal.timeout(120_000) }).catch(() => undefined)
+        ))
+      }
       await use(url)
     } finally {
       if (child.pid) {
@@ -74,7 +97,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
       }
       await rm(root, { recursive: true, force: true })
     }
-  }, { scope: 'worker', timeout: process.env.CI ? 300_000 : 120_000 }],
+  }, { scope: 'worker', timeout: process.env.CI ? 300_000 : 240_000 }],
   baseURL: async ({ appURL }, use) => { await use(appURL) },
 })
 

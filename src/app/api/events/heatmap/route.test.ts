@@ -55,7 +55,7 @@ describe('/api/events/heatmap', () => {
       { eventTime: new Date('2026-07-13T09:00:00') },
     ])
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(response.status).toBe(200)
@@ -71,7 +71,7 @@ describe('/api/events/heatmap', () => {
       { eventTime: new Date('2026-07-14T10:00:00') },
     ])
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(data.data[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -84,7 +84,7 @@ describe('/api/events/heatmap', () => {
       { eventTime: new Date('2026-07-14T18:00:00') },
     ])
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(data.data).toHaveLength(1)
@@ -94,7 +94,7 @@ describe('/api/events/heatmap', () => {
   it('should return empty array when no events exist', async () => {
     await mockQueryResult([])
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(response.status).toBe(200)
@@ -107,7 +107,7 @@ describe('/api/events/heatmap', () => {
       { eventTime: new Date('2026-07-10T09:00:00') },
     ])
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(data.data).toHaveLength(2)
@@ -122,7 +122,7 @@ describe('/api/events/heatmap', () => {
     const db = getDb() as unknown as { orderBy: ReturnType<typeof vi.fn> }
     db.orderBy.mockRejectedValueOnce(new Error('Database error'))
 
-    const response = await GET()
+    const response = await GET(new Request('http://localhost/api/events/heatmap'))
     const data = await response.json()
 
     expect(response.status).toBe(500)

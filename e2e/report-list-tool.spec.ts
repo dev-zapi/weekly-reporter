@@ -360,17 +360,38 @@ test.describe('AI 查询周报内容', () => {
 
   test('重新授权拒绝 stale/legacy 默认访问并允许显式授权，空结果成功', async ({ page, request, reportId, scenario }) => {
     await withQueryFixture(request, scenario, reportId, async (fixture) => {
+      // 脚本步进按「用户轮次数 + 工具调用消息数」定位，而跨轮重建的历史只保留
+      // 文本 part（transcriptToModelMessages 丢弃 tool-call/tool-result，工具
+      // 输出不进上下文预算）——所以：第一轮消费 step0（5 次查询，单轮内容查询
+      // 预算 MAX_CONTENT_QUERIES_PER_TURN=5）+ step1（收尾文本）；第二轮的请求
+      // 重建后仍定位到 step1（重放同一段文本）；第三轮才消费 step2/step3，
+      // 让「不存在的周报」作为新预算周期里的第 6 次查询。
       await openSessionWithScript(page, reportId, scriptedInstruction('检查内容授权', {
-        steps: [{ kind: 'stream', toolCalls: [
-          { name: 'query_report_content', arguments: { reportId: fixture.staleReportId } },
-          { name: 'query_report_content', arguments: { reportId: fixture.staleReportId, allowStale: true } },
-          { name: 'query_report_content', arguments: { reportId: fixture.legacyReportId } },
-          { name: 'query_report_content', arguments: { reportId: fixture.legacyReportId, allowLegacy: true } },
-          { name: 'query_report_content', arguments: { reportId: fixture.crossAudienceReportId, allowLegacy: true } },
-          { name: 'query_report_content', arguments: { reportId: 999999999, query: 'missing' } },
-        ] }, { kind: 'stream', text: '授权检查完成。' }],
+        steps: [
+          { kind: 'stream', toolCalls: [
+            { name: 'query_report_content', arguments: { reportId: fixture.staleReportId } },
+            { name: 'query_report_content', arguments: { reportId: fixture.staleReportId, allowStale: true } },
+            { name: 'query_report_content', arguments: { reportId: fixture.legacyReportId } },
+            { name: 'query_report_content', arguments: { reportId: fixture.legacyReportId, allowLegacy: true } },
+            { name: 'query_report_content', arguments: { reportId: fixture.crossAudienceReportId, allowLegacy: true } },
+          ] },
+          { kind: 'stream', text: '授权检查完成。' },
+          { kind: 'stream', toolCalls: [{ name: 'query_report_content', arguments: { reportId: 999999999, query: 'missing' } }] },
+          { kind: 'stream', text: '空结果检查完成。' },
+        ],
       }))
       await expect(page.getByText('授权检查完成。')).toBeVisible({ timeout: 30_000 })
+
+      const composer = page.getByPlaceholder('Ask AI to revise, answer a question, or submit the current version...')
+      await composer.fill('继续检查一个不存在的周报')
+      await page.getByRole('button', { name: 'Send', exact: true }).click()
+      // 第二轮重放 step1 的文本——用出现次数同步「第二轮已完成」
+      await expect(page.getByText('授权检查完成。')).toHaveCount(2, { timeout: 30_000 })
+
+      await composer.fill('最后检查一个不存在的周报')
+      await page.getByRole('button', { name: 'Send', exact: true }).click()
+      await expect(page.getByText('空结果检查完成。')).toBeVisible({ timeout: 30_000 })
+
       const detail = await latestSessionDetail(request, reportId)
       const results = detail.messages.filter((part) => part.partType === 'tool-result' && part.data?.toolName === 'query_report_content').map((part) => part.data?.output)
       expect(results).toHaveLength(6)

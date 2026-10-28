@@ -1,4 +1,4 @@
-import { hasToolCall, isStepCount, streamText, type ModelMessage } from 'ai'
+import { hasToolCall, InvalidToolInputError, isStepCount, streamText, type ModelMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
 import { getAIConfig } from '@/lib/ai/config'
@@ -24,6 +24,9 @@ import { isReportListToolResult, REPORT_LIST_TOOL_NAME, REFERENCE_BOUNDARY } fro
 import { isReportContentToolResult, REPORT_CONTENT_TOOL_NAME, CONTENT_REFERENCE_BOUNDARY, type ReportContentToolResult } from './report-content-contract'
 import { persistQuerySnapshot } from './query-snapshots'
 import { createGenerationTools, type GenerationToolBudget } from './generation-tools'
+
+/** AI SDK 7 工具入参校验失败包装类的 name（见 isInvalidToolInput）。 */
+const INVALID_TOOL_INPUT_ERROR_NAME = 'AI_InvalidToolInputError'
 
 export type GenerationStreamProposal = {
   id: number
@@ -154,8 +157,24 @@ function toolResultContent(toolName: string, output: unknown, proposal: Generati
   return proposal ? '候选终版已提交，等待用户确认。' : '工具调用已完成。'
 }
 
+function isInvalidToolInput(error: unknown): boolean {
+  // 「查询参数不合法」在流里以三种形态到达 tool-error part：
+  // 1. Error 实例且 name 为 ZodError —— execute 内本地 schema 校验直接抛出；
+  // 2. Error 实例且 name 为 AI_InvalidToolInputError —— AI SDK 7 对工具入参
+  //    校验失败的包装类（cause 为原始校验错误），用官方 isInstance 判定；
+  // 3. 纯字符串，形如 "AI_InvalidToolInputError: <message>" —— SDK 在组装
+  //    tool-error part 时经 getErrorMessage 序列化，类身份已丢失（ai@7 实测），
+  //    只能按稳定的前缀识别。
+  // 三者都应映射为 INVALID_QUERY，而不是 QUERY_FAILED。
+  if (typeof error === 'string') return error.startsWith(`${INVALID_TOOL_INPUT_ERROR_NAME}:`)
+  if (error instanceof Error) {
+    if (error.name === 'ZodError' || error.name === INVALID_TOOL_INPUT_ERROR_NAME) return true
+  }
+  return InvalidToolInputError.isInstance(error)
+}
+
 function toolErrorOutput(toolName: string, error: unknown): unknown {
-  const code = error instanceof Error && error.name === 'ZodError' ? 'INVALID_QUERY' : 'QUERY_FAILED'
+  const code = isInvalidToolInput(error) ? 'INVALID_QUERY' : 'QUERY_FAILED'
   if (toolName === REPORT_CONTENT_TOOL_NAME) return { ok: false, error: { code, message: safeErrorMessage(error) }, unavailable: true, rawResponse: safeErrorMessage(error).slice(0, 2_000), referenceBoundary: CONTENT_REFERENCE_BOUNDARY }
   if (toolName !== REPORT_LIST_TOOL_NAME) return { error: safeErrorMessage(error) }
   return {

@@ -12,14 +12,14 @@ test.describe('采集源搜索框焦点', () => {
 
     await page.goto('/collect')
     await page.waitForLoadState('networkidle')
-    const input = page.locator('input[placeholder="搜索名称…"]')
+    const input = page.locator('input[placeholder="Search by name…"]')
     await input.waitFor({ state: 'visible', timeout: 10000 })
 
     await input.click()
 
     // 监听焦点变化
     const focusInfo = await page.evaluateHandle(() => {
-      const input = document.querySelector('input[placeholder="搜索名称…"]') as HTMLInputElement | null
+      const input = document.querySelector('input[placeholder="Search by name…"]') as HTMLInputElement | null
       if (!input) return { activeElementTag: '', activeElementPlaceholder: '', lostCount: 0 }
 
       let lostCount = 0
