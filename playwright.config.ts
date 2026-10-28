@@ -51,7 +51,7 @@ export default defineConfig({
       WR_AUTH_DISABLED: '1',
       // 限制 dev server 的 V8 堆，与 L3 的 cgroup 上限（scripts/run-e2e.mjs）互补：
       // 堆上限让 Node 先自行 GC/崩溃，而不是一路涨到 cgroup 才被 OOM kill。
-      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 2048}`]
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 4096}`]
         .filter(Boolean)
         .join(' '),
     },
