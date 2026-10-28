@@ -19,7 +19,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // 默认串行：本机 20 核跑默认并发（~10 worker）时每个 worker 一个 Chromium，
+  // 加上 dev server 会把内存打满并触发 OOM（连累无关进程）。需要并发时显式提高。
+  workers: process.env.CI ? 1 : Number(process.env.E2E_WORKERS ?? 1),
   reporter: 'html',
 
   use: {
@@ -47,6 +49,11 @@ export default defineConfig({
       // 默认关闭认证：现有 spec 不受认证改造影响（与 vitest 的 setup.ts 对齐）。
       // 认证开启场景见 e2e/auth.config.ts。
       WR_AUTH_DISABLED: '1',
+      // 限制 dev server 的 V8 堆，与 L3 的 cgroup 上限（scripts/run-e2e.mjs）互补：
+      // 堆上限让 Node 先自行 GC/崩溃，而不是一路涨到 cgroup 才被 OOM kill。
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 2048}`]
+        .filter(Boolean)
+        .join(' '),
     },
   },
 })

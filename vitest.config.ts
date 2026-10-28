@@ -5,6 +5,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // 默认 2 个 worker：jsdom 进程按核数铺满会把整机吃满（无 CI，测试都在本机跑）。
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 2),
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['node_modules', 'e2e', '.e2e-worker-*'],
   },
