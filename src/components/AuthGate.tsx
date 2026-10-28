@@ -9,12 +9,20 @@ import { verifyPassword, getStoredPassword, clearStoredPassword } from '@/lib/ap
  *
  * On mount: if no stored password or verify fails → redirect to /login.
  * Lightweight: one verify on mount, no blocking spinner storms.
+ *
+ * `authEnabled` is passed from the server layout (WR_AUTH_DISABLED=1 turns the
+ * whole auth system off, ADR-0020) — when auth is off the gate stays silent:
+ * no redirect, no verify roundtrip.
  */
-export function AuthGate() {
+export function AuthGate({ authEnabled }: { authEnabled: boolean }) {
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
+    if (!authEnabled) {
+      return
+    }
+
     // Don't gate the login page itself
     if (pathname === '/login') {
       return
@@ -47,7 +55,7 @@ export function AuthGate() {
     }
 
     verify()
-  }, [router, pathname])
+  }, [authEnabled, router, pathname])
 
   // Don't render anything — just gate via redirect.
   // No blocking UI; page content renders behind the gate.

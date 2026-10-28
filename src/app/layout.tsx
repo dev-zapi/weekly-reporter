@@ -7,6 +7,13 @@ import { Navigation } from "@/components/Navigation";
 import { Footer } from "@/components/Footer";
 import { SyncAllSourcesProvider } from "@/components/SyncAllSources";
 import { AuthGate } from "@/components/AuthGate";
+import { isAuthDisabled } from "@/lib/auth/guard";
+
+// 服务端判定认证开关并下发给客户端 gate：WR_AUTH_DISABLED=1 时整套认证关闭
+//（ADR-0020），客户端不应再把页面重定向到 /login。注意静态预渲染页面会在
+// 构建期固化该值——这个开关是「构建与运行一起开/关」的测试/开发旋钮，
+// 不存在构建开着、运行关着的组合。
+const authEnabled = !isAuthDisabled();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +42,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <AuthGate />
+        <AuthGate authEnabled={authEnabled} />
         <ThemeProvider>
           <SyncAllSourcesProvider>
             <Navigation />
