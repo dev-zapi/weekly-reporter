@@ -11,8 +11,7 @@ import {
   LoaderCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { publicPlanSourceLabel, type PublicGenerationSummary } from '@/lib/generation/public-summary'
-import type { PlanState } from '@/lib/generation/plan'
+import type { PublicGenerationSummary } from '@/lib/generation/public-summary'
 import type { ReviewableProposal } from '@/lib/generation/stream'
 import { lineDiff } from '@/lib/generation/diff'
 
@@ -47,7 +46,6 @@ export function ProposalReviewPanel({
           <span className={`rounded-full px-2 py-1 text-xs ${proposal.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-500' : proposal.status === 'superseded' ? 'bg-muted text-muted-foreground' : 'bg-amber-500/10 text-amber-500'}`}>{proposal.referenceChanged ? '参考已变化' : proposal.status === 'accepted' ? 'Accepted' : proposal.status === 'superseded' ? 'Superseded' : 'Pending review'}</span>
         </div>
         {!proposal.publicSummary && proposal.summary.length > 0 && <ul className="mt-3 space-y-1 text-xs text-muted-foreground">{proposal.summary.map((item, index) => <li key={`${index}-${item}`}>• {item}</li>)}</ul>}
-        {proposal.planState && <PlanStateSummary state={proposal.planState} />}
         {proposal.publicSummary && <PublicGenerationSummaryCard summary={proposal.publicSummary} />}
       </div>
       <div role="tablist" aria-label="Proposal views" className="flex rounded-lg bg-muted p-1">
@@ -89,15 +87,8 @@ function PublicGenerationSummaryCard({ summary }: { summary: PublicGenerationSum
       <h4 className="font-semibold text-foreground">Public generation summary</h4>
       <p className="mt-2 leading-5">{summary.factBoundary.statement}</p>
       <p className="mt-1">This records model-explicit handling only; hidden reasoning: {summary.factBoundary.hiddenReasoning}.</p>
-      <dl className="mt-3 grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
-        <dt>Template section status</dt><dd>{summary.templateSection.policy} · {summary.templateSection.status}</dd>
-        <dt>Structure completeness rules</dt><dd>{summary.structureCompleteness.ruleVersion} · {summary.structureCompleteness.status}</dd>
-      </dl>
       <div className="mt-3 grid gap-3">
         <SummarySection title="Model-explicit handling">{summary.modelHandling.length > 0 ? <ul className="list-disc space-y-1 pl-4">{summary.modelHandling.map((item) => <li key={item}>{item}</li>)}</ul> : undefined}</SummarySection>
-        <SummarySection title="Plan judgments">{summary.planJudgments.length > 0 ? <ul className="space-y-1">{summary.planJudgments.map((item) => <li key={item.candidateId}>[{item.candidateId}] {item.judgment} · {item.reason}{item.remainingAction !== 'none' ? ` · ${item.remainingAction}` : ''}</li>)}</ul> : undefined}</SummarySection>
-        <SummarySection title="Plan override conclusions">{summary.planOverrideConclusions.length > 0 ? <ul className="space-y-1">{summary.planOverrideConclusions.map((item) => <li key={`${item.itemId}-${item.action}`}>[{item.itemId}] {item.action} · {item.result} · {item.source}{item.replacementText !== 'none' ? ` · ${item.replacementText}` : ''}</li>)}</ul> : undefined}</SummarySection>
-        <SummarySection title="Item sources">{summary.planItems.length > 0 ? <ul className="space-y-1">{summary.planItems.map((item, index) => <li key={`${item.candidateId}-${index}`}><span className="mr-1.5 rounded bg-muted px-1.5 py-0.5 font-medium text-foreground">{publicPlanSourceLabel(item.source)}</span>{item.text}</li>)}</ul> : undefined}</SummarySection>
         <SummarySection title="Historical references">{summary.historicalReferences.length > 0 ? <ul className="space-y-1">{summary.historicalReferences.map((item) => <li key={`${item.kind}-${item.reportId}`}>{item.title} · {item.weekStart} – {item.weekEnd} · {item.audience} · {item.isLegacy ? 'legacy' : item.finalStatus} · 历史参考·不可信{item.warning ? <span role="alert" className="ml-1 text-amber-600 dark:text-amber-400">· {item.warning}</span> : null}</li>)}</ul> : undefined}</SummarySection>
         <SummarySection title="Tool status">{summary.toolStatuses.length > 0 ? <ul className="space-y-1">{summary.toolStatuses.map((item) => <li key={`${item.toolName}-${item.status}`}>{item.toolName} · {item.status}{item.detail !== 'none' ? ` · ${item.detail}` : ''}</li>)}</ul> : undefined}</SummarySection>
         <SummarySection title="Failure states">{summary.failureStates.length > 0 ? <ul className="space-y-1">{summary.failureStates.map((item) => <li key={`${item.scope}-${item.code}`}>{item.code} · {item.message}</li>)}</ul> : undefined}</SummarySection>
@@ -105,19 +96,5 @@ function PublicGenerationSummaryCard({ summary }: { summary: PublicGenerationSum
         <SummarySection title="Change summary">{summary.changeSummary.length > 0 ? <ul className="list-disc space-y-1 pl-4">{summary.changeSummary.map((item) => <li key={item}>{item}</li>)}</ul> : undefined}</SummarySection>
       </div>
     </section>
-  )
-}
-
-function PlanStateSummary({ state }: { state: PlanState }) {
-  return (
-    <details className="mt-3 rounded-lg border border-border bg-muted/20 p-3" open>
-      <summary className="cursor-pointer text-xs font-medium">Next-week plan · {state.status === 'forbidden' ? '章节禁止' : state.status === 'empty' ? '空计划' : `${state.items.length} 项`}</summary>
-      <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-        <p>Section: {state.section}{state.truncatedCount > 0 ? ` · truncated ${state.truncatedCount}` : ''}</p>
-        {state.items.length > 0 && <ul className="list-disc space-y-1 pl-4">{state.items.map((item) => <li key={`${item.source}-${item.itemId ?? item.candidateId ?? item.text}`}>{item.text} · {publicPlanSourceLabel(item.publicSource ?? (item.source === 'carry-forward' ? 'carry-forward' : item.source === 'baseline' ? 'editing-baseline' : 'this-week-new'))}</li>)}</ul>}
-        {state.judgments.length > 0 && <ul className="space-y-1">{state.judgments.map((judgment) => <li key={judgment.candidateId}>[{judgment.candidateId}] {judgment.judgment} · {judgment.reason}</li>)}</ul>}
-        {state.warnings.map((warning) => <p key={warning} role="alert" className="text-amber-600 dark:text-amber-400">{warning}</p>)}
-      </div>
-    </details>
   )
 }

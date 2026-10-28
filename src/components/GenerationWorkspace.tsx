@@ -24,15 +24,12 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_GENERATION_INSTRUCTION } from '@/lib/generation/context'
 import {
   type StreamingMarkdown,
 } from '@/lib/generation/streaming-markdown'
 import type { AudienceVariant, ReportVariant } from '@/lib/db/schema'
-import { LEGACY_NO_SNAPSHOT, type CarryForwardSnapshot } from '@/lib/generation/carry-forward-snapshot'
-import type { PlanState } from '@/lib/generation/plan'
 import {
   type PublicGenerationSummary,
 } from '@/lib/generation/public-summary'
@@ -99,7 +96,6 @@ interface Proposal {
   status: 'pending' | 'accepted' | 'superseded'
   createdAt: string | Date
   acceptedAt?: string | Date | null
-  planState?: PlanState | null
   publicSummary?: PublicGenerationSummary | null
   baselineContent?: string | null
   referenceChanged?: boolean
@@ -114,37 +110,14 @@ interface SessionDetail extends SessionSummary {
   aiStylePrompt: string
   systemPrompt: string
   toolRules: string
-  planPolicy?: 'forbidden' | 'required' | null
   baselineFinalContent: string | null
-  carryForwardSnapshot: CarryForwardSnapshot
   messages: MessagePart[]
   turns: Turn[]
   proposals: Proposal[]
   sourceIsCurrent: boolean
   activeTurn: Turn | null
-  planJudgments?: Array<{ candidateId: string; judgment: string; reason: string; remainingAction: string | null }>
-  planOverrides?: PlanOverrideRecord[]
-  planOverrideState?: PlanOverrideItemState[]
   querySnapshots?: Array<{ id: number; toolName: string; calledAt: string | Date; trigger: string; resultCount: number; truncated: boolean; errorCode: string | null; previousSnapshotId: number | null; parameters: Record<string, unknown>; result: Record<string, unknown>; sourceAudience: string; sourceReportId: number; sourceUpdatedAt: string | Date | null; sourceWeekStart: string | null; sourceWeekEnd: string | null; sourceFinalStatus: string | null }>
   historicalReferencesChanged?: boolean
-}
-
-interface PlanOverrideRecord {
-  id: number
-  itemId: string
-  action: 'keep' | 'drop' | 'rewrite' | 're-add'
-  replacementText: string | null
-  source: 'carry-forward' | 'this-week-new' | 'baseline'
-  createdAt: string | Date
-}
-
-interface PlanOverrideItemState {
-  itemId: string
-  source: 'carry-forward' | 'this-week-new' | 'baseline'
-  originalText: string
-  effectiveText: string | null
-  latestAction: 'keep' | 'drop' | 'rewrite' | 're-add'
-  included: boolean
 }
 
 function toolStatusMessage(eventType: 'tool-input-delta' | 'tool-call' | 'tool-result', toolName: string): string {
@@ -198,7 +171,6 @@ function SystemContextCard({ detail, onRefresh }: { detail: SessionDetail; onRef
         <summary className="cursor-pointer text-sm font-medium">Template snapshot · {detail.templateName}</summary>
         <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{detail.templateContent}</pre>
       </details>
-      <CarryForwardSnapshotCard snapshot={detail.carryForwardSnapshot} />
       <details className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
         <summary className="cursor-pointer text-sm font-medium">Historical query snapshots · 历史参考·不可信</summary>
         <div className="mt-2 space-y-2 text-xs text-muted-foreground">
@@ -207,175 +179,7 @@ function SystemContextCard({ detail, onRefresh }: { detail: SessionDetail; onRef
           {(detail.querySnapshots ?? []).length === 0 && <p>尚未查询历史周报。</p>}
         </div>
       </details>
-      <div className="mt-2 rounded-lg border border-border bg-background p-3 text-xs text-muted-foreground">
-        Template plan contract: {detail.planPolicy === 'forbidden' ? '章节禁止' : '允许/需要下周计划（缺少时追加）'}
-      </div>
     </div>
-  )
-}
-
-function CarryForwardSnapshotCard({ snapshot }: { snapshot?: CarryForwardSnapshot }) {
-  const normalized = snapshot ?? LEGACY_NO_SNAPSHOT
-  const source = normalized.source
-  return (
-    <details className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3" open>
-      <summary className="cursor-pointer text-sm font-medium">Plan carry-forward snapshot · 历史参考·不可信</summary>
-      <div className="mt-3 space-y-3 text-xs leading-5 text-muted-foreground">
-        <p>This immutable historical reference is not a fact of the current report.</p>
-        <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-[auto_1fr]">
-          <dt>Snapshot status</dt><dd className="font-medium text-foreground">{normalized.status}</dd>
-          <dt>Parse status</dt><dd>{normalized.parseStatus}{normalized.parseReason ? ` · ${normalized.parseReason}` : ''}</dd>
-          <dt>Snapshot captured</dt><dd>{normalized.capturedAt ?? 'not captured'}</dd>
-          <dt>Source</dt><dd>{source ? `${source.title} · ${source.weekStart} – ${source.weekEnd} · ${source.audience} · ${source.finalStatus}` : 'No exact previous-cycle source'}</dd>
-          <dt>Proposal reference</dt><dd>{source?.acceptedProposalId ?? 'none'}</dd>
-        </dl>
-        {normalized.parseWarning && <p className="text-amber-500">{normalized.parseWarning}</p>}
-        <div>
-          <p className="mb-1 font-medium text-foreground">Plan source copy</p>
-          <pre className="whitespace-pre-wrap break-words rounded border border-border bg-background p-2">{normalized.planText ?? '(none)'}</pre>
-        </div>
-        <div>
-          <p className="mb-1 font-medium text-foreground">Candidates ({normalized.candidates.length})</p>
-          {normalized.candidates.length > 0 ? (
-            <ul className="space-y-1">
-              {normalized.candidates.map((candidate) => <li key={candidate.candidateId}>[{candidate.candidateId}] {candidate.text} · {candidate.judgment ?? 'pending judgment'}</li>)}
-            </ul>
-          ) : <p>(none)</p>}
-        </div>
-        {normalized.reason && <p>Reason: {normalized.reason}</p>}
-      </div>
-    </details>
-  )
-}
-
-function PlanOverrideRow({
-  itemId,
-  text,
-  source,
-  state,
-  disabled,
-  onAction,
-}: {
-  itemId: string
-  text: string
-  source: 'carry-forward' | 'this-week-new' | 'baseline'
-  state?: PlanOverrideItemState
-  disabled: boolean
-  onAction: (action: PlanOverrideRecord['action'], itemId: string, text?: string) => Promise<boolean>
-}) {
-  const [rewriting, setRewriting] = useState(false)
-  const [replacement, setReplacement] = useState(state?.effectiveText ?? text)
-  const dropped = state?.latestAction === 'drop'
-  const effectiveText = state?.effectiveText ?? text
-
-  const SOURCE_LABELS = {
-    'carry-forward': 'carry-forward',
-    'baseline': 'baseline',
-    'this-week-new': '本周新增'
-  } as const
-
-  const sourceLabel = SOURCE_LABELS[source]
-
-  return (
-    <li className="rounded-lg border border-border bg-background p-3" data-plan-item-id={itemId}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p className={`break-words text-sm ${dropped ? 'line-through text-muted-foreground' : ''}`}>{effectiveText || text}</p>
-          <p className="mt-1 text-xs text-muted-foreground">[{itemId}] · {sourceLabel} · {state ? `${state.latestAction} → ${state.included ? 'included' : 'excluded'}` : 'no user override'}</p>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {dropped ? (
-            <Button size="sm" variant="outline" disabled={disabled} onClick={() => void onAction('re-add', itemId)}>Re-add</Button>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" disabled={disabled} onClick={() => void onAction('keep', itemId)}>Keep</Button>
-              <Button size="sm" variant="outline" disabled={disabled} onClick={() => { setReplacement(effectiveText || text); setRewriting((value) => !value) }}>Rewrite</Button>
-              <Button size="sm" variant="outline" disabled={disabled} onClick={() => void onAction('drop', itemId)}>Drop</Button>
-            </>
-          )}
-        </div>
-      </div>
-      {rewriting && !dropped && (
-        <div className="mt-2 flex gap-2">
-          <Input aria-label={`Rewrite ${itemId}`} value={replacement} onChange={(event) => setReplacement(event.target.value)} disabled={disabled} />
-          <Button size="sm" disabled={disabled || !replacement.trim()} onClick={async () => { if (await onAction('rewrite', itemId, replacement)) setRewriting(false) }}>Save rewrite</Button>
-        </div>
-      )}
-    </li>
-  )
-}
-
-function PlanOverridePanel({
-  detail,
-  disabled,
-  saving,
-  onAction,
-}: {
-  detail: SessionDetail
-  disabled: boolean
-  saving: boolean
-  onAction: (action: PlanOverrideRecord['action'], itemId?: string, text?: string) => Promise<boolean>
-}) {
-  const [newItem, setNewItem] = useState('')
-  const candidateItems = (detail.carryForwardSnapshot ?? LEGACY_NO_SNAPSHOT).candidates
-  const overrideState = detail.planOverrideState ?? []
-  const records = detail.planOverrides ?? []
-  const newItems = overrideState.filter((item) => item.source === 'this-week-new')
-  const baselineItems = overrideState.filter((item) => item.source === 'baseline')
-  const stateByItem = new Map(overrideState.map((item) => [item.itemId, item]))
-  const recordDisabled = disabled || saving
-
-  return (
-    <section aria-label="Plan overrides" className="rounded-xl border border-violet-500/30 bg-violet-500/5 p-4">
-      <div>
-        <h3 className="text-sm font-semibold">Plan overrides</h3>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">Append-only keep, drop, rewrite, and re-add decisions for this generation session. The latest valid decision overrides later AI judgments.</p>
-      </div>
-      <div className="mt-3 space-y-3">
-        <div>
-          <p className="mb-2 text-xs font-medium text-muted-foreground">Carry-forward candidates</p>
-          {candidateItems.length > 0 ? (
-            <ul className="space-y-2">
-              {candidateItems.map((candidate) => (
-                <PlanOverrideRow key={candidate.candidateId} itemId={candidate.candidateId} text={candidate.text} source="carry-forward" state={stateByItem.get(candidate.candidateId)} disabled={recordDisabled} onAction={(action, itemId, text) => onAction(action, itemId, text)} />
-              ))}
-            </ul>
-          ) : <p className="text-xs text-muted-foreground">No carry-forward candidates.</p>}
-        </div>
-        {baselineItems.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">Baseline items (from previous accepted proposal)</p>
-            <ul className="space-y-2">
-              {baselineItems.map((item) => (
-                <PlanOverrideRow key={item.itemId} itemId={item.itemId} text={item.originalText} source="baseline" state={item} disabled={recordDisabled} onAction={(action, itemId, text) => onAction(action, itemId, text)} />
-              ))}
-            </ul>
-          </div>
-        )}
-        {newItems.length > 0 && (
-          <div>
-            <p className="mb-2 text-xs font-medium text-muted-foreground">This-week additions</p>
-            <ul className="space-y-2">
-              {newItems.map((item) => (
-                <PlanOverrideRow key={item.itemId} itemId={item.itemId} text={item.originalText} source="this-week-new" state={item} disabled={recordDisabled} onAction={(action, itemId, text) => onAction(action, itemId, text)} />
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <Input aria-label="New this-week plan item" placeholder="Add a concise next-week plan item" value={newItem} onChange={(event) => setNewItem(event.target.value)} disabled={recordDisabled} />
-          <Button size="sm" disabled={recordDisabled || !newItem.trim()} onClick={async () => { if (await onAction('keep', undefined, newItem)) setNewItem('') }}>Add item</Button>
-        </div>
-        <details className="rounded-lg border border-border bg-background p-3">
-          <summary className="cursor-pointer text-xs font-medium">Append-only override history ({records.length})</summary>
-          {records.length > 0 ? (
-            <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
-              {records.map((record) => <li key={record.id}>{new Date(record.createdAt).toLocaleString()} · [{record.itemId}] {record.action}{record.replacementText ? ` · ${record.replacementText}` : ''} · {record.source}</li>)}
-            </ol>
-          ) : <p className="mt-2 text-xs text-muted-foreground">No user overrides recorded.</p>}
-        </details>
-      </div>
-    </section>
   )
 }
 
@@ -556,7 +360,6 @@ export function GenerationWorkspace({
   const [liveUser, setLiveUser] = useState('')
   const [liveProposal, setLiveProposal] = useState<ReviewableProposal | null>(null)
   const [accepting, setAccepting] = useState(false)
-  const [savingOverride, setSavingOverride] = useState(false)
 
   const {
     liveText,
@@ -752,29 +555,6 @@ export function GenerationWorkspace({
     }
   }
 
-  async function recordPlanOverride(action: PlanOverrideRecord['action'], itemId?: string, text?: string) {
-    if (!activeSessionId || streaming) return false
-    setSavingOverride(true)
-    try {
-      const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/plan-overrides`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, itemId, text }),
-      })
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to record plan override')
-      setLiveProposal(null) // Clear live proposal since pending proposals are superseded
-      await Promise.all([loadDetail(activeSessionId), loadSessions(activeSessionId)])
-      toast.success(`Plan override recorded: ${action}`)
-      return true
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to record plan override')
-      return false
-    } finally {
-      setSavingOverride(false)
-    }
-  }
-
   async function archiveSession() {
     if (!activeSessionId || !confirm('After archiving, the record remains viewable but cannot continue chatting. Archive this session?')) return
     const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, { method: 'DELETE' })
@@ -843,7 +623,6 @@ export function GenerationWorkspace({
               {!detail.sourceIsCurrent && <div className="border-b border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-500">The source draft has changed. This session is retained for audit; create a new session from the latest draft.</div>}
             <div ref={transcriptRef} onScroll={handleTranscriptScroll} className="generation-transcript max-h-[calc(100vh-15rem)] min-h-[520px] space-y-4 overflow-y-auto p-4">
               <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败'); return } await loadDetail(detail.id) })() }} />
-              <PlanOverridePanel detail={detail} disabled={!canChat || streaming} saving={savingOverride} onAction={recordPlanOverride} />
               {detail.messages.map((part) => <TranscriptPart key={part.id} part={part} onRetry={part.partType === 'tool-result' ? () => { const message = detail.messages.filter((item) => item.role === 'user').at(-1)?.content; if (message) void streamTurn(detail.id, message) } : undefined} />)}
               {liveUser && <TranscriptPart part={{ id: -1, turnId: liveTurnId, sequence: Number.MAX_SAFE_INTEGER, role: 'user', partType: 'text', content: liveUser, data: null }} />}
               <LiveAssistant reasoning={liveReasoning} text={liveText} toolState={liveToolState} working={streaming || Boolean(detail.activeTurn && !liveTurnId)} />

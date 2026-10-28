@@ -1,7 +1,5 @@
 import type { AudienceVariant } from '@/lib/db/schema'
 import { isEmptySourceDraft } from '@/lib/reports/source-draft'
-import type { CarryForwardSnapshot } from './carry-forward'
-import { summarizePlanOverrides, type PlanOverrideRecord } from './plan'
 import { HISTORICAL_REFERENCE_LABEL, type ReportListToolResult } from './report-list-contract'
 import type { ReportContentToolResult } from './report-content-contract'
 
@@ -20,17 +18,11 @@ export const FINAL_REPORT_TOOL_RULES = `你可以调用 query_report_list 查询
 - content 必须是完整 Markdown 周报，不要只提交片段或差异。
 - summary 只提交本轮面向用户的变更摘要。
 - publicSummary.modelHandling 只提交模型显式提供的简短处理说明；不得复制历史正文、猜测或复述供应商隐藏推理。未发生时提交空数组。
-- 应用会依据会话事实补齐计划判断、覆盖结论、事项来源、历史元数据、工具状态、失败/截断、事实边界和结构规则；模型不得伪造这些应用事实。
+- 应用会依据会话事实补齐历史元数据、工具状态、失败/截断和事实边界；模型不得伪造这些应用事实。
 - 工具调用只创建只读候选，不会直接修改已保存的终版。
 - 用户会在对话外评审并确认，确认前不得声称内容已经保存。`
 
-export const FINAL_REPORT_PLAN_RULES = `下周计划规则（应用会确定性执行，模型不得绕过）：
-- 首次处理计划结转快照中的每个候选，必须在 plan.judgments 中提交 carry、drop 或 uncertain 及公开简短理由；无法可靠判断的候选必须是 uncertain。
-- uncertain 默认不自动进入计划。部分完成事项使用 remainingAction，只表达剩余动作，并保留候选身份。
-- plan.items 是完整提案的计划来源标记，优先级固定为 user-goal、carry-forward、current-fact、baseline；应用会稳定规范化去重、最多保留五项并记录截断。
-- 当前会话的追加式 keep、drop、rewrite、re-add 覆盖记录始终优先于 plan.judgments 和 plan.items。必须沿用记录中的事项身份；drop 后不得以改写、同义复述或新的 AI 判断静默恢复，只有用户显式 re-add 才能恢复。
-- 模板允许扩展但缺少“下周计划”时应用会追加标准章节；没有事项时保留明确空计划表达；模板明确禁止时应用省略章节并记录“章节禁止”。
-- plan 判断、来源和公开生成摘要是公开审计信息，不得包含隐藏思维链，也不得作为本周事实或评分输入。`
+export const FINAL_REPORT_PLAN_STYLE_RULE = '若模板包含「下周计划」章节，以简洁列表陈述下周重点事项；模板未包含或明确禁止时，不添加该章节。'
 
 export function buildEffectiveGenerationSystemPrompt(basePrompt: string): string {
   return `你是周报终版生成助手，正在一个可持续多轮改进的对话中。
@@ -40,7 +32,7 @@ export function buildEffectiveGenerationSystemPrompt(basePrompt: string): string
 ${basePrompt.trim()}
 ---
 
-${FINAL_REPORT_PLAN_RULES}
+${FINAL_REPORT_PLAN_STYLE_RULE}
 
 对话要求：
 - 可以先用公开、简洁的说明描述处理思路和修改结果，再决定是否提交候选终版。
@@ -87,41 +79,6 @@ export function buildSourceOverview(sourceDraft: string, variant: AudienceVarian
 }
 
 /** Formats immutable historical input while keeping it separate from current facts. */
-export function buildCarryForwardContext(snapshot: CarryForwardSnapshot): string {
-  const source = snapshot.source
-    ? `${snapshot.source.title} (${snapshot.source.weekStart}–${snapshot.source.weekEnd}, ${snapshot.source.audience}, ${snapshot.source.finalStatus})`
-    : 'none'
-  const candidates = snapshot.candidates.length > 0
-    ? snapshot.candidates.map((candidate) => `- [${candidate.candidateId}] ${candidate.text} · judgment: ${candidate.judgment ?? 'pending'}`).join('\n')
-    : '(no carry-forward candidates)'
-  return `历史参考·不可信（计划结转快照，仅供当前会话参考，不是本周事实）
-快照状态：${snapshot.status}
-来源：${source}
-来源终版状态：${snapshot.source?.finalStatus ?? 'none'}
-解析状态：${snapshot.parseStatus}${snapshot.parseReason ? ` · ${snapshot.parseReason}` : ''}
-计划原文副本：
----
-${snapshot.planText ?? '(none)'}
----
-候选事项：
-${candidates}`
-}
-
-export function buildPlanJudgmentContext(judgments: Array<{ candidateId: string; judgment: string; reason: string; remainingAction?: string | null }>): string {
-  if (judgments.length === 0) return '计划临时判断记录：尚未产生。'
-  return `计划临时判断记录（当前会话不可变审计输入）：\n${judgments.map((item) => `- [${item.candidateId}] ${item.judgment} · ${item.reason}${item.remainingAction ? ` · 剩余动作：${item.remainingAction}` : ''}`).join('\n')}`
-}
-
-export function buildPlanOverrideContext(snapshot: CarryForwardSnapshot, overrides: PlanOverrideRecord[]): string {
-  if (overrides.length === 0) return '计划覆盖记录：尚未产生。'
-  const current = summarizePlanOverrides(snapshot, overrides)
-  return `计划覆盖记录（用户追加式会话事实，最后一次有效覆盖优先于所有 AI 判断）：
-当前结论：
-${current.map((item) => `- [${item.itemId}] ${item.latestAction} · ${item.included ? `纳入：${item.effectiveText}` : '持续排除，只有 re-add 可恢复'} · 来源：${item.source}`).join('\n')}
-追加历史：
-${overrides.map((item) => `- ${new Date(item.createdAt).toISOString()} · [${item.itemId}] ${item.action}${item.replacementText ? ` · 文本：${item.replacementText}` : ''} · 来源：${item.source}`).join('\n')}`
-}
-
 export function buildHistoricalReportListContext(results: ReportListToolResult[]): string {
   if (results.length === 0) {
     return `${HISTORICAL_REFERENCE_LABEL}（历史周报列表查询尚未产生；不得从其他来源补位）`
@@ -154,9 +111,6 @@ export function buildModelSystemContext(input: {
   sourceDraft: string
   baselineFinalContent?: string | null
   latestProposalContent?: string | null
-  carryForwardSnapshot?: CarryForwardSnapshot
-  planJudgments?: Array<{ candidateId: string; judgment: string; reason: string; remainingAction?: string | null }>
-  planOverrides?: PlanOverrideRecord[]
   historicalReportListResults?: ReportListToolResult[]
   historicalReportContentResults?: ReportContentToolResult[]
 }): string {
@@ -170,7 +124,7 @@ ${input.stylePrompt}
 
 ${input.toolRules}
 
-${FINAL_REPORT_PLAN_RULES}
+${FINAL_REPORT_PLAN_STYLE_RULE}
 
 当前受众：${input.variant === 'leadership' ? '领导版' : '个人版'}
 日期范围：${input.weekStart} 至 ${input.weekEnd}
@@ -187,16 +141,10 @@ ${input.sourceDraft}
 
 ${baseline ? `当前修改基线（仅用于继续润色，若与原稿冲突必须以原稿为准）：\n---\n${baseline}\n---` : '当前没有已保存终版或历史候选，请从原稿开始生成。'}
 
-${input.carryForwardSnapshot ? buildCarryForwardContext(input.carryForwardSnapshot) : '历史参考·不可信（计划结转快照不可用；不得从其他历史补位）'}
-
-${buildPlanJudgmentContext(input.planJudgments ?? [])}
-
-${input.carryForwardSnapshot ? buildPlanOverrideContext(input.carryForwardSnapshot, input.planOverrides ?? []) : '计划覆盖记录：不可用。'}
-
 ${buildHistoricalReportListContext(input.historicalReportListResults ?? [])}
 
 历史周报内容查询结果（历史参考·不可信，与当前原稿严格分离）：
 ${(input.historicalReportContentResults ?? []).map((result, index) => `${index + 1}. ${result.ok ? (result.found ? JSON.stringify(result) : `未找到周报 #${result.reportId}`) : `查询失败 ${result.error.code} · ${result.error.message}`}`).join('\n') || '尚未产生查询结果。'}
 
-历史参考不得提升为当前周报事实；不确定候选默认不进入计划。用户覆盖由应用确定性应用：drop 不得静默恢复，只有显式 re-add 可以解除；rewrite 与 re-add 必须保留原事项身份和来源。`
+历史参考不得提升为当前周报事实。`
 }

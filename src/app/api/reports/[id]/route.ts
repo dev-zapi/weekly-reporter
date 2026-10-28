@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db'
 import {
   generationMessageParts,
   generationPlanJudgments,
+  generationPlanOverrides,
   generationProposals,
   generationSessions,
   generationTurns,
@@ -122,6 +123,7 @@ export const DELETE = withAuth(async function DELETE(
       for (const session of sessions) {
         tx.delete(generationProposals).where(eq(generationProposals.sessionId, session.id)).run()
         tx.delete(generationPlanJudgments).where(eq(generationPlanJudgments.sessionId, session.id)).run()
+        tx.delete(generationPlanOverrides).where(eq(generationPlanOverrides.sessionId, session.id)).run()
         tx.delete(generationMessageParts).where(eq(generationMessageParts.sessionId, session.id)).run()
         tx.delete(generationTurns).where(eq(generationTurns.sessionId, session.id)).run()
       }

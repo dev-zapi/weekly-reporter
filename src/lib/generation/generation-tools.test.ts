@@ -69,11 +69,16 @@ describe('proposeFinalReportInputSchema', () => {
     expect(r.success).toBe(false)
   })
 
-  it('renders plan with a non-empty description', () => {
+  it('rejects the removed plan parameter (strictObject)', () => {
+    const r = proposeFinalReportInputSchema.safeParse({
+      ...minimalValid,
+      plan: { items: [] },
+    })
+    expect(r.success).toBe(false)
     const json = z.toJSONSchema(proposeFinalReportInputSchema) as {
-      properties: { plan?: { description?: string } }
+      properties: Record<string, unknown>
     }
-    expect(json.properties.plan?.description).toBeTruthy()
+    expect(json.properties.plan).toBeUndefined()
   })
 
   it('rejects a bare string for publicSummary (narrow-scope guard)', () => {

@@ -40,20 +40,6 @@ export const proposeFinalReportInputSchema = z.strictObject({
       modelHandling: z.array(z.string()).describe('模型显式提供的简短处理说明；不得复制历史正文或推测隐藏推理'),
     }),
   ).optional(),
-  plan: z.object({
-    judgments: z.array(z.object({
-      candidateId: z.string(),
-      judgment: z.enum(['carry', 'drop', 'uncertain']),
-      reason: z.string(),
-      remainingAction: z.string().optional(),
-    })).optional(),
-    items: z.array(z.object({
-      text: z.string(),
-      source: z.enum(['user-goal', 'carry-forward', 'current-fact', 'baseline']),
-      candidateId: z.string().optional(),
-      reason: z.string().optional(),
-    })).optional(),
-  }).describe('下周计划对象（优先使用）；judgments 为候选判断数组，items 为计划事项数组').optional(),
 })
 
 export function createGenerationTools(ctx: GenerationToolContext) {
@@ -112,7 +98,7 @@ export function createGenerationTools(ctx: GenerationToolContext) {
     propose_final_report: tool({
       description: '提交一份完整 Markdown 候选终版，供用户在对话外评审和确认。这个工具不会直接保存终版。',
       inputSchema: proposeFinalReportInputSchema,
-      execute: async ({ content, summary, publicSummary, plan }) => {
+      execute: async ({ content, summary, publicSummary }) => {
         if (ctx.proposalHolder.current) throw new Error('本轮已经提交过候选终版')
         ctx.proposalHolder.current = await createGenerationProposal({
           session: ctx.detail as unknown as import('@/lib/db/schema').GenerationSession,
@@ -120,7 +106,6 @@ export function createGenerationTools(ctx: GenerationToolContext) {
           content,
           summary,
           publicSummary: publicSummary as PublicGenerationSummaryInput | undefined,
-          plan,
         })
         return { proposalId: ctx.proposalHolder.current.id, status: 'ready' }
       },

@@ -78,7 +78,7 @@ Removes the report, both variants, the event snapshots, and the generation histo
 
 ## Out of scope
 
-These scripts cover `/api/reports/*` only. Multi-turn AI final generation (`generation-sessions`, proposals, plan overrides) is a streaming NDJSON interface driven from the app UI at `/edit/[id]` — do it there, not here. Timeline events belong to the timeline-events skill; templates (周报模板) belong to the report-templates skill. AI styles and collect sources have no script coverage yet, so use the app or hit the API directly.
+These scripts cover `/api/reports/*` only. Multi-turn AI final generation (`generation-sessions`, proposals) is a streaming NDJSON interface driven from the app UI at `/edit/[id]` — do it there, not here. Timeline events belong to the timeline-events skill; templates (周报模板) belong to the report-templates skill. AI styles and collect sources have no script coverage yet, so use the app or hit the API directly.
 
 ## Errors
 

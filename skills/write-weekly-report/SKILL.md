@@ -58,18 +58,18 @@ node <weekly-reports>/show.mjs <id> --variant leadership --part source
 
 Note the `sourceRevision` in the metadata — you will pass it when saving.
 
-**5. Check the previous week's plan (carry-forward reference).** Look up the previous week (weekStart − 7) and, if that report has a current final for the same variant, read its 下周计划 section:
+**5. Optionally consult the previous week's final.** If you want continuity, look up the previous week (weekStart − 7) and, if that report has a current final for the same variant, read its 下周计划 section:
 
 ```bash
 node <weekly-reports>/list.mjs --start 2026-09-07 --end 2026-09-13
 node <weekly-reports>/show.mjs <prevId> --variant leadership --part final
 ```
 
-Treat those items as *reference, not fact*: carry items still relevant into this week's plan, drop finished/obsolete ones, and be ready to justify each decision at review time. If there is no previous final, there is simply nothing to carry.
+Treat anything you read there as *reference, not fact*: this week's plan section is your own prose, grounded in this week's draft. Nothing carries forward automatically, and skipping this step is fine — if there is no previous final, there is simply nothing to consult.
 
-**6. Write the final.** Apply the template's structure and requirements, write in the style prompt's voice, and ground every factual claim in the source draft. Rules for the 下周计划 section: at most 5 items; if the template forbids a plan section, omit it entirely.
+**6. Write the final.** Apply the template's structure and requirements, write in the style prompt's voice, and ground every factual claim in the source draft. If the template includes a 下周计划 section, state next week's priorities as a concise plain list; if the template forbids a plan section, omit it entirely.
 
-**7. Review gate.** Show the user the *complete* text (full markdown, both the body and the plan). For a revision of an earlier draft of yours, summarize what changed instead of re-pasting everything. When carry-forward was involved, list what you carried and what you dropped, with one-line reasons. Then wait. "Looks good" / "可以" → save. Any feedback → revise (back to step 6). Never save on silence.
+**7. Review gate.** Show the user the *complete* text (full markdown, both the body and the plan section). For a revision of an earlier draft of yours, summarize what changed instead of re-pasting everything. If you consulted last week's final, list which items you carried over and which you dropped, with one-line reasons. Then wait. "Looks good" / "可以" → save. Any feedback → revise (back to step 6). Never save on silence.
 
 **8. Save.** Write the final to a temp file (never inline multi-line markdown through shell quoting) and save with provenance:
 
