@@ -4,14 +4,16 @@ import { getDb } from '@/lib/db'
 import { gte, desc } from 'drizzle-orm'
 import { rawEvents } from '@/lib/db/schema'
 
-export const GET = withAuth(async function GET(request?: Request) {
+// request 为必选：Next 运行时总是传入请求（withAuth 也从第一个参数取请求做
+// 鉴权）。可选签名在 dev server 的增量类型生成（.next/dev/types，tsconfig 有
+// include）里会报 `Request | undefined` 不满足 ParamCheck——注意 `next
+// typegen`（.next/types）并不报这个，别用它来反证。
+export const GET = withAuth(async function GET(request: Request) {
   try {
     const db = getDb()
     const days = Math.min(
       parseInt(
-        request
-          ? new URL(request.url).searchParams.get('days') || '365'
-          : '365'
+        new URL(request.url).searchParams.get('days') || '365'
       ) || 365,
       730
     )
