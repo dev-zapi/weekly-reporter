@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -87,7 +87,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
           apiFetch('/api/templates'),
           apiFetch('/api/prompts/styles'),
         ])
-        if (!reportResponse.ok) throw new Error('Report not found')
+        if (!reportResponse.ok) throw new Error('Report not found' + traceSuffix(reportResponse))
         const reportData = await reportResponse.json()
         const templateData = await templateResponse.json()
         const styleData = await styleResponse.json()
@@ -152,7 +152,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
         }),
       })
       const updated = await response.json()
-      if (!response.ok) throw new Error(updated.error || 'Save failed')
+      if (!response.ok) throw new Error((updated.error || 'Save failed') + traceSuffix(response))
       acceptGeneratedVariant(updated)
       toast.success('Final version saved')
     } catch (error) {
@@ -168,7 +168,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     try {
       const response = await apiFetch(`/api/reports/${reportId}/regenerate-source`, { method: 'POST' })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to regenerate source draft')
+      if (!response.ok) throw new Error((data.error || 'Failed to regenerate source draft') + traceSuffix(response))
       const normalized = normalizeBundle(data)
       const next = normalized.variants.find((item) => item.variant === variant)
       setBundle(normalized)
@@ -197,7 +197,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     setBusy('delete')
     try {
       const response = await apiFetch(`/api/reports/${reportId}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Delete failed')
+      if (!response.ok) throw new Error('Delete failed' + traceSuffix(response))
       toast.success('Report deleted')
       router.push('/reports')
     } catch (error) {

@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -26,7 +26,7 @@ export default function NewTemplatePage() {
       router.push('/templates')
     } else {
       const error = await response.json()
-      toast.error(error.error || 'Creation failed')
+      toast.error((error.error || 'Creation failed') + traceSuffix(response))
       throw new Error('Creation failed')
     }
   }

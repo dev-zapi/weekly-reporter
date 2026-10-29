@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { useEffect, useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { CollectSource } from '../CollectSourceList'
@@ -137,7 +137,7 @@ export function useSourceListQuery(): {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${res.status}`)
+        throw new Error((errorData.error || `HTTP ${res.status}`) + traceSuffix(res))
       }
 
       const data = await res.json()

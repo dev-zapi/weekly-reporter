@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
@@ -197,7 +197,10 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
         router.push('/collect')
       } else {
         const issueMessage = data.details?.issues?.[0]?.message
-        toast.error(issueMessage ? `${data.error}: ${issueMessage}` : data.error || 'Operation failed')
+        toast.error(
+          (issueMessage ? `${data.error}: ${issueMessage}` : data.error || 'Operation failed') +
+            traceSuffix(res),
+        )
       }
     } catch {
       toast.error('Operation failed')

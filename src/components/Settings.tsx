@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -176,7 +176,7 @@ function AISettingsTab() {
         await loadConfig()
       } else {
         const data = await res.json().catch(() => ({ error: 'Save failed' }))
-        setSaveError(data.error ?? 'Save failed')
+        setSaveError((data.error ?? 'Save failed') + traceSuffix(res))
       }
     } catch (error) {
       console.error('Failed to save AI config:', error)
@@ -220,7 +220,12 @@ function AISettingsTab() {
       }
       const res = await apiFetch('/api/settings/ai/test', { method: 'POST' })
       const data = await res.json()
-      setTestResult({ ok: data.ok, error: data.error })
+      setTestResult({
+        ok: data.ok,
+        error: data.error
+          ? data.error + (data.ok ? '' : traceSuffix(res))
+          : data.error,
+      })
     } catch (error) {
       setTestResult({ ok: false, error: String(error) })
     } finally {

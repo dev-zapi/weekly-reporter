@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -411,7 +411,7 @@ Return:
         fetchPrompts()
       } else {
         const err = await res.json()
-        toast.error(err.error || 'Update failed')
+        toast.error((err.error || 'Update failed') + traceSuffix(res))
       }
     } catch {
       toast.error('Update failed')

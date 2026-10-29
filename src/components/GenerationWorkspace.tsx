@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { memo, useCallback, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -379,7 +379,7 @@ export function GenerationWorkspace({
   const loadSessions = useCallback(async (preferredId?: number) => {
     const response = await apiFetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Failed to load generation sessions')
+    if (!response.ok) throw new Error((data.error || 'Failed to load generation sessions') + traceSuffix(response))
     const rows = (data.sessions ?? []) as SessionSummary[]
     setSessions(rows)
     setActiveSessionId((current) => {
@@ -392,7 +392,7 @@ export function GenerationWorkspace({
   const loadDetail = useCallback(async (sessionId: number, settleLiveStream = false) => {
     const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${sessionId}`)
     const data = await response.json()
-    if (!response.ok) throw new Error(data.error || 'Failed to load session')
+    if (!response.ok) throw new Error((data.error || 'Failed to load session') + traceSuffix(response))
     setDetail(data)
     // Clear liveProposal after detail is set, so the component uses detail.proposals.at(-1)
     if (settleLiveStream) {
@@ -409,7 +409,7 @@ export function GenerationWorkspace({
       try {
         const response = await apiFetch(`/api/reports/${reportId}/generation-sessions?variant=${variant}`)
         const data = await response.json()
-        if (!response.ok) throw new Error(data.error || 'Failed to load generation sessions')
+        if (!response.ok) throw new Error((data.error || 'Failed to load generation sessions') + traceSuffix(response))
         if (cancelled) return
         const rows = (data.sessions ?? []) as SessionSummary[]
         setSessions(rows)
@@ -431,7 +431,7 @@ export function GenerationWorkspace({
       try {
         const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`)
         const data = await response.json()
-        if (!response.ok) throw new Error(data.error || 'Failed to load session')
+        if (!response.ok) throw new Error((data.error || 'Failed to load session') + traceSuffix(response))
         if (!cancelled) setDetail(data)
       } catch (error) {
         if (!cancelled) toast.error(error instanceof Error ? error.message : 'Failed to load session')
@@ -455,7 +455,7 @@ export function GenerationWorkspace({
       })
       if (!response.ok || !response.body) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to start AI generation')
+        throw new Error((data.error || 'Failed to start AI generation') + traceSuffix(response))
       }
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
@@ -509,7 +509,7 @@ export function GenerationWorkspace({
         body: JSON.stringify({ variant, templateId, styleOverride: styleOverride || undefined }),
       })
       const session = await response.json()
-      if (!response.ok) throw new Error(session.error || 'Failed to create generation session')
+      if (!response.ok) throw new Error((session.error || 'Failed to create generation session') + traceSuffix(response))
       setActiveSessionId(session.id)
       await loadSessions(session.id)
       await loadDetail(session.id)
@@ -533,7 +533,7 @@ export function GenerationWorkspace({
     const turnId = liveTurnId ?? detail?.activeTurn?.id
     if (!activeSessionId || !turnId) return
     const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/turns/${turnId}/stop`, { method: 'POST' })
-    if (!response.ok) toast.error('Failed to stop generation')
+    if (!response.ok) toast.error('Failed to stop generation' + traceSuffix(response))
   }
 
   async function acceptProposal(proposal: ReviewableProposal) {
@@ -543,7 +543,7 @@ export function GenerationWorkspace({
     try {
       const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}/proposals/${proposal.id}/accept`, { method: 'POST' })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.error || 'Failed to save proposed final version')
+      if (!response.ok) throw new Error((data.error || 'Failed to save proposed final version') + traceSuffix(response))
       onAccepted(data.variant)
       setLiveProposal(null) // Clear live proposal so we show the updated proposal from detail
       await Promise.all([loadDetail(activeSessionId), loadSessions(activeSessionId)])
@@ -559,7 +559,7 @@ export function GenerationWorkspace({
     if (!activeSessionId || !confirm('After archiving, the record remains viewable but cannot continue chatting. Archive this session?')) return
     const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${activeSessionId}`, { method: 'DELETE' })
     const data = await response.json()
-    if (!response.ok) return toast.error(data.error || 'Archive failed')
+    if (!response.ok) return toast.error((data.error || 'Archive failed') + traceSuffix(response))
     await loadSessions(activeSessionId)
     await loadDetail(activeSessionId)
   }
@@ -574,7 +574,7 @@ export function GenerationWorkspace({
       body: JSON.stringify({ title }),
     })
     const data = await response.json()
-    if (!response.ok) return toast.error(data.error || 'Rename failed')
+    if (!response.ok) return toast.error((data.error || 'Rename failed') + traceSuffix(response))
     await Promise.all([loadDetail(activeSessionId), loadSessions(activeSessionId)])
   }
 
@@ -622,7 +622,7 @@ export function GenerationWorkspace({
             </div>
               {!detail.sourceIsCurrent && <div className="border-b border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-500">The source draft has changed. This session is retained for audit; create a new session from the latest draft.</div>}
             <div ref={transcriptRef} onScroll={handleTranscriptScroll} className="generation-transcript max-h-[calc(100vh-15rem)] min-h-[520px] space-y-4 overflow-y-auto p-4">
-              <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败'); return } await loadDetail(detail.id) })() }} />
+              <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败' + traceSuffix(response)); return } await loadDetail(detail.id) })() }} />
               {detail.messages.map((part) => <TranscriptPart key={part.id} part={part} onRetry={part.partType === 'tool-result' ? () => { const message = detail.messages.filter((item) => item.role === 'user').at(-1)?.content; if (message) void streamTurn(detail.id, message) } : undefined} />)}
               {liveUser && <TranscriptPart part={{ id: -1, turnId: liveTurnId, sequence: Number.MAX_SAFE_INTEGER, role: 'user', partType: 'text', content: liveUser, data: null }} />}
               <LiveAssistant reasoning={liveReasoning} text={liveText} toolState={liveToolState} working={streaming || Boolean(detail.activeTurn && !liveTurnId)} />

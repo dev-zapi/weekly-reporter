@@ -86,6 +86,40 @@ _Avoid_: 全局配置、环境配置（这两个说法都不区分「凭据」�
 后两者均为调用方自报，仅作归因线索，不作安全依据。认证失败的尝试同样记入审计（`status=401`），因为失效或被吊销的 PAT 是最常见的脚本故障。浏览器（启动密码）调用不记审计。
 _Avoid_: 日志（泛指服务端运行输出）、操作日志（泛指一切写操作）、访问日志（Nginx 那种按请求记录的层面日志）
 
+## 可观测性
+
+### 链路追踪 (Trace)
+一次 API 请求从入站到出站的追踪身份，类 Spring Sleuth：每个 `/api/**` 请求拥有一个 `traceId` 与一个根 span。`traceId` 优先继承入站合法值（见「入站追踪标识解析」），否则新生成；根 span 的 `spanId` 每请求新建、`parentSpanId` 为空。追踪上下文贯穿同一次请求的异步链路（AsyncLocalStorage），不需要显式传参。
+_Avoid_: 请求 ID（只覆盖单进程单请求，不表达跨服务传播）、session ID（追踪是诊断维度，不是会话）
+
+### 追踪标识 (Trace Identifier)
+`traceId` 为 32 位小写 hex（128-bit）、`spanId` 为 16 位小写 hex（64-bit），均不允许全 0。`traceparent` 表达为 `00-{traceId}-{spanId}-01`，flags 恒为 `01`（sampled）。生成使用 `globalThis.crypto.getRandomValues`，不使用 `node:crypto`，以便 proxy 与 jsdom/vitest 测试环境都能导入 `src/lib/trace/ids.ts`。
+_Avoid_: UUID（trace id 是 hex 而非带连字符的 UUID）、B3（B3 是另一种传播格式，系统只做读兼容）
+
+### 入站追踪标识解析 (Inbound Trace ID Resolution)
+按优先级从入站请求头取 traceId：`traceparent` → `x-b3-traceid` → `x-trace-id`。候选非法（长度、字符、全 0、大写等）时继续下一层；全部缺失或非法则视为新链路。B3 的 64-bit trace id 左补 0 扩为 128 位，`traceparent` 版本 `ff` 被拒。入站 `traceparent` 的 span 位不成为父 span：系统只延续 traceId，本次请求仍是本进程内的根 span。
+_Avoid_: 原样透传 traceparent（span 位每跳都会换，不是转发整串）
+
+### 追踪 span (Span)
+一次请求内的执行区间。根 span 的 name 为 `request`、`parentSpanId` 为空；`withSpan(name, fn)` 创建子 span，换新 `spanId`、父指向当前 span、traceId 不变，并按耗时输出一行完成日志（成功与失败都记录，失败先记日志再原样抛出）。上下文只存在于本次异步调用链，请求结束即消失。
+_Avoid_: 性能剖析（span 只用于链路归属与粗粒度耗时，不是 profiler）
+
+### Trace 响应头 (Trace Response Headers)
+所有 `/api/**` 响应携带 `x-trace-id`（本次 traceId）、`x-span-id`（本次请求根 span 的 spanId）、`traceparent`（`00-{traceId}-{spanId}-01`）。标识不写入 JSON body：错误可能来自 proxy、守卫或 handler 多层，流式响应也无法再改 body；响应头是唯一能统一覆盖的通道。401 早退路径同样携带——PAT 失效是最常见的故障场景。
+_Avoid_: 响应体 trace 字段（流式与多层错误无法保证）、只给成功响应加头
+
+### Trace 日志前缀 (Trace Log Prefix)
+服务端处于追踪上下文时，console 输出自动在最前面带 `[traceId=… spanId=…]`。由 `installTraceConsolePatch()` 在 Node.js 运行时启动时安装，幂等包装 `console.log/info/warn/error/debug`；既有 console 调用点无需改动，无上下文时原样输出。
+_Avoid_: 手动拼前缀、迁移到 logger（都不需要，补丁透明注入）
+
+### 出站追踪传播 (Outbound Trace Propagation)
+向 AI provider 与 GitHub/GitLab 等下游发起的 HTTP 请求显式合并 `traceparent`（span 位为当前 span，即下游的父 span）与 `x-trace-id`。采用显式调用点注入，不做全局 fetch 猴补丁；没有上下文时不注入任何头。
+_Avoid_: 全局 fetch 拦截、原样转发入站 traceparent
+
+### 前端 Trace 提示 (Frontend Trace Hint)
+API 报错时展示给用户的 trace 提示：前端从错误响应的 `x-trace-id` 头读取并以 `(trace: xxx)` 追加到错误文案之后。网络异常（fetch 抛错、无 Response）无 trace 可加。`verifyPassword` 返回 `{ ok, traceId }`，登录页据此在密码错误时提示 trace；网络异常路径没有 Response，不追加。
+_Avoid_: 错误页展示完整 traceparent（展示 traceId 足够定位日志）、从 body 读取 traceId
+
 ## 周报内容
 
 ### 项目范围 (Project Scope)

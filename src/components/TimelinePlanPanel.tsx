@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
@@ -123,7 +123,7 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
     void apiFetch(url, { signal: controller.signal })
       .then(async (response) => {
         const payload = await response.json() as ApiResponse & { error?: string }
-        if (!response.ok) throw new Error(payload.error || 'Failed to load plan')
+        if (!response.ok) throw new Error((payload.error || 'Failed to load plan') + traceSuffix(response))
         setData(payload)
       })
       .catch((reason: unknown) => {

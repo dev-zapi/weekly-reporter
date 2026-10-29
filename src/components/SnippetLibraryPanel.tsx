@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -67,8 +67,11 @@ export function SnippetLibraryPanel({ onSelectSnippet }: SnippetLibraryPanelProp
       const response = await apiFetch('/api/snippets', {
         signal: abortControllerRef.current.signal,
       })
-      
-      if (!response.ok) throw new Error('Failed to load snippets')
+
+      if (!response.ok) {
+        toast.error('Failed to load snippet library' + traceSuffix(response))
+        return
+      }
       
       const data = await response.json()
       const fetchedSnippets = data.snippets || []

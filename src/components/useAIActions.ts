@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
@@ -147,7 +147,9 @@ export function useAIActions(props: UseAIActionsProps) {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: config.fallbackError }))
-        throw new Error((errorData as { error?: string }).error || config.fallbackError)
+        throw new Error(
+          ((errorData as { error?: string }).error || config.fallbackError) + traceSuffix(response),
+        )
       }
 
       const data = (await response.json()) as Record<string, unknown>

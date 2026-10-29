@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState } from 'react'
 import {
@@ -66,7 +66,7 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
 
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || 'Failed to remove branch')
+        throw new Error((data.error || 'Failed to remove branch') + traceSuffix(res))
       }
 
       // 从本地结果中移除该分支

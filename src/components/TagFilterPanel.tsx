@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -55,7 +55,7 @@ export function TagFilterPanel({
         setLoading(true)
         setError(null)
         const res = await apiFetch('/api/tags')
-        if (!res.ok) throw new Error('Failed to fetch tags')
+        if (!res.ok) throw new Error('Failed to fetch tags' + traceSuffix(res))
         const data = await res.json()
         if (!cancelled) {
           setTags(data.tags ?? [])
@@ -98,7 +98,7 @@ export function TagFilterPanel({
       })
       const data = await res.json()
       if (!res.ok) {
-        throw new Error(data.error ?? 'Failed to rename tag')
+        throw new Error((data.error ?? 'Failed to rename tag') + traceSuffix(res))
       }
       toast.success('Tag renamed')
       setRenameOpen(false)
@@ -123,7 +123,7 @@ export function TagFilterPanel({
       )
       const data = await res.json()
       if (!res.ok) {
-        throw new Error(data.error ?? 'Failed to delete tag')
+        throw new Error((data.error ?? 'Failed to delete tag') + traceSuffix(res))
       }
       toast.success('Tag deleted')
       setDeleteOpen(false)

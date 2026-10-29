@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState } from 'react'
 import {
@@ -71,7 +71,7 @@ export function AddSnippetDialog({ open, onClose, onAdd }: AddSnippetDialogProps
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Add failed')
+        throw new Error((error.error || 'Add failed') + traceSuffix(response))
       }
 
       const data = await response.json()

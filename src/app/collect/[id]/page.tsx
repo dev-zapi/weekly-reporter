@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -19,7 +19,7 @@ export default function EditCollectSourcePage({ params }: { params: Promise<{ id
       const data = await res.json()
       
       if (!res.ok) {
-        toast.error(data.error || 'Failed to load source')
+        toast.error((data.error || 'Failed to load source') + traceSuffix(res))
         router.push('/collect')
         return
       }

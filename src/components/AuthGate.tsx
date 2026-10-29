@@ -43,7 +43,7 @@ export function AuthGate({ authEnabled }: { authEnabled: boolean }) {
       }
 
       try {
-        const ok = await verifyPassword(password)
+        const { ok } = await verifyPassword(password)
 
         if (!ok) {
           clearStoredPassword()

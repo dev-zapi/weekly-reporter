@@ -2,14 +2,24 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import type { LanguageModel } from 'ai'
 import type { AIConfig } from '@/lib/db/schema'
+import { outboundTraceHeaders } from '@/lib/trace/context'
 
 /** Internal transport markers used only to preserve explicit vendor reasoning. */
 export const COMPAT_REASONING_START = '\u0000weekly-reasoning-start\u0000'
 export const COMPAT_REASONING_END = '\u0000weekly-reasoning-end\u0000'
 
+/** 合并 outbound trace 头到既有请求头（对方若是 Headers 也能正确展开）。 */
+function withTraceHeaders(existing: HeadersInit | undefined): HeadersInit {
+  const headers = new Headers(existing)
+  for (const [key, value] of Object.entries(outboundTraceHeaders())) {
+    headers.set(key, value)
+  }
+  return headers
+}
+
 function createReasoningCompatibleFetch(): typeof fetch {
   return async (input, init) => {
-    const response = await fetch(input, init)
+    const response = await fetch(input, { ...init, headers: withTraceHeaders(init?.headers) })
     const contentType = response.headers.get('content-type') ?? ''
     if (!response.body || !contentType.includes('text/event-stream')) return response
 
@@ -35,6 +45,13 @@ function createReasoningCompatibleFetch(): typeof fetch {
       statusText: response.statusText,
       headers: response.headers,
     })
+  }
+}
+
+/** 普通 transport：合并 outbound trace 头后直接调原生 fetch。 */
+function tracedFetch(): typeof fetch {
+  return async (input, init) => {
+    return fetch(input, { ...init, headers: withTraceHeaders(init?.headers) })
   }
 }
 
@@ -72,6 +89,7 @@ export function createModelFromConfig(config: AIConfig): LanguageModel {
     const anthropic = createAnthropic({
       apiKey: config.apiKey,
       baseURL: config.apiUrl || undefined,
+      fetch: tracedFetch(),
     })
     return anthropic(config.model)
   }
@@ -79,7 +97,7 @@ export function createModelFromConfig(config: AIConfig): LanguageModel {
   const openai = createOpenAI({
     apiKey: config.apiKey,
     baseURL: config.apiUrl,
-    fetch: config.protocol === 'openai-compatible' ? createReasoningCompatibleFetch() : undefined,
+    fetch: config.protocol === 'openai-compatible' ? createReasoningCompatibleFetch() : tracedFetch(),
   })
 
   // OpenAI Compatible uses chat() for APIs that only support Chat Completions API
@@ -102,9 +120,9 @@ export async function fetchModelList(config: AIConfig): Promise<string[]> {
   try {
     const url = config.apiUrl.replace(/\/+$/, '') + '/models'
     const response = await fetch(url, {
-      headers: {
+      headers: withTraceHeaders({
         Authorization: `Bearer ${config.apiKey}`,
-      },
+      }),
       signal: controller.signal,
     })
 

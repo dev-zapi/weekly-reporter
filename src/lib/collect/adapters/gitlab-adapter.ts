@@ -1,4 +1,5 @@
 import type { GitAdapter, GitCommit, FetchCommitsOptions, RawEventData } from '../types'
+import { outboundTraceHeaders } from '@/lib/trace/context'
 
 export const gitlabAdapter: GitAdapter = {
   platform: 'git-remote-gitlab',
@@ -38,6 +39,7 @@ export const gitlabAdapter: GitAdapter = {
       headers: {
         'PRIVATE-TOKEN': token,
         'Accept': 'application/json',
+        ...outboundTraceHeaders(),
       },
     })
     

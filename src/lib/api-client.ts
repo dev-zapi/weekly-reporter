@@ -1,7 +1,32 @@
 'use client'
 
+import { TRACE_ID_HEADER } from '@/lib/trace/ids'
+
 /** localStorage key holding the startup password / Bearer token. */
 export const AUTH_STORAGE_KEY = 'weekly-reporter.auth'
+
+/**
+ * 从响应头读取 traceId（兼容测试里不带 headers 的 Response mock）。
+ */
+function readTraceId(response: Response): string | null {
+  try {
+    return response.headers.get(TRACE_ID_HEADER)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 给展示给用户的错误文案追加 trace 后缀，例如 " (trace: abc...)"。
+ *
+ * 服务端统一通过 `x-trace-id` 响应头返回 traceId，因此只有拿到 Response
+ * 的调用点才能取到；没有该头（老服务端、测试 mock、网络异常）时返回空串，
+ * 调用方直接拼接即可，文案保持原样。
+ */
+export function traceSuffix(response: Response): string {
+  const traceId = readTraceId(response)
+  return traceId ? ` (trace: ${traceId})` : ''
+}
 
 /**
  * Read the stored startup password from localStorage.
@@ -64,15 +89,18 @@ function handleUnauthorized(): void {
  * Deliberately bypasses `apiFetch`: a failed verify is an expected 401 and
  * must NOT trigger the global clear-and-redirect side effect (that would
  * loop the login page and wipe its inline error). Throws on network error so
- * callers can distinguish "wrong password" (false) from "unreachable".
+ * callers can distinguish "wrong password" (ok: false) from "unreachable".
+ *
+ * Returns the response traceId alongside the verdict so the login page can
+ * surface it in the inline error (Sleuth-style support handoff).
  */
-export async function verifyPassword(password: string): Promise<boolean> {
+export async function verifyPassword(password: string): Promise<{ ok: boolean; traceId: string | null }> {
   const response = await fetch('/api/auth/verify', {
     headers: {
       Authorization: `Bearer ${password}`,
     },
   })
-  return response.ok
+  return { ok: response.ok, traceId: readTraceId(response) }
 }
 
 /**

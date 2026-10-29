@@ -34,7 +34,7 @@ export interface BulkDeleteResult {
   error?: string
 }
 
-import { apiFetch } from '../api-client'
+import { apiFetch, traceSuffix } from '../api-client'
 
 export async function syncSource(
   sourceId: number,
@@ -56,7 +56,7 @@ export async function syncSource(
   if (data.result?.autoDisabled) {
     return { ok: false, autoDisabled: true }
   }
-  return { ok: false, error: data.error }
+  return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
 }
 
 export async function fetchRepo(sourceId: number): Promise<SimpleResult> {
@@ -69,7 +69,7 @@ export async function fetchRepo(sourceId: number): Promise<SimpleResult> {
   if (res.ok && data.result?.status === 'success') {
     return { ok: true }
   }
-  return { ok: false, error: data.error }
+  return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
 }
 
 export async function toggleSource(
@@ -83,7 +83,7 @@ export async function toggleSource(
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: 'Unknown error' }))
-    return { ok: false, error: data.error }
+    return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
   }
   return { ok: true }
 }
@@ -96,7 +96,7 @@ export async function deleteSource(sourceId: number): Promise<SimpleResult> {
   if (data.success) {
     return { ok: true }
   }
-  return { ok: false, error: data.error }
+  return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
 }
 
 export async function bulkUpdateScope(
@@ -112,7 +112,7 @@ export async function bulkUpdateScope(
   if (data.success) {
     return { ok: true, updatedCount: data.updatedCount }
   }
-  return { ok: false, error: data.error }
+  return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
 }
 
 export async function bulkDelete(ids: number[]): Promise<BulkDeleteResult> {
@@ -125,5 +125,5 @@ export async function bulkDelete(ids: number[]): Promise<BulkDeleteResult> {
   if (data.success) {
     return { ok: true, deletedCount: data.deletedCount }
   }
-  return { ok: false, error: data.error }
+  return { ok: false, error: data.error ? data.error + traceSuffix(res) : data.error }
 }

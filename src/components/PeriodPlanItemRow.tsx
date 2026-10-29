@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Trash2, Forward } from 'lucide-react'
@@ -67,7 +67,7 @@ export function PeriodPlanItemRow({
     setEventsError(null)
     try {
       const response = await apiFetch(`/api/plan-items/${item.id}/fulfillment`)
-      if (!response.ok) throw new Error('Failed to load fulfilling events')
+      if (!response.ok) throw new Error('Failed to load fulfilling events' + traceSuffix(response))
       const data: { events?: FulfillingEventView[] } = await response.json()
       setEvents(data.events ?? [])
     } catch (err) {

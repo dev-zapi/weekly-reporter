@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -69,7 +69,7 @@ export default function NewReportPage() {
         })
         const data = await response.json()
         if (!response.ok) {
-          throw new Error(data.error || 'Preview failed')
+          throw new Error((data.error || 'Preview failed') + traceSuffix(response))
         }
         if (!controller.signal.aborted) {
           setPreview(data.variants as PreviewVariant[])
@@ -111,7 +111,7 @@ export default function NewReportPage() {
       })
       const data = await response.json()
       if (!response.ok) {
-        throw new Error(data.error || 'Creation failed')
+        throw new Error((data.error || 'Creation failed') + traceSuffix(response))
       }
       toast.success('Source draft created')
       router.push(`/reports/${data.report.id}`)

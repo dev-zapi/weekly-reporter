@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import {
   createContext,
@@ -45,15 +45,16 @@ export function SyncAllSourcesProvider({ children }: { children: ReactNode }) {
         }
         if (!Array.isArray(data.results)) {
           throw new Error(
-            !response.ok
+            (!response.ok
               ? data.error || `Sync failed: ${response.status} ${response.statusText}`
-              : 'Invalid sync response format',
+              : 'Invalid sync response format') + traceSuffix(response),
           )
         }
         const results = data.results as SyncResult[]
         if (!response.ok && results.length === 0) {
           throw new Error(
-            data.error || `Sync failed: ${response.status} ${response.statusText}`,
+            (data.error || `Sync failed: ${response.status} ${response.statusText}`) +
+              traceSuffix(response),
           )
         }
         setCompletionVersion((version) => version + 1)

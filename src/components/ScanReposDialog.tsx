@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
@@ -82,7 +82,7 @@ export function ScanReposDialog({
       if (data.error) {
         setSuggestions([])
         setShowSuggestions(false)
-        setFetchError(data.error)
+        setFetchError(data.error + traceSuffix(res))
         return
       }
 

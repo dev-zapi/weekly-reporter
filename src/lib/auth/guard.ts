@@ -4,6 +4,8 @@ import { getDb } from '@/lib/db'
 import { writeAudit, recordAudit } from './audit'
 import { readStartupPassword } from './password'
 import { findPatByToken, isPatExpired, isPatRevoked, touchPat } from './pat'
+import { parseIncomingTraceId } from '@/lib/trace/ids'
+import { applyTraceResponseHeaders, runWithTrace } from '@/lib/trace/context'
 import type { AuthResult } from './types'
 
 /**
@@ -110,26 +112,53 @@ export async function requireAuth(request: Request): Promise<AuthResult> {
  * 返回类型与原 handler 相同（参数与返回类型都不变），因此 Next 16 的 route 类型
  * 校验与既有单测的调用形态都不受影响。第二参数 `ctx` 原样透传（含 Next 16 的
  * `params` Promise），不改其类型。
+ *
+ * 这里同时是 trace 的强制入口：整条请求链路跑在 `runWithTrace` 里（类 Spring
+ * Sleuth 的根 span），错误响应与成功响应都会补上 trace 响应头。routes 无需任何
+ * 改动即可获得该能力。
  */
 export function withAuth<H extends (...args: never[]) => unknown>(
   handler: H,
 ): (...args: Parameters<H>) => Promise<Awaited<ReturnType<H>>> {
   return (async (...args: Parameters<H>) => {
     const [req] = args as unknown as [Request, ...unknown[]]
-    const auth = await requireAuth(req)
-    if (!auth.ok) return auth.response as Response
-    // 把判定结果交给 handler，省掉 handler 里对 requireAuth 的二次调用。
-    // handler 不接 request（例如无参 route、测试里 GET() 直呼）时无可挂载对象，
-    // 跳过即可——这类 handler 也不会去读 getAuthResult。
-    if (req && typeof req === 'object') {
-      Object.defineProperty(req, AUTH_RESULT, {
-        value: auth,
-        enumerable: false,
-        configurable: true,
-      })
-    }
-    const res = (await handler(...args)) as Response
-    await recordAudit(getDb, req, res.status, auth)
-    return res
+    // 请求可能不存在（无参 route、测试里 GET() 直呼），headers 访问前判空。
+    const incomingTraceId =
+      req && typeof req === 'object' && req.headers ? parseIncomingTraceId(req.headers) : null
+
+    return runWithTrace(
+      async () => {
+        const auth = await requireAuth(req)
+        if (!auth.ok) {
+          // 早退路径同样要带 trace 头：PAT 失效是最常见的故障，排障时需要 trace id。
+          if (auth.response) applyTraceResponseHeaders(auth.response)
+          return auth.response as Response
+        }
+        // 把判定结果交给 handler，省掉 handler 里对 requireAuth 的二次调用。
+        // handler 不接 request（例如无参 route、测试里 GET() 直呼）时无可挂载对象，
+        // 跳过即可——这类 handler 也不会去读 getAuthResult。
+        if (req && typeof req === 'object') {
+          Object.defineProperty(req, AUTH_RESULT, {
+            value: auth,
+            enumerable: false,
+            configurable: true,
+          })
+        }
+
+        let res: Response
+        try {
+          res = (await handler(...args)) as Response
+        } catch (error) {
+          // 未捕获异常交给 Next 转 500；这里先落一条日志，console 补丁会自动带上 trace 前缀。
+          console.error('Unhandled route handler error:', error)
+          throw error
+        }
+
+        applyTraceResponseHeaders(res)
+        await recordAudit(getDb, req, res.status, auth)
+        return res
+      },
+      incomingTraceId ? { traceId: incomingTraceId } : undefined,
+    )
   }) as (...args: Parameters<H>) => Promise<Awaited<ReturnType<H>>>
 }

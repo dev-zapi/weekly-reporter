@@ -1,4 +1,5 @@
 import type { GitAdapter, GitCommit, FetchCommitsOptions, RawEventData } from '../types'
+import { outboundTraceHeaders } from '@/lib/trace/context'
 
 export const githubAdapter: GitAdapter = {
   platform: 'git-remote-github',
@@ -37,6 +38,7 @@ export const githubAdapter: GitAdapter = {
         'Authorization': `Bearer ${token}`,
         'Accept': 'application/vnd.github.v3+json',
         'User-Agent': 'WeeklyReporter',
+        ...outboundTraceHeaders(),
       },
     })
     

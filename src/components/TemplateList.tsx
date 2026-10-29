@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -55,7 +55,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
         router.push(`/templates/${data.template.id}`)
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Clone failed')
+        toast.error((error.error || 'Clone failed') + traceSuffix(response))
       }
     } catch (error) {
       toast.error('Clone failed')
@@ -96,7 +96,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
         fetchTemplates() // 刷新列表
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Save failed')
+        toast.error((error.error || 'Save failed') + traceSuffix(response))
       }
     } catch (error) {
       toast.error('Save failed')
@@ -113,7 +113,7 @@ export function TemplateList({ onSelect }: TemplateListProps) {
         toast.success('Template deleted')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Delete failed')
+        toast.error((error.error || 'Delete failed') + traceSuffix(response))
       }
     } catch (error) {
       toast.error('Delete failed')

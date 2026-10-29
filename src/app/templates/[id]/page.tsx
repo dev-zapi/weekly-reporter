@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
@@ -31,7 +31,7 @@ export default function EditTemplatePage() {
         setTemplate(data.template)
         setAiStyle(data.template.aiStyle || 'formal')
       } else {
-        toast.error('Template not found')
+        toast.error('Template not found' + traceSuffix(response))
         router.push('/templates')
       }
     } catch (error) {
@@ -56,7 +56,7 @@ export default function EditTemplatePage() {
         toast.success('AI style updated')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Update failed')
+        toast.error((error.error || 'Update failed') + traceSuffix(response))
         // Revert to previous style
         if (template) {
           setAiStyle(template.aiStyle || 'formal')
@@ -87,7 +87,7 @@ export default function EditTemplatePage() {
       router.push('/templates')
     } else {
       const error = await response.json()
-      toast.error(error.error || 'Update failed')
+      toast.error((error.error || 'Update failed') + traceSuffix(response))
       throw new Error('Update failed')
     }
   }

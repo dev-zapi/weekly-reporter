@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { apiFetch, setStoredPassword, clearStoredPassword, verifyPassword } from './api-client'
+import { apiFetch, setStoredPassword, clearStoredPassword, verifyPassword, traceSuffix } from './api-client'
 
 describe('api-client', () => {
   const mockFetch = vi.fn()
@@ -127,29 +127,58 @@ describe('api-client', () => {
   })
 
   describe('verifyPassword', () => {
-    it('returns true when the server accepts the password', async () => {
+    it('returns ok when the server accepts the password', async () => {
       mockFetch.mockResolvedValueOnce({ ok: true, status: 200 })
 
-      await expect(verifyPassword('good-password')).resolves.toBe(true)
+      await expect(verifyPassword('good-password')).resolves.toEqual({ ok: true, traceId: null })
 
       expect(mockFetch).toHaveBeenCalledWith('/api/auth/verify', {
         headers: { Authorization: 'Bearer good-password' },
       })
     })
 
-    it('returns false on 401 without touching localStorage or redirecting', async () => {
+    it('returns ok false on 401 without touching localStorage or redirecting', async () => {
       mockFetch.mockResolvedValueOnce({ ok: false, status: 401 })
 
-      await expect(verifyPassword('bad-password')).resolves.toBe(false)
+      await expect(verifyPassword('bad-password')).resolves.toEqual({ ok: false, traceId: null })
 
       // Must not trigger the apiFetch clear-and-redirect side effect
       expect(localStorage.getItem('weekly-reporter.auth')).toBeNull()
+    })
+
+    it('returns the traceId from the response headers', async () => {
+      const traceId = 'a'.repeat(32)
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers({ 'x-trace-id': traceId }),
+      })
+
+      await expect(verifyPassword('bad-password')).resolves.toEqual({ ok: false, traceId })
     })
 
     it('rejects on network error', async () => {
       mockFetch.mockRejectedValueOnce(new Error('network down'))
 
       await expect(verifyPassword('any')).rejects.toThrow('network down')
+    })
+  })
+
+  describe('traceSuffix', () => {
+    it('returns a suffix when the response carries a trace id', () => {
+      const response = new Response(null, {
+        headers: { 'x-trace-id': 'b'.repeat(32) },
+      })
+
+      expect(traceSuffix(response)).toBe(` (trace: ${'b'.repeat(32)})`)
+    })
+
+    it('returns an empty string when the header is absent', () => {
+      expect(traceSuffix(new Response(null))).toBe('')
+    })
+
+    it('returns an empty string for header-less response mocks', () => {
+      expect(traceSuffix({ ok: false, status: 500 } as Response)).toBe('')
     })
   })
 })

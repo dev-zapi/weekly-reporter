@@ -1,5 +1,5 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useCallback, useEffect, useState } from 'react'
 import {
@@ -67,7 +67,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     try {
       const query = new URLSearchParams(getPeriodParams()).toString()
       const response = await apiFetch(`/api/plans?${query}`)
-      if (!response.ok) throw new Error('Failed to load plan')
+      if (!response.ok) throw new Error('Failed to load plan' + traceSuffix(response))
       const data: PlanResponse = await response.json()
       setItems(data.items)
     } catch (err) {
@@ -111,7 +111,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...getPeriodParams(), text, projectScope: 'work' }),
       })
-      if (!response.ok) throw new Error('Failed to add item')
+      if (!response.ok) throw new Error('Failed to add item' + traceSuffix(response))
       setNewItemText('')
       // Refetch so the auto-ensured period row and ordering stay consistent.
       await fetchPlan()
@@ -127,7 +127,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       })
-      if (!response.ok) throw new Error('Failed to update item')
+      if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
       setItems((prev) => prev.map((item) => (item.id === id ? updated : item)))
     } catch (err) {
@@ -138,11 +138,11 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
   const handleDeleteItem = async (id: number) => {
     try {
       const response = await apiFetch(`/api/plan-items/${id}`, { method: 'DELETE' })
-      if (!response.ok) throw new Error('Failed to delete item')
+      if (!response.ok) throw new Error('Failed to delete item' + traceSuffix(response))
       // DELETE returns 200 JSON {deleted: true} (no longer 204). Referrer
       // warnings are surfaced pre-deletion via the confirm dialog's GET.
       const data: { deleted?: boolean } = await response.json()
-      if (data.deleted === false) throw new Error('Failed to delete item')
+      if (data.deleted === false) throw new Error('Failed to delete item' + traceSuffix(response))
       setItems((prev) => prev.filter((item) => item.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item')
@@ -152,7 +152,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
   const handleDeferItem = async (id: number) => {
     try {
       const response = await apiFetch(`/api/plan-items/${id}/defer`, { method: 'POST' })
-      if (!response.ok) throw new Error('Failed to defer item')
+      if (!response.ok) throw new Error('Failed to defer item' + traceSuffix(response))
       await fetchPlan()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to defer item')

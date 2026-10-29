@@ -26,13 +26,14 @@ function LoginForm() {
     setLoading(true)
 
     try {
-      const ok = await verifyPassword(password)
+      const { ok, traceId } = await verifyPassword(password)
 
       if (ok) {
         setStoredPassword(password)
         router.replace(redirectTo)
       } else {
-        setError('Invalid password')
+        // 接口报错时把服务端返回的 traceId 拼在错误文案后，方便排查。
+        setError(traceId ? `Invalid password (trace: ${traceId})` : 'Invalid password')
       }
     } catch {
       setError('Network error. Please try again.')

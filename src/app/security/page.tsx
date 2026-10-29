@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/tabs'
 import { Shield, Copy, Plus, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiFetch } from '@/lib/api-client'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { formatSystemDateTime } from '@/lib/time-format'
 import {
   getPatStatus,
@@ -106,7 +106,7 @@ function PatSection() {
       })
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.error || 'Failed to create PAT')
+        throw new Error((err.error || 'Failed to create PAT') + traceSuffix(res))
       }
       const created: CreatedPat = await res.json()
       setJustCreated(created)
@@ -128,7 +128,7 @@ function PatSection() {
       const res = await apiFetch(`/api/auth/pats/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.error || 'Failed to revoke PAT')
+        throw new Error((err.error || 'Failed to revoke PAT') + traceSuffix(res))
       }
       toast.success(`PAT "${patName}" revoked`)
       await loadPats()
