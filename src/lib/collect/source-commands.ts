@@ -4,6 +4,9 @@
  * Each function performs the fetch with the same endpoint/method/body as the
  * inline handlers in `CollectSourceList.tsx`, parses the response, and returns
  * a typed result. No toast, no React state — UI concerns stay in the caller.
+ *
+ * All requests go through `apiFetch` so they carry the Bearer token and get
+ * the standard 401 handling (clear credentials, redirect to /login).
  */
 
 export interface SyncSourceResult {
@@ -31,11 +34,13 @@ export interface BulkDeleteResult {
   error?: string
 }
 
+import { apiFetch } from '../api-client'
+
 export async function syncSource(
   sourceId: number,
   opts?: { resync?: boolean },
 ): Promise<SyncSourceResult> {
-  const res = await fetch('/api/collect/git-remote/sync', {
+  const res = await apiFetch('/api/collect/git-remote/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(opts?.resync ? { sourceId, resync: true } : { sourceId }),
@@ -55,7 +60,7 @@ export async function syncSource(
 }
 
 export async function fetchRepo(sourceId: number): Promise<SimpleResult> {
-  const res = await fetch('/api/collect/git-local/fetch', {
+  const res = await apiFetch('/api/collect/git-local/fetch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sourceId }),
@@ -71,7 +76,7 @@ export async function toggleSource(
   sourceId: number,
   newStatus: string,
 ): Promise<SimpleResult> {
-  const res = await fetch(`/api/collect/sources/${sourceId}`, {
+  const res = await apiFetch(`/api/collect/sources/${sourceId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: newStatus }),
@@ -84,7 +89,7 @@ export async function toggleSource(
 }
 
 export async function deleteSource(sourceId: number): Promise<SimpleResult> {
-  const res = await fetch(`/api/collect/sources/${sourceId}`, {
+  const res = await apiFetch(`/api/collect/sources/${sourceId}`, {
     method: 'DELETE',
   })
   const data = await res.json()
@@ -98,7 +103,7 @@ export async function bulkUpdateScope(
   ids: number[],
   projectScope: 'work' | 'personal',
 ): Promise<BulkUpdateScopeResult> {
-  const res = await fetch('/api/collect/sources/bulk-update-scope', {
+  const res = await apiFetch('/api/collect/sources/bulk-update-scope', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, projectScope }),
@@ -111,7 +116,7 @@ export async function bulkUpdateScope(
 }
 
 export async function bulkDelete(ids: number[]): Promise<BulkDeleteResult> {
-  const res = await fetch('/api/collect/sources/bulk-delete', {
+  const res = await apiFetch('/api/collect/sources/bulk-delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids }),

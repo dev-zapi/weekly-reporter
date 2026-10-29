@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   syncSource,
   fetchRepo,
@@ -7,6 +7,7 @@ import {
   bulkUpdateScope,
   bulkDelete,
 } from './source-commands'
+import { AUTH_STORAGE_KEY } from '../api-client'
 
 function mockFetch(response: unknown, init?: { ok?: boolean }) {
   globalThis.fetch = vi.fn().mockResolvedValue({
@@ -22,6 +23,10 @@ function lastFetchCall() {
 
 beforeEach(() => {
   vi.restoreAllMocks()
+})
+
+afterEach(() => {
+  localStorage.clear()
 })
 
 describe('syncSource', () => {
@@ -70,6 +75,14 @@ describe('fetchRepo', () => {
     mockFetch({ error: 'fetch failed' }, { ok: false })
     const result = await fetchRepo(4)
     expect(result).toEqual({ ok: false, error: 'fetch failed' })
+  })
+
+  it('attaches the stored password as a Bearer token (regression: raw fetch got 401)', async () => {
+    localStorage.setItem(AUTH_STORAGE_KEY, 'sekrit')
+    mockFetch({ result: { status: 'success' } })
+    await fetchRepo(4)
+    const [, init] = lastFetchCall()
+    expect(init.headers.Authorization).toBe('Bearer sekrit')
   })
 })
 
