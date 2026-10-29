@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import path from 'node:path'
-import { nextWebServerCommand } from './next-server'
+import { nextWebServerCommand, webServerTimeout } from './next-server'
 import {
   AUTH_E2E_BASE_URL,
   AUTH_E2E_PORT,
@@ -47,7 +47,7 @@ export default defineConfig({
     command: nextWebServerCommand(AUTH_E2E_PORT),
     url: AUTH_E2E_BASE_URL,
     reuseExistingServer: false,
-    timeout: 120 * 1000,
+    timeout: webServerTimeout(),
     cwd: PROJECT_ROOT,
     env: {
       // 与默认配置不同的 XDG 目录：隔离 auth 套件的数据与密码文件

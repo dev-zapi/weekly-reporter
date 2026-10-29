@@ -23,9 +23,12 @@
 | `E2E_DEV_MEM` | `4096` | dev server 的 `--max-old-space-size`（MB） |
 | `E2E_MEM_MAX` | `8G` | 整跑 cgroup 内存硬上限 |
 | `E2E_CPU_QUOTA` | `300%` | 整跑 cgroup CPU 配额（3 核） |
-| `E2E_BUNDLER` | `webpack` | `turbopack` 时 dev server 改用 Turbopack（默认 webpack，见下） |
+| `E2E_BUNDLER` | `webpack` | 改用 Turbopack 构建/跑 dev server（默认 webpack，见下） |
+| `E2E_SERVER_MODE` | `development` | `production` 时改为 `next build` + `next start`（本地默认仍是 dev，见下） |
 | `VITEST_MAX_WORKERS` | `2` | vitest 并发 worker 数 |
 
 `npm run test:e2e` 通过 `scripts/run-e2e.mjs` 把整个测试进程树包进 `systemd-run --user --scope`：撞到上限时 OOM kill 只发生在 scope 内部（测试死、机器活）。机器上没有 `systemd-run` 时自动降级为直接跑 Playwright，config 里的 worker / 堆上限依然生效；`E2E_NO_SCOPE=1` 可强制跳过包装。`npm run test:e2e:ui` 是人工交互模式，不包装。
 
 dev server 用 `--webpack` 而不是 Next 16 默认的 Turbopack。实测（#64）：8G 上限下 Turbopack 的 `next dev` 在 3 分半就把上限吃穿（native 内存，`--max-old-space-size` 管不到），整跑被 OOM kill 在 16/27；放宽到 12G 能跑完全套，但 `memory.peak` 同样顶满 12G，且 `legacy-migration` 因 Turbopack 冷启动超过该用例 30s 超时而稳定变红（多 1 个失败）。webpack 在 4G 堆下能跑完整套件：25 过 0 红（#63 修复后实测，2m30s；#64 时期的 14m42s 是「7 过 20 红」的失败前置耗时，不具参考性），`memory.peak` 顶到 8G 上限但 `oom_kill=0`（差额由 swap 吸收）。升级 Next 后想重测用 `E2E_BUNDLER=turbopack`。
+
+`E2E_SERVER_MODE=production` 让 webServer 改跑 `npm run build && next start`，用来对比生产打包后的表现（`E2E_BUNDLER` 同时作用于 build：webpack 为 `next build --webpack`，Turbopack 为 `next build`）。生产模式下 webServer 超时放宽到 5 分钟——命令里含一次完整构建；`CI` 为真时同样走生产模式。不用 `CI=1` 做这件事是因为 Playwright 也会读它（retries、forbidOnly、workers），会连带改变测试行为。

@@ -2,9 +2,30 @@ import path from 'node:path'
 
 export type NextServerMode = 'development' | 'production'
 
-export const nextServerMode: NextServerMode = process.env.CI ? 'production' : 'development'
+/**
+ * `E2E_SERVER_MODE=production|development` overrides the CI inference so the
+ * production path can be measured locally — `CI=1` is not usable for that
+ * because Playwright also reads it (retries, forbidOnly, workers). Local
+ * default is unchanged: development unless CI is set.
+ */
+function resolveServerMode(): NextServerMode {
+  const explicit = process.env.E2E_SERVER_MODE
+  if (explicit === 'production' || explicit === 'development') return explicit
+  return process.env.CI ? 'production' : 'development'
+}
 
-const DEV_BUNDLER_ARGS = ['--webpack']
+export const nextServerMode: NextServerMode = resolveServerMode()
+
+/**
+ * The production webServer command runs a full `next build` before serving
+ * (under the run-e2e scope that means CPUQuota 300%, so minutes), which the
+ * dev-mode 2 minute budget does not cover.
+ */
+export function webServerTimeout(mode: NextServerMode = nextServerMode): number {
+  return mode === 'production' ? 5 * 60 * 1000 : 120 * 1000
+}
+
+const WEBPACK_ARGS = ['--webpack']
 
 /**
  * `--webpack` is deliberate: Turbopack (the Next 16 default) exhausts the e2e
@@ -35,18 +56,25 @@ const DEV_BUNDLER_ARGS = ['--webpack']
  * drop the flag without re-measuring `memory.peak` / `oom_kill` from the run's
  * cgroup.
  */
-export function devBundlerArgs(): string[] {
+export function bundlerArgs(): string[] {
   // Escape hatch for re-measuring Turbopack after a Next upgrade.
-  return process.env.E2E_BUNDLER === 'turbopack' ? [] : DEV_BUNDLER_ARGS
+  return process.env.E2E_BUNDLER === 'turbopack' ? [] : WEBPACK_ARGS
 }
 
+/**
+ * Production builds follow the same `E2E_BUNDLER` switch as dev: `next build
+ * --webpack` is the documented equivalent of `next dev --webpack` (Next 16
+ * docs, 01-installation.md). Build and serve must agree — a webpack build
+ * served by Turbopack (or vice versa) is not a supported combination.
+ */
 export function nextBuildArgs(): string[] {
-  return [path.resolve('node_modules/next/dist/bin/next'), 'build']
+  return [path.resolve('node_modules/next/dist/bin/next'), 'build', ...bundlerArgs()]
 }
 
 export function nextServeArgs(port: number, mode = nextServerMode): string[] {
   const command = mode === 'production' ? 'start' : 'dev'
-  const bundler = mode === 'development' ? devBundlerArgs() : []
+  // `next start` serves the prebuilt output, so only `next dev` takes the flag.
+  const bundler = mode === 'development' ? bundlerArgs() : []
   return [
     path.resolve('node_modules/next/dist/bin/next'),
     command,
@@ -62,8 +90,20 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
+/**
+ * Production mode (`E2E_SERVER_MODE=production`, or CI) builds and then serves
+ * the prebuilt output, which is the only way to measure the suite against
+ * webpack/Turbopack production bundles instead of the dev server. Flags are
+ * forwarded through `npm run build -- <flags>`, so they land on the trailing
+ * `next build` of that script — keep the build step last in `package.json` or
+ * the bundler selection silently stops applying.
+ */
 export function nextWebServerCommand(port: number, mode = nextServerMode): string {
   const serve = [process.execPath, ...nextServeArgs(port, mode)].map(shellQuote).join(' ')
   if (mode === 'development') return serve
-  return `npm run build && ${serve}`
+  const buildFlags = bundlerArgs().map(shellQuote)
+  // `--` only when there are flags to forward: a bare trailing `--` is accepted
+  // by npm but reads as a typo.
+  const build = ['npm', 'run', 'build', ...(buildFlags.length > 0 ? ['--', ...buildFlags] : [])].join(' ')
+  return `${build} && ${serve}`
 }
