@@ -12,15 +12,12 @@ import {
   outboundTraceHeaders,
   runWithTrace,
   traceLogPrefix,
-  withSpan,
   type TraceContext,
 } from './context'
 import { installTraceConsolePatch } from './console-patch'
 
 const TRACE_ID = '4bf92f3577b34da6a3ce929d0e0e4736'
 const PREFIX_PATTERN = /^\[traceId=[0-9a-f]{32} spanId=[0-9a-f]{16}\]$/
-const SPAN_COMPLETE_PATTERN =
-  /^\[trace\] span complete name=child traceId=[0-9a-f]{32} spanId=[0-9a-f]{16} parentSpanId=[0-9a-f]{16} durationMs=\d+ ok=true$/
 
 /** 在回调里抓当前上下文（runWithTrace 的返回值只用于断言，上下文需要另取）。 */
 async function captureContext(): Promise<TraceContext> {
@@ -47,11 +44,9 @@ describe('without a trace context', () => {
 })
 
 describe('runWithTrace', () => {
-  it('creates a root context named request', async () => {
+  it('creates a root context with fresh valid ids', async () => {
     const context = await runWithTrace(captureContext)
 
-    expect(context.name).toBe('request')
-    expect(context.parentSpanId).toBeNull()
     expect(isValidTraceId(context.traceId)).toBe(true)
     expect(isValidSpanId(context.spanId)).toBe(true)
   })
@@ -72,7 +67,6 @@ describe('runWithTrace', () => {
 
     expect(outer.inner.traceId).toBe(outer.before.traceId)
     expect(outer.inner.spanId).toBe(outer.before.spanId)
-    expect(outer.inner.parentSpanId).toBeNull()
   })
 
   it('keeps the context across await and macrotask boundaries', async () => {
@@ -92,68 +86,6 @@ describe('runWithTrace', () => {
       expect(getTraceContext()).toBeDefined()
     })
 
-    expect(getTraceContext()).toBeUndefined()
-  })
-})
-
-describe('withSpan', () => {
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('creates a child span and restores the parent afterwards', async () => {
-    const result = await runWithTrace(async () => {
-      const root = await captureContext()
-      const child = await withSpan('child', captureContext)
-      const afterChild = await captureContext()
-      return { root, child, afterChild }
-    })
-
-    expect(isValidSpanId(result.child.spanId)).toBe(true)
-    expect(result.child.spanId).not.toBe(result.root.spanId)
-    expect(result.child.traceId).toBe(result.root.traceId)
-    expect(result.child.parentSpanId).toBe(result.root.spanId)
-    expect(result.child.name).toBe('child')
-    expect(result.afterChild).toEqual(result.root)
-  })
-
-  it('returns the callback value and logs a completion line', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-    const value = await runWithTrace(() => withSpan('child', async () => 42))
-
-    expect(value).toBe(42)
-    expect(log).toHaveBeenCalledTimes(1)
-    expect(log.mock.calls[0][0]).toMatch(SPAN_COMPLETE_PATTERN)
-  })
-
-  it('logs ok=false and rethrows the original error', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-    const boom = new Error('boom')
-
-    await expect(
-      runWithTrace(() =>
-        withSpan('child', async () => {
-          throw boom
-        }),
-      ),
-    ).rejects.toBe(boom)
-
-    expect(log).toHaveBeenCalledTimes(1)
-    const line = log.mock.calls[0][0] as string
-    expect(line).toContain('name=child')
-    expect(line).toContain('ok=false')
-  })
-
-  it('works without a surrounding context, starting a new root', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-
-    const context = await withSpan('child', captureContext)
-
-    expect(isValidTraceId(context.traceId)).toBe(true)
-    expect(isValidSpanId(context.spanId)).toBe(true)
-    expect(context.parentSpanId).toBeNull()
-    expect(log).toHaveBeenCalledTimes(1)
     expect(getTraceContext()).toBeUndefined()
   })
 })

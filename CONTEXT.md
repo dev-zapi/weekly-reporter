@@ -89,7 +89,7 @@ _Avoid_: 日志（泛指服务端运行输出）、操作日志（泛指一切�
 ## 可观测性
 
 ### 链路追踪 (Trace)
-一次 API 请求从入站到出站的追踪身份，类 Spring Sleuth：每个 `/api/**` 请求拥有一个 `traceId` 与一个根 span。`traceId` 优先继承入站合法值（见「入站追踪标识解析」），否则新生成；根 span 的 `spanId` 每请求新建、`parentSpanId` 为空。追踪上下文贯穿同一次请求的异步链路（AsyncLocalStorage），不需要显式传参。
+一次 API 请求从入站到出站的追踪身份，类 Spring Sleuth：每个 `/api/**` 请求拥有一个 `traceId` 与一个根 span。`traceId` 优先继承入站合法值（见「入站追踪标识解析」），否则新生成；根 span 的 `spanId` 每请求新建。追踪上下文贯穿同一次请求的异步链路（AsyncLocalStorage），不需要显式传参。
 _Avoid_: 请求 ID（只覆盖单进程单请求，不表达跨服务传播）、session ID（追踪是诊断维度，不是会话）
 
 ### 追踪标识 (Trace Identifier)
@@ -101,8 +101,8 @@ _Avoid_: UUID（trace id 是 hex 而非带连字符的 UUID）、B3（B3 是另�
 _Avoid_: 原样透传 traceparent（span 位每跳都会换，不是转发整串）
 
 ### 追踪 span (Span)
-一次请求内的执行区间。根 span 的 name 为 `request`、`parentSpanId` 为空；`withSpan(name, fn)` 创建子 span，换新 `spanId`、父指向当前 span、traceId 不变，并按耗时输出一行完成日志（成功与失败都记录，失败先记日志再原样抛出）。上下文只存在于本次异步调用链，请求结束即消失。
-_Avoid_: 性能剖析（span 只用于链路归属与粗粒度耗时，不是 profiler）
+一次请求内的执行区间：每请求恰好一个根 span，`spanId` 每请求新建、无父 span。上下文只存在于本次异步调用链，请求结束即消失。首版曾交付 `withSpan(name, fn)` 子 span API，因无调用方且其完成日志会被 console 前缀补丁二次加前缀而在合并前删除（ADR-0022）；需要子 span 时再重新引入。
+_Avoid_: 性能剖析（span 只用于链路归属，不是 profiler）、为「将来可能」保留无调用方的 API
 
 ### Trace 响应头 (Trace Response Headers)
 所有 `/api/**` 响应携带 `x-trace-id`（本次 traceId）、`x-span-id`（本次请求根 span 的 spanId）、`traceparent`（`00-{traceId}-{spanId}-01`）。标识不写入 JSON body：错误可能来自 proxy、守卫或 handler 多层，流式响应也无法再改 body；响应头是唯一能统一覆盖的通道。401 早退路径同样携带——PAT 失效是最常见的故障场景。

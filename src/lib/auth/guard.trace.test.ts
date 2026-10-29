@@ -105,8 +105,6 @@ describe('withAuth trace integration', () => {
     await wrapped(request())
 
     expect(context).toBeDefined()
-    expect(context!.name).toBe('request')
-    expect(context!.parentSpanId).toBeNull()
     expect(isValidTraceId(context!.traceId)).toBe(true)
     expect(isValidSpanId(context!.spanId)).toBe(true)
   })

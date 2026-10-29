@@ -13,14 +13,15 @@ import {
  * 请求级 trace 上下文（Sleuth 简化版）。
  *
  * 每个 API 请求 = 一个根 span：`withAuth` 在入口处 `runWithTrace` 建根，
- * handler 内部所有 await 链路通过 AsyncLocalStorage 共享上下文；需要细粒度计时
- * 的段落用 `withSpan` 开子 span。
+ * handler 内部所有 await 链路通过 AsyncLocalStorage 共享上下文。
+ *
+ * 只保留根 span：首版曾交付过 `withSpan(name, fn)` 子 span API，因无任何调用方
+ * 而删除（其完成日志跑在子 span 自己的上下文里，会被 console 前缀补丁二次加
+ * 前缀）；需要子 span 时按 ADR-0022 重新引入。
  */
 export interface TraceContext {
   traceId: string
   spanId: string
-  parentSpanId: string | null
-  name: string
 }
 
 /**
@@ -65,42 +66,9 @@ export async function runWithTrace<T>(
   const context: TraceContext = {
     traceId: options?.traceId ?? newTraceId(),
     spanId: newSpanId(),
-    parentSpanId: null,
-    name: 'request',
   }
 
   return getStorage().run(context, async () => fn())
-}
-
-/**
- * 开一个子 span 执行 `fn`：新 spanId，parentSpanId 指向当前 span，traceId 不变。
- *
- * 结束后无论成败都打一行完成日志（ok 标记结果），失败时先打日志再原样 rethrow。
- * 没有任何上下文时也允许调用：此时按「新建根、无父 span」处理，便于独立使用。
- */
-export async function withSpan<T>(name: string, fn: () => Promise<T> | T): Promise<T> {
-  const parent = getStorage().getStore()
-  const context: TraceContext = {
-    traceId: parent?.traceId ?? newTraceId(),
-    spanId: newSpanId(),
-    parentSpanId: parent?.spanId ?? null,
-    name,
-  }
-  const startedAt = Date.now()
-
-  return getStorage().run(context, async () => {
-    let ok = true
-    try {
-      return await fn()
-    } catch (error) {
-      ok = false
-      throw error
-    } finally {
-      console.log(
-        `[trace] span complete name=${name} traceId=${context.traceId} spanId=${context.spanId} parentSpanId=${context.parentSpanId ?? 'null'} durationMs=${Date.now() - startedAt} ok=${ok}`,
-      )
-    }
-  })
 }
 
 /** 日志前缀：`[traceId=xxx spanId=xxx]`；无上下文返回空串。 */
