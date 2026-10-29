@@ -36,9 +36,10 @@ const WEBPACK_ARGS = ['--webpack']
  * workers, every run wrapped in `scripts/run-e2e.mjs` (8G `MemoryMax`,
  * 300% `CPUQuota`):
  *
- * - dev + webpack: completes, but rides the ceiling — 14m42s, `memory.peak`
- *   8.0G saturated, `oom_kill 0` only because swap absorbed the difference.
- *   Slowest of the four and one hungry process away from the cliff.
+ * - dev + webpack: 25 passed, 0 failed in about 2m30s, `memory.peak` 8.0G
+ *   saturated, `oom_kill 0` only because swap absorbed the difference. Not the
+ *   slowest of the four — the production rows pay for a full `next build` that
+ *   a dev run never does.
  * - dev + Turbopack: does not survive 8G. OOM-killed twice (dead at test 16 of
  *   27 after 3m35s, 8.0G peak plus 2.1G swap peak). At 12G it finally
  *   completes in 10m07s with the peak again saturated, and `legacy-migration`
@@ -46,8 +47,9 @@ const WEBPACK_ARGS = ['--webpack']
  *   `E2E_DEV_MEM` (`--max-old-space-size`) cannot bound it: the memory lives
  *   in the native binary, not the V8 heap.
  * - production + webpack: 25/25, peak 7.7–8.0G — correct, but no headroom left.
- * - production + Turbopack: 25/25, peak 6.1–6.2G — fastest, and the only
- *   combination with room under the ceiling. Hence the default.
+ * - production + Turbopack: 25/25, peak 6.1–6.2G — the faster of the two
+ *   production rows, and the only combination with room under the ceiling.
+ *   Hence the default.
  *
  * Do not change either default without re-measuring `memory.peak` / `oom_kill`
  * from the run's cgroup.

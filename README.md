@@ -33,9 +33,9 @@
 
 | 模式 + 打包器 | 结果 | 耗时 | `memory.peak` |
 | --- | --- | --- | --- |
-| 生产 + Turbopack（默认） | 25/25 全绿 | 最快 | 6.1–6.2G（有余额） |
+| 生产 + Turbopack（默认） | 25/25 全绿 | 生产两行中较快 | 6.1–6.2G（有余额） |
 | 生产 + webpack | 25/25 全绿 | 慢于 Turbopack | 7.7–8.0G（基本顶满） |
-| dev + webpack | 能跑完但一路贴着上限，最慢 | 14m42s | 8.0G 顶满，靠 swap 才没 OOM |
+| dev + webpack | 25 过 0 红，但全程贴着上限 | 约 2m30s | 8.0G 顶满，靠 swap 才没 OOM |
 | dev + Turbopack | 8G 下必被 OOM kill（native 内存，`--max-old-space-size` 管不到）；放宽到 12G 才跑完，且 `legacy-migration` 因 Turbopack 冷启动超 30s 超时变红 | — | 12G 也顶满 |
 
 所以默认取「生产 + Turbopack」：既全绿又留了内存余量。两个逃生口：`E2E_SERVER_MODE=development` 显式降级到 `next dev`（该模式下打包器默认回落到 webpack，因为 dev + Turbopack 在上述 scope 里必死），以及 `E2E_BUNDLER=webpack|turbopack`（显式值在两种模式下都优先，升级 Next 后想重测也用它）。显式的 `E2E_SERVER_MODE=production` 仍然接受；未设或非法值一律按 production 处理。生产模式下 webServer 超时放宽到 5 分钟——命令里含一次完整构建。不用 `CI=1` 切换模式是因为 Playwright 也会读它（retries、forbidOnly、workers），会连带改变测试行为；生产模式原本由 `CI` 推断，现在它只是默认值，不再有 `CI` 分支。

@@ -58,7 +58,7 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
       child.stdout?.on('data', (chunk) => { logs += chunk.toString() })
       child.stderr?.on('data', (chunk) => { logs += chunk.toString() })
     } catch (error) {
-      await rm(root, { recursive: true, force: true })
+      await rm(root, { recursive: true, force: true }).catch(() => undefined)
       throw error
     }
     const url = `http://127.0.0.1:${port}`

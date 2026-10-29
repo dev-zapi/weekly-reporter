@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import Database from 'better-sqlite3'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { applyDatabaseMigrations } from '../src/lib/db/migrations'
@@ -13,6 +13,7 @@ async function startLegacyApplication() {
   // 放在项目目录下软链才落在同一个 root 内，生产模式才可能构建成功。
   const root = await mkdtemp(path.join(process.cwd(), `.e2e-worker-legacy-${process.pid}-`))
   let provider: Awaited<ReturnType<typeof startScriptedAI>> | undefined
+  let child: ChildProcess | undefined
   try {
     provider = await startScriptedAI()
     const app = path.join(root, 'app')
@@ -72,7 +73,7 @@ async function startLegacyApplication() {
         })
       })
     }
-    const child = spawn(process.execPath, nextServeArgs(port), {
+    child = spawn(process.execPath, nextServeArgs(port), {
       cwd: app,
       env: {
         ...process.env,
@@ -91,7 +92,12 @@ async function startLegacyApplication() {
   } catch (error) {
     // 搭建失败（构建错、就绪超时、拷贝错）时回收本函数申请的临时目录与 scripted
     // AI provider——两者都不归用例的 finally 管，否则仓库里会留下
-    // `.e2e-worker-legacy-*` 残骸。清理自身的失败不能盖掉原始异常。
+    // `.e2e-worker-legacy-*` 残骸。就绪 poll 超时但 server 挂起时还会留下一个
+    // detached 子进程占住 3391 端口，让后续用例连锁失败，故先杀进程组。
+    // 回收自身的失败不能盖掉原始异常。
+    if (child?.pid) {
+      try { process.kill(-child.pid, 'SIGKILL') } catch { /* The server already exited. */ }
+    }
     await rm(root, { recursive: true, force: true }).catch(() => undefined)
     await provider?.close().catch(() => undefined)
     throw error
