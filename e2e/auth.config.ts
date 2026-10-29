@@ -11,10 +11,10 @@ import {
 } from './auth-env'
 
 // 在 runner 进程中跑一次（早于 webServer 插件启动）。清理旧的 XDG 目录，
-// 然后预生成一份启动密码。dev + webpack 模式下 instrumentation.register()
+// 然后预生成一份启动密码。降级到 dev + webpack 时 instrumentation.register()
 // 实测不会在 Playwright 启动的 server 中触发，故由测试侧按 password.ts 同样
 // 的算法写 auth.json。服务端 `ensureStartupPassword` 启动后读到已有密码会
-// 直接返回，行为与原生流程一致。
+// 直接返回，行为与原生流程一致（默认的生产模式同样如此）。
 resetAuthE2eRoot()
 preparePassword()
 
@@ -54,7 +54,7 @@ export default defineConfig({
       XDG_DATA_HOME: AUTH_XDG_DATA_HOME,
       XDG_CONFIG_HOME: AUTH_XDG_CONFIG_HOME,
       E2E_FIXTURES: '1',
-      // 与默认套件同样的 dev server 堆上限（见 playwright.config.ts / README）。
+      // 与默认套件同样的 Next server 堆上限（见 playwright.config.ts / README）。
       NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 4096}`]
         .filter(Boolean)
         .join(' '),

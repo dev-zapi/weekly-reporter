@@ -20,7 +20,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   // 默认串行：本机 20 核跑默认并发（~10 worker）时每个 worker 一个 Chromium，
-  // 加上 dev server 会把内存打满并触发 OOM（连累无关进程）。需要并发时显式提高。
+  // 加上 Next server 会把内存打满并触发 OOM（连累无关进程）。需要并发时显式提高。
+  // 各模式/打包器的实测数据见 e2e/next-server.ts 的 bundlerArgs 注释。
   workers: process.env.CI ? 1 : Number(process.env.E2E_WORKERS ?? 1),
   reporter: 'html',
 
@@ -53,8 +54,10 @@ export default defineConfig({
       // 默认关闭认证：现有 spec 不受认证改造影响（与 vitest 的 setup.ts 对齐）。
       // 认证开启场景见 e2e/auth.config.ts。
       WR_AUTH_DISABLED: '1',
-      // 限制 dev server 的 V8 堆，与 L3 的 cgroup 上限（scripts/run-e2e.mjs）互补：
+      // 限制 Next server 的 V8 堆，与 L3 的 cgroup 上限（scripts/run-e2e.mjs）互补：
       // 堆上限让 Node 先自行 GC/崩溃，而不是一路涨到 cgroup 才被 OOM kill。
+      // 默认的「生产 + Turbopack」实际占的是 native 内存，这个上限主要管
+      // 构建/运行时的 Node 侧；dev 模式下才是决定性的（见 e2e/next-server.ts）。
       NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 4096}`]
         .filter(Boolean)
         .join(' '),
