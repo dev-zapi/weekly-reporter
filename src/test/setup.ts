@@ -12,10 +12,10 @@ class ResizeObserverMock {
 }
 
 if (typeof window !== 'undefined') {
-  window.ResizeObserver = ResizeObserverMock as any
+  window.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver
 }
 
 // Mock scrollIntoView for cmdk
 if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
-  Element.prototype.scrollIntoView = function() {} as any
+  Element.prototype.scrollIntoView = function () {}
 }
