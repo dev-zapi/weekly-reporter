@@ -20,12 +20,22 @@
 | 变量 | 默认值 | 作用 |
 | --- | --- | --- |
 | `E2E_WORKERS` | `1` | Playwright 并发 worker 数 |
-| `E2E_DEV_MEM` | `4096` | dev server 的 `--max-old-space-size`（MB） |
+| `E2E_DEV_MEM` | `4096` | Next server 的 `--max-old-space-size`（MB） |
 | `E2E_MEM_MAX` | `8G` | 整跑 cgroup 内存硬上限 |
 | `E2E_CPU_QUOTA` | `300%` | 整跑 cgroup CPU 配额（3 核） |
-| `E2E_BUNDLER` | `webpack` | `turbopack` 时 dev server 改用 Turbopack（默认 webpack，见下） |
+| `E2E_SERVER_MODE` | `production` | 设为 `development` 才降级为 `next dev`（见下） |
+| `E2E_BUNDLER` | 随 mode | 显式指定 `webpack` / `turbopack`；不设时 production 用 turbopack、development 用 webpack |
 | `VITEST_MAX_WORKERS` | `2` | vitest 并发 worker 数 |
 
 `npm run test:e2e` 通过 `scripts/run-e2e.mjs` 把整个测试进程树包进 `systemd-run --user --scope`：撞到上限时 OOM kill 只发生在 scope 内部（测试死、机器活）。机器上没有 `systemd-run` 时自动降级为直接跑 Playwright，config 里的 worker / 堆上限依然生效；`E2E_NO_SCOPE=1` 可强制跳过包装。`npm run test:e2e:ui` 是人工交互模式，不包装。
 
-dev server 用 `--webpack` 而不是 Next 16 默认的 Turbopack。实测（#64）：8G 上限下 Turbopack 的 `next dev` 在 3 分半就把上限吃穿（native 内存，`--max-old-space-size` 管不到），整跑被 OOM kill 在 16/27；放宽到 12G 能跑完全套，但 `memory.peak` 同样顶满 12G，且 `legacy-migration` 因 Turbopack 冷启动超过该用例 30s 超时而稳定变红（多 1 个失败）。webpack 在 4G 堆下能跑完整套件：25 过 0 红（#63 修复后实测，2m30s；#64 时期的 14m42s 是「7 过 20 红」的失败前置耗时，不具参考性），`memory.peak` 顶到 8G 上限但 `oom_kill=0`（差额由 swap 吸收）。升级 Next 后想重测用 `E2E_BUNDLER=turbopack`。
+默认跑法是**生产模式 + Turbopack**：webServer 先 `npm run build`（裸 `next build`，即 Next 16 默认的 Turbopack）再 `next start`。四种组合都在本机 8G `MemoryMax` / `300% CPUQuota` 的 scope 里串行实测过：
+
+| 模式 + 打包器 | 结果 | 耗时 | `memory.peak` |
+| --- | --- | --- | --- |
+| 生产 + Turbopack（默认） | 25/25 全绿 | 生产两行中较快 | 6.1–6.2G（有余额） |
+| 生产 + webpack | 25/25 全绿 | 慢于 Turbopack | 7.7–8.0G（基本顶满） |
+| dev + webpack | 25 过 0 红，但全程贴着上限 | 约 2m30s | 8.0G 顶满，靠 swap 才没 OOM |
+| dev + Turbopack | 8G 下必被 OOM kill（native 内存，`--max-old-space-size` 管不到）；放宽到 12G 才跑完，且 `legacy-migration` 因 Turbopack 冷启动超 30s 超时变红 | — | 12G 也顶满 |
+
+所以默认取「生产 + Turbopack」：既全绿又留了内存余量。两个逃生口：`E2E_SERVER_MODE=development` 显式降级到 `next dev`（该模式下打包器默认回落到 webpack，因为 dev + Turbopack 在上述 scope 里必死），以及 `E2E_BUNDLER=webpack|turbopack`（显式值在两种模式下都优先，升级 Next 后想重测也用它）。显式的 `E2E_SERVER_MODE=production` 仍然接受；未设或非法值一律按 production 处理。生产模式下 webServer 超时放宽到 5 分钟——命令里含一次完整构建。不用 `CI=1` 切换模式是因为 Playwright 也会读它（retries、forbidOnly、workers），会连带改变测试行为；生产模式原本由 `CI` 推断，现在它只是默认值，不再有 `CI` 分支。
