@@ -2,7 +2,7 @@
 import { expect, test as base } from '@playwright/test'
 import { cp, mkdir, mkdtemp, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { nextBuildArgs, nextServeArgs, nextServerMode } from './next-server'
 
 type WorkerFixtures = { appURL: string }
@@ -26,11 +26,6 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
   appURL: [async ({}, use, workerInfo) => {
     const root = await mkdtemp(path.join(process.cwd(), `.e2e-worker-${process.pid}-${workerInfo.workerIndex}-`))
     const app = path.join(root, 'app')
-    await mkdir(app)
-    for (const file of ['src', 'public', 'drizzle', 'package.json', 'tsconfig.json', 'next.config.ts', 'postcss.config.mjs']) {
-      await cp(path.resolve(file), path.join(app, file), { recursive: true })
-    }
-    await symlink(path.resolve('node_modules'), path.join(app, 'node_modules'), 'dir')
     const port = 3200 + workerInfo.workerIndex
     const env = {
       ...process.env,
@@ -40,18 +35,32 @@ export const test = base.extend<Record<never, never>, WorkerFixtures>({
       NEXT_TELEMETRY_DISABLED: '1',
       WR_AUTH_DISABLED: '1',
     }
-    if (nextServerMode === 'production') {
-      await runToCompletion(nextBuildArgs(), { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'] })
-    }
-    const child = spawn(process.execPath, nextServeArgs(port), {
-      cwd: app,
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
-    })
+    let child!: ChildProcess
     let logs = ''
-    child.stdout.on('data', (chunk) => { logs += chunk.toString() })
-    child.stderr.on('data', (chunk) => { logs += chunk.toString() })
+    // Every step between mkdtemp and a live server (copy error, production build
+    // failure, spawn error) throws before the teardown below is reachable, so
+    // without this the repo keeps an orphaned `.e2e-worker-*` tree.
+    try {
+      await mkdir(app)
+      for (const file of ['src', 'public', 'drizzle', 'package.json', 'tsconfig.json', 'next.config.ts', 'postcss.config.mjs']) {
+        await cp(path.resolve(file), path.join(app, file), { recursive: true })
+      }
+      await symlink(path.resolve('node_modules'), path.join(app, 'node_modules'), 'dir')
+      if (nextServerMode === 'production') {
+        await runToCompletion(nextBuildArgs(), { cwd: app, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      }
+      child = spawn(process.execPath, nextServeArgs(port), {
+        cwd: app,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      })
+      child.stdout?.on('data', (chunk) => { logs += chunk.toString() })
+      child.stderr?.on('data', (chunk) => { logs += chunk.toString() })
+    } catch (error) {
+      await rm(root, { recursive: true, force: true })
+      throw error
+    }
     const url = `http://127.0.0.1:${port}`
     try {
       await expect.poll(async () => {
