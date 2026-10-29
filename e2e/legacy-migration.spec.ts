@@ -3,13 +3,15 @@ import Database from 'better-sqlite3'
 import { spawn } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import os from 'node:os'
 import { applyDatabaseMigrations } from '../src/lib/db/migrations'
-import { nextServeArgs } from './next-server'
+import { nextBuildArgs, nextServerMode, nextServeArgs } from './next-server'
 import { startScriptedAI } from './scripted-ai'
 
 async function startLegacyApplication() {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'weekly-reporter-legacy-'))
+  // 与 e2e/app-fixture.ts 一致把临时应用放在仓库内：Turbopack 构建会拒绝
+  // 「指向文件系统根之外」的 node_modules 软链（`/tmp` 下的副本就是这种），
+  // 放在项目目录下软链才落在同一个 root 内，生产模式才可能构建成功。
+  const root = await mkdtemp(path.join(process.cwd(), `.e2e-worker-legacy-${process.pid}-`))
   const app = path.join(root, 'app')
   const dataHome = path.join(root, 'data')
   const migrations = path.join(root, 'pre-31-migrations')
@@ -48,6 +50,26 @@ async function startLegacyApplication() {
   }
   await symlink(path.resolve('node_modules'), path.join(app, 'node_modules'), 'dir')
   const port = 3391
+  // 生产模式下临时目录里的副本没有 `.next`，`next start` 前必须先构建（与
+  // e2e/app-fixture.ts 的生产分支同样处理）。dev 模式按需编译，不需要。
+  if (nextServerMode === 'production') {
+    await new Promise<void>((resolve, reject) => {
+      const build = spawn(process.execPath, nextBuildArgs(), {
+        cwd: app,
+        env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      // 构建失败必须带上编译输出：Turbopack 的报错全在 stderr，只报退出码没法定位。
+      let logs = ''
+      build.stdout.on('data', (chunk) => { logs += chunk.toString() })
+      build.stderr.on('data', (chunk) => { logs += chunk.toString() })
+      build.once('error', reject)
+      build.once('exit', (code, signal) => {
+        if (code === 0) resolve()
+        else reject(new Error(`next build failed in the legacy fixture (${signal ?? code ?? 'unknown'}):\n${logs}`))
+      })
+    })
+  }
   const child = spawn(process.execPath, nextServeArgs(port), {
     cwd: app,
     env: {
@@ -67,6 +89,9 @@ async function startLegacyApplication() {
 }
 
 test('启动预置旧版本数据库时保留 legacy 终版且不伪造会话或快照', async ({ request }) => {
+  // 生产模式下这个用例的前置包含一次完整的 `next build`（scope 内 300% CPU，
+  // 实测约 30s 起），30s 的默认用例预算只够 dev 模式。
+  if (nextServerMode === 'production') test.setTimeout(5 * 60_000)
   const app = await startLegacyApplication()
   try {
     const opened = await request.get(`${app.url}/api/reports/1`)
