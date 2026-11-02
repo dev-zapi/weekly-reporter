@@ -1,6 +1,50 @@
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '@/lib/db'
-import { periodPlans, periodPlanItems, type PeriodPlan, type PeriodPlanScope } from '@/lib/db/schema'
+import {
+  periodPlans,
+  periodPlanItems,
+  PERIOD_PLAN_ITEM_PRIORITIES,
+  type PeriodPlan,
+  type PeriodPlanItemPriority,
+  type PeriodPlanScope,
+} from '@/lib/db/schema'
+
+export type PlanItemFieldError = {
+  error: string
+  code: 'INVALID_PRIORITY' | 'INVALID_IS_IMPORTANT' | 'INVALID_IS_URGENT'
+}
+
+/**
+ * Validates the priority and quadrant-flag inputs shared by the plan-item
+ * create and update routes. `undefined` means "not supplied" and is accepted;
+ * each caller decides whether an absent field gets a default (POST) or keeps
+ * the stored value (PUT).
+ */
+export function validatePlanItemPriorityFields(input: {
+  priority?: unknown
+  isImportant?: unknown
+  isUrgent?: unknown
+}): PlanItemFieldError | null {
+  if (
+    input.priority !== undefined &&
+    !PERIOD_PLAN_ITEM_PRIORITIES.includes(input.priority as PeriodPlanItemPriority)
+  ) {
+    return {
+      error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}`,
+      code: 'INVALID_PRIORITY',
+    }
+  }
+
+  if (input.isImportant !== undefined && typeof input.isImportant !== 'boolean') {
+    return { error: 'isImportant must be a boolean', code: 'INVALID_IS_IMPORTANT' }
+  }
+
+  if (input.isUrgent !== undefined && typeof input.isUrgent !== 'boolean') {
+    return { error: 'isUrgent must be a boolean', code: 'INVALID_IS_URGENT' }
+  }
+
+  return null
+}
 
 /**
  * Finds the period plan for the given scope and period, creating it if it does

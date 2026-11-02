@@ -206,6 +206,7 @@ describe('/api/plan-items', () => {
 
       expect(response.status).toBe(400)
       expect(data.error.toLowerCase()).toContain('priority')
+      expect(data.code).toBe('INVALID_PRIORITY')
     })
 
     it('should default both quadrant flags to false when not provided', async () => {

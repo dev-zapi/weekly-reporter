@@ -3,9 +3,9 @@ import { ArrowRight, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-r
 import type { PeriodPlanItemPriority, PeriodPlanItemStatus } from '@/lib/db/schema'
 
 /**
- * Single source of truth for how plan-item statuses are labelled and coloured
- * across the plans page and the timeline panel. Keeping the display order as
- * the key order avoids a second status list drifting from the schema enum.
+ * Single source of truth for how plan-item labels, colours, and tints are
+ * presented across the plans page and the timeline panel. Keeping the display
+ * order as the key order avoids a second list drifting from the schema enum.
  */
 export const PLAN_ITEM_STATUS_LABELS: Record<PeriodPlanItemStatus, string> = {
   planned: 'Planned',
@@ -53,3 +53,21 @@ export const PLAN_ITEM_PRIORITY_LABELS: Record<PeriodPlanItemPriority, string> =
 export const PLAN_ITEM_PRIORITY_ORDER = Object.keys(
   PLAN_ITEM_PRIORITY_LABELS,
 ) as PeriodPlanItemPriority[]
+
+/**
+ * Priority is a scannable background tint rather than an icon or text label.
+ * Each value gets a distinct tint so the timeline panel can be read at a
+ * glance while remaining orthogonal to the important/urgent flag icons.
+ */
+export const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-500 dark:bg-rose-400',
+  normal: 'bg-gray-400 dark:bg-gray-500',
+  low: 'bg-sky-500 dark:bg-sky-400',
+}
+
+/** A softer version of the same tint fills the whole row for at-a-glance scanning. */
+export const PLAN_ITEM_PRIORITY_ROW_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-50 dark:bg-rose-950/40',
+  normal: 'bg-muted/40',
+  low: 'bg-sky-50 dark:bg-sky-950/40',
+}

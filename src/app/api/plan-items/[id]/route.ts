@@ -2,8 +2,8 @@ import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES, PERIOD_PLAN_ITEM_PRIORITIES } from '@/lib/db/schema'
-import { validateParentLink } from '@/lib/plan-items'
+import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { validateParentLink, validatePlanItemPriorityFields } from '@/lib/plan-items'
 import {
   findPlanReferrers,
   getFulfillmentChain,
@@ -114,30 +114,11 @@ export const PUT = withAuth(async function PUT(
       }
     }
 
-    // Validate priority if provided
-    if (priority !== undefined) {
-      if (!PERIOD_PLAN_ITEM_PRIORITIES.includes(priority)) {
-        return NextResponse.json(
-          { error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}` },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Validate the quadrant flags if provided. `false` is a real update, so
-    // only `undefined` means "keep the current value".
-    if (isImportant !== undefined && typeof isImportant !== 'boolean') {
-      return NextResponse.json(
-        { error: 'isImportant must be a boolean', code: 'INVALID_IS_IMPORTANT' },
-        { status: 400 }
-      )
-    }
-
-    if (isUrgent !== undefined && typeof isUrgent !== 'boolean') {
-      return NextResponse.json(
-        { error: 'isUrgent must be a boolean', code: 'INVALID_IS_URGENT' },
-        { status: 400 }
-      )
+    // Validate priority and the quadrant flags if provided. `false` is a real
+    // update, so only `undefined` means "keep the current value".
+    const priorityFieldsError = validatePlanItemPriorityFields({ priority, isImportant, isUrgent })
+    if (priorityFieldsError) {
+      return NextResponse.json(priorityFieldsError, { status: 400 })
     }
 
     // Validate projectScope if provided

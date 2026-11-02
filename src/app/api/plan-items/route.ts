@@ -2,10 +2,10 @@ import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, sql } from 'drizzle-orm'
-import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_PRIORITIES, type PeriodPlan } from '@/lib/db/schema'
+import { periodPlans, periodPlanItems, type PeriodPlan } from '@/lib/db/schema'
 import { getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
-import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
+import { ensurePeriodPlan, validateParentLink, validatePlanItemPriorityFields } from '@/lib/plan-items'
 
 export const POST = withAuth(async function POST(request: Request) {
   try {
@@ -41,28 +41,12 @@ export const POST = withAuth(async function POST(request: Request) {
       )
     }
 
-    // Validate priority
-    if (!PERIOD_PLAN_ITEM_PRIORITIES.includes(priority)) {
-      return NextResponse.json(
-        { error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}` },
-        { status: 400 }
-      )
-    }
-
-    // Validate the quadrant flags. They are independent booleans on the plan
-    // item, deliberately unrelated to the timeline event's isImportant flag.
-    if (typeof isImportant !== 'boolean') {
-      return NextResponse.json(
-        { error: 'isImportant must be a boolean', code: 'INVALID_IS_IMPORTANT' },
-        { status: 400 }
-      )
-    }
-
-    if (typeof isUrgent !== 'boolean') {
-      return NextResponse.json(
-        { error: 'isUrgent must be a boolean', code: 'INVALID_IS_URGENT' },
-        { status: 400 }
-      )
+    // Validate priority and the quadrant flags. They are independent booleans
+    // on the plan item, deliberately unrelated to the timeline event's
+    // isImportant flag.
+    const priorityFieldsError = validatePlanItemPriorityFields({ priority, isImportant, isUrgent })
+    if (priorityFieldsError) {
+      return NextResponse.json(priorityFieldsError, { status: 400 })
     }
 
     let targetPlan: PeriodPlan

@@ -444,6 +444,7 @@ describe('/api/plan-items/[id]', () => {
 
       expect(response.status).toBe(400)
       expect(data.error.toLowerCase()).toContain('priority')
+      expect(data.code).toBe('INVALID_PRIORITY')
     })
 
     it('should update both quadrant flags independently of priority', async () => {
