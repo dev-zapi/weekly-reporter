@@ -6,7 +6,7 @@ import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 import { getFulfillmentCount } from '@/lib/plan-references'
-import { getCommentCount } from '@/lib/plan-item-comments'
+import { getChainCommentCount } from '@/lib/plan-item-comments'
 
 export const GET = withAuth(async function GET(request: Request) {
   try {
@@ -126,11 +126,12 @@ export const GET = withAuth(async function GET(request: Request) {
       .all()
 
     // Add fulfillment count and plan-side comment count to each item. Both are
-    // chain-aggregated quantities in later tickets; here they are the item's own.
+    // chain-aggregated: a deferred successor shows its ancestors' work and
+    // notes, matching what its expanded sections render.
     const itemsWithCounts = await Promise.all(
       items.map(async (item) => {
         const fulfillmentCount = await getFulfillmentCount(item.id)
-        const commentCount = getCommentCount(db, item.id)
+        const commentCount = await getChainCommentCount(item.id)
         return { ...item, fulfillmentCount, commentCount }
       })
     )

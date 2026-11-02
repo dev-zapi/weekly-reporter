@@ -36,6 +36,17 @@ export type PlanCommentView = {
   /** null for browser-authored comments (rendered as 用户). */
   author: string | null
   createdAt: string
+  /**
+   * The period of the item this comment is pinned to. Present on every
+   * aggregated comment; the UI only shows it for deferral-chain ancestors.
+   */
+  sourcePeriod?: {
+    scope: 'week' | 'month'
+    periodStart: string
+    periodEnd: string
+    monthKey: string | null
+    label: string
+  }
 }
 
 /** One fulfilling event as returned by GET /api/plan-items/[id]/fulfillment. */
@@ -459,23 +470,36 @@ export function PeriodPlanItemRow({
               <div className="text-xs text-muted-foreground">No comments</div>
             ) : (
               <ul className="space-y-2">
-                {comments.map((comment) => (
-                  <li key={comment.id} className="space-y-0.5">
-                    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">{comment.author ?? '用户'}</span>
-                      <span>{formatSystemDateTime(comment.createdAt)}</span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => void handleDeleteComment(comment.id)}
-                        aria-label={`Delete comment ${comment.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <div className="whitespace-pre-wrap text-sm">{comment.content}</div>
-                  </li>
-                ))}
+                {comments.map((comment) => {
+                  // Comments stay pinned to the item they were written on. In a
+                  // deferred successor they appear aggregated with their source
+                  // period and cannot be deleted from here.
+                  const isAncestorComment = comment.planItemId !== item.id
+                  return (
+                    <li key={comment.id} className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{comment.author ?? '用户'}</span>
+                        <span>{formatSystemDateTime(comment.createdAt)}</span>
+                        {isAncestorComment && comment.sourcePeriod && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {comment.sourcePeriod.label}
+                          </Badge>
+                        )}
+                        {!isAncestorComment && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => void handleDeleteComment(comment.id)}
+                            aria-label={`Delete comment ${comment.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="whitespace-pre-wrap text-sm">{comment.content}</div>
+                    </li>
+                  )
+                })}
               </ul>
             )}
 

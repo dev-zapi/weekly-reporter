@@ -596,5 +596,48 @@ describe('/api/plan-items/[id]/defer', () => {
       const plansAfter = testDb.select().from(schema.periodPlans).all()
       expect(plansAfter).toHaveLength(2)
     })
+
+    it('leaves the original item\'s comments pinned to it after deferral', async () => {
+      const now = new Date('2026-10-12T00:00:00.000Z')
+
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const original = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'Task with context',
+        status: 'in_progress',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.planItemComments).values({
+        planItemId: original[0].id,
+        content: 'Blocked on review',
+        author: null,
+        createdAt: now,
+      }).run()
+
+      const request = new Request(`http://localhost/api/plan-items/${original[0].id}/defer`, {
+        method: 'POST',
+      })
+      const response = await POST(request, { params: Promise.resolve({ id: String(original[0].id) }) })
+      const successor = await response.json()
+
+      expect(response.status).toBe(201)
+
+      const comments = testDb.select().from(schema.planItemComments).all()
+      expect(comments).toHaveLength(1)
+      expect(comments[0].planItemId).toBe(original[0].id)
+      expect(comments[0].content).toBe('Blocked on review')
+      expect(comments[0].planItemId).not.toBe(successor.id)
+    })
   })
 })

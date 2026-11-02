@@ -3,12 +3,18 @@ import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
 import { periodPlanItems } from '@/lib/db/schema'
-import { getCommentCount, listComments, createComment, deriveCommentAuthor } from '@/lib/plan-item-comments'
+import {
+  createComment,
+  deriveCommentAuthor,
+  getChainCommentCount,
+  listChainComments,
+} from '@/lib/plan-item-comments'
 
 /**
  * Comments collection under a plan item. GET lists the item's own comments
- * oldest-first; there is deliberately no PUT/update handler (comments are
- * append-only, delete to correct).
+ * plus its deferral-chain ancestors' comments oldest-first (each ancestor
+ * comment carries its source period); there is deliberately no PUT/update
+ * handler (comments are append-only, delete to correct).
  */
 export const GET = withAuth(async function GET(
   request: Request,
@@ -40,8 +46,8 @@ export const GET = withAuth(async function GET(
     }
 
     return NextResponse.json({
-      comments: listComments(db, itemId),
-      commentCount: getCommentCount(db, itemId),
+      comments: await listChainComments(itemId),
+      commentCount: await getChainCommentCount(itemId),
     })
   } catch (error) {
     console.error('Error fetching plan item comments:', error)

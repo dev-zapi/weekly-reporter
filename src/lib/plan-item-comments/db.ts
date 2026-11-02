@@ -1,6 +1,15 @@
 import 'server-only'
 import { asc, eq, inArray } from 'drizzle-orm'
-import { commentReferences, planItemComments, type PlanItemComment } from '@/lib/db/schema'
+import { getDb } from '@/lib/db'
+import {
+  commentReferences,
+  periodPlans,
+  periodPlanItems,
+  planItemComments,
+  type PeriodPlanScope,
+  type PlanItemComment,
+} from '@/lib/db/schema'
+import { getFulfillmentChain } from '@/lib/plan-references/fulfillment'
 
 type DrizzleDb = ReturnType<typeof import('@/lib/db').getDb>
 // The tx inside db.transaction() shares the query-builder interface of db but
@@ -12,6 +21,35 @@ export interface NewCommentInput {
   planItemId: number
   content: string
   author: string | null
+}
+
+/** The period an aggregated comment was written in, for source-period labels. */
+export interface CommentSourcePeriod {
+  scope: PeriodPlanScope
+  periodStart: string
+  periodEnd: string
+  monthKey: string | null
+  label: string
+}
+
+/** A comment plus the period of the item it is pinned to. */
+export interface ChainComment extends PlanItemComment {
+  sourcePeriod: CommentSourcePeriod
+}
+
+function buildSourcePeriod(period: {
+  scope: PeriodPlanScope
+  periodStart: string
+  periodEnd: string
+  monthKey: string | null
+}): CommentSourcePeriod {
+  return {
+    ...period,
+    label:
+      period.scope === 'week'
+        ? `Week ${period.periodStart} - ${period.periodEnd}`
+        : `Month ${period.monthKey ?? period.periodStart.slice(0, 7)}`,
+  }
 }
 
 /**
@@ -33,6 +71,64 @@ export function getCommentCount(db: DrizzleDb, planItemId: number): number {
     .select({ id: planItemComments.id })
     .from(planItemComments)
     .where(eq(planItemComments.planItemId, planItemId))
+    .all().length
+}
+
+/**
+ * List the comments displayed on an item: its own plus every deferral-chain
+ * ancestor's. Comments stay pinned to the item they were written on; this is a
+ * read-side aggregation only. Order is oldest-first across the whole chain so
+ * the history reads chronologically.
+ */
+export async function listChainComments(itemId: number): Promise<ChainComment[]> {
+  const db = getDb()
+  const chain = await getFulfillmentChain(itemId)
+
+  if (chain.length === 0) {
+    return []
+  }
+
+  const rows = db
+    .select({
+      id: planItemComments.id,
+      planItemId: planItemComments.planItemId,
+      content: planItemComments.content,
+      author: planItemComments.author,
+      createdAt: planItemComments.createdAt,
+      scope: periodPlans.scope,
+      periodStart: periodPlans.periodStart,
+      periodEnd: periodPlans.periodEnd,
+      monthKey: periodPlans.monthKey,
+    })
+    .from(planItemComments)
+    .innerJoin(periodPlanItems, eq(planItemComments.planItemId, periodPlanItems.id))
+    .innerJoin(periodPlans, eq(periodPlanItems.periodPlanId, periodPlans.id))
+    .where(inArray(planItemComments.planItemId, chain))
+    .orderBy(asc(planItemComments.createdAt), asc(planItemComments.id))
+    .all()
+
+  return rows.map(({ scope, periodStart, periodEnd, monthKey, ...comment }) => ({
+    ...comment,
+    sourcePeriod: buildSourcePeriod({ scope, periodStart, periodEnd, monthKey }),
+  }))
+}
+
+/**
+ * Chain-aggregated comment count. Must stay equal to listChainComments().length
+ * so the badge never disagrees with the expanded section.
+ */
+export async function getChainCommentCount(itemId: number): Promise<number> {
+  const db = getDb()
+  const chain = await getFulfillmentChain(itemId)
+
+  if (chain.length === 0) {
+    return 0
+  }
+
+  return db
+    .select({ id: planItemComments.id })
+    .from(planItemComments)
+    .where(inArray(planItemComments.planItemId, chain))
     .all().length
 }
 
