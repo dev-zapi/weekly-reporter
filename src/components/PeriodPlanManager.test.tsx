@@ -18,6 +18,8 @@ function makeItem(overrides: Partial<PeriodPlanItem> = {}): PeriodPlanItem {
     text: 'Item',
     status: 'planned',
     priority: 'normal',
+    isImportant: false,
+    isUrgent: false,
     projectScope: 'work',
     parentItemId: null,
     deferredFromItemId: null,
@@ -324,6 +326,62 @@ describe('PeriodPlanManager', () => {
     })
 
     await waitFor(() => expect(weekPlanFetchCount()).toBeGreaterThan(fetchesBefore))
+  })
+
+  it('updates plan item flags without refetching the priority-ordered list', async () => {
+    const user = userEvent.setup()
+    setupApi({ items: [makeItem({ id: 3, text: 'Do it', position: 2 })] })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Do it')).toBeInTheDocument())
+
+    const weekPlanFetchCount = () =>
+      mockFetch.mock.calls.filter(
+        (call) =>
+          (call[1]?.method ?? 'GET') === 'GET' &&
+          String(call[0]).startsWith('/api/plans?scope=week'),
+      ).length
+    const fetchesBefore = weekPlanFetchCount()
+
+    await user.click(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+
+    await waitFor(() => {
+      const bodies = mockFetch.mock.calls
+        .filter((call) => call[1]?.method === 'PUT')
+        .map((call) => JSON.parse(call[1].body as string))
+      expect(bodies).toContainEqual({ isImportant: true })
+      expect(bodies).toContainEqual({ isUrgent: true })
+    })
+
+    // Flags carry no ordering weight, so no list refetch is needed.
+    expect(weekPlanFetchCount()).toBe(fetchesBefore)
+  })
+
+  it('displays a low priority item that is both important and urgent', async () => {
+    setupApi({
+      items: [
+        makeItem({
+          id: 4,
+          text: 'Quadrant item',
+          priority: 'low',
+          isImportant: true,
+          isUrgent: true,
+        }),
+      ],
+    })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Quadrant item')).toBeInTheDocument())
+
+    expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('low')
+    expect(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    // One occurrence in the toggle control, one in the badge.
+    expect(screen.getAllByText('Important')).toHaveLength(2)
+    expect(screen.getAllByText('Urgent')).toHaveLength(2)
   })
 
   it('deletes an item only after confirming in the dialog', async () => {    const user = userEvent.setup()

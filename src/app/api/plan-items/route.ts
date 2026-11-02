@@ -20,6 +20,8 @@ export const POST = withAuth(async function POST(request: Request) {
       text,
       projectScope = 'work',
       priority = 'normal',
+      isImportant = false,
+      isUrgent = false,
       parentItemId
     } = body
 
@@ -43,6 +45,22 @@ export const POST = withAuth(async function POST(request: Request) {
     if (!PERIOD_PLAN_ITEM_PRIORITIES.includes(priority)) {
       return NextResponse.json(
         { error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
+    // Validate the quadrant flags. They are independent booleans on the plan
+    // item, deliberately unrelated to the timeline event's isImportant flag.
+    if (typeof isImportant !== 'boolean') {
+      return NextResponse.json(
+        { error: 'isImportant must be a boolean', code: 'INVALID_IS_IMPORTANT' },
+        { status: 400 }
+      )
+    }
+
+    if (typeof isUrgent !== 'boolean') {
+      return NextResponse.json(
+        { error: 'isUrgent must be a boolean', code: 'INVALID_IS_URGENT' },
         { status: 400 }
       )
     }
@@ -152,6 +170,8 @@ export const POST = withAuth(async function POST(request: Request) {
       text: text.trim(),
       status: 'planned',
       priority,
+      isImportant,
+      isUrgent,
       projectScope,
       parentItemId: parentItemId || null,
       deferredFromItemId: null,

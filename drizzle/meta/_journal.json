@@ -274,6 +274,13 @@
       "when": 1793598139956,
       "tag": "0038_zippy_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1793599109434,
+      "tag": "0039_dapper_red_hulk",
+      "breakpoints": true
     }
   ]
 }

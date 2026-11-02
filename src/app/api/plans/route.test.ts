@@ -427,5 +427,76 @@ describe('/api/plans', () => {
         'Low first',
       ])
     })
+    it('should return quadrant flags without letting them affect priority ordering', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.periodPlanItems).values([
+        {
+          periodPlanId: plan[0].id,
+          text: 'Low but flagged',
+          status: 'planned',
+          priority: 'low',
+          isImportant: true,
+          isUrgent: true,
+          projectScope: 'work',
+          parentItemId: null,
+          deferredFromItemId: null,
+          position: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          periodPlanId: plan[0].id,
+          text: 'High unflagged',
+          status: 'planned',
+          priority: 'high',
+          isImportant: false,
+          isUrgent: false,
+          projectScope: 'work',
+          parentItemId: null,
+          deferredFromItemId: null,
+          position: 2,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          periodPlanId: plan[0].id,
+          text: 'Normal flagged',
+          status: 'planned',
+          priority: 'normal',
+          isImportant: true,
+          isUrgent: false,
+          projectScope: 'work',
+          parentItemId: null,
+          deferredFromItemId: null,
+          position: 3,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plans?scope=week&date=2026-10-15')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.items.map((item: { text: string }) => item.text)).toEqual([
+        'High unflagged',
+        'Normal flagged',
+        'Low but flagged',
+      ])
+      expect(data.items[2].isImportant).toBe(true)
+      expect(data.items[2].isUrgent).toBe(true)
+      expect(data.items[0].isImportant).toBe(false)
+    })
   })
 })
