@@ -36,6 +36,19 @@ function parsePeriodStart(start: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+// Items are grouped by priority on the server, so an item can only be
+// reordered against its immediate neighbour when that neighbour belongs to the
+// same priority group. Group heads/tails therefore have no move target.
+function sameGroupNeighbour(
+  items: PeriodPlanItem[],
+  index: number,
+  direction: 'up' | 'down'
+): number | null {
+  const neighbour = direction === 'up' ? index - 1 : index + 1
+  if (neighbour < 0 || neighbour >= items.length) return null
+  return items[neighbour].priority === items[index].priority ? neighbour : null
+}
+
 export function PeriodPlanManager({ initialScope = 'week', initialStart = null }: Props = {}) {
   const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
@@ -164,12 +177,14 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
     }
   }
 
-  // Swap positions with the adjacent item to change manual ordering.
+  // Swap positions with the adjacent item in the same priority group. Moving a
+  // group head up or a group tail down is a no-op, and the priority is never
+  // part of the payload: ordering and priority stay orthogonal.
   const handleMoveItem = async (id: number, direction: 'up' | 'down') => {
     const index = items.findIndex((item) => item.id === id)
     if (index < 0) return
-    const swapIndex = direction === 'up' ? index - 1 : index + 1
-    if (swapIndex < 0 || swapIndex >= items.length) return
+    const swapIndex = sameGroupNeighbour(items, index, direction)
+    if (swapIndex === null) return
     const current = items[index]
     const neighbour = items[swapIndex]
     await Promise.all([
@@ -257,8 +272,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
               item={item}
               parentOptions={scope === 'week' ? parentOptions : []}
               showParentSelector={scope === 'week'}
-              canMoveUp={index > 0}
-              canMoveDown={index < items.length - 1}
+              canMoveUp={sameGroupNeighbour(items, index, 'up') !== null}
+              canMoveDown={sameGroupNeighbour(items, index, 'down') !== null}
               onUpdate={handleUpdateItem}
               onDelete={handleDeleteItem}
               onDefer={handleDeferItem}

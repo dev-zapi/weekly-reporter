@@ -479,4 +479,75 @@ describe('PeriodPlanManager', () => {
       expect(bodies).toContainEqual({ position: 1 })
     })
   })
+
+  const groupedItems = () => [
+    makeItem({ id: 1, text: 'High item', priority: 'high', position: 1 }),
+    makeItem({ id: 2, text: 'Normal A', priority: 'normal', position: 2 }),
+    makeItem({ id: 3, text: 'Normal B', priority: 'normal', position: 3 }),
+    makeItem({ id: 4, text: 'Low item', priority: 'low', position: 4 }),
+  ]
+
+  it('moves down within the same priority group by swapping positions only', async () => {
+    const user = userEvent.setup()
+    setupApi({ items: groupedItems() })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Normal A')).toBeInTheDocument())
+
+    // Row order: high, Normal A (normal group head), Normal B, low.
+    await user.click(screen.getAllByLabelText('Move down')[1])
+
+    await waitFor(() => {
+      const puts = mockFetch.mock.calls.filter(
+        (call) => call[1]?.method === 'PUT' && String(call[0]).startsWith('/api/plan-items/')
+      )
+      expect(puts).toHaveLength(2)
+      expect(String(puts[0][0])).toBe('/api/plan-items/2')
+      expect(JSON.parse(puts[0][1].body as string)).toEqual({ position: 3 })
+      expect(String(puts[1][0])).toBe('/api/plan-items/3')
+      expect(JSON.parse(puts[1][1].body as string)).toEqual({ position: 2 })
+    })
+  })
+
+  it('moves up within the same priority group by swapping positions only', async () => {
+    const user = userEvent.setup()
+    setupApi({ items: groupedItems() })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Normal B')).toBeInTheDocument())
+
+    // Move Normal B up past Normal A; both stay in the normal group.
+    await user.click(screen.getAllByLabelText('Move up')[2])
+
+    await waitFor(() => {
+      const puts = mockFetch.mock.calls.filter(
+        (call) => call[1]?.method === 'PUT' && String(call[0]).startsWith('/api/plan-items/')
+      )
+      expect(puts).toHaveLength(2)
+      expect(String(puts[0][0])).toBe('/api/plan-items/3')
+      expect(JSON.parse(puts[0][1].body as string)).toEqual({ position: 2 })
+      expect(String(puts[1][0])).toBe('/api/plan-items/2')
+      expect(JSON.parse(puts[1][1].body as string)).toEqual({ position: 3 })
+    })
+  })
+
+  it('does nothing when the group head moves up or the group tail moves down', async () => {
+    const user = userEvent.setup()
+    setupApi({ items: groupedItems() })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Normal A')).toBeInTheDocument())
+
+    const moveUps = screen.getAllByLabelText('Move up')
+    const moveDowns = screen.getAllByLabelText('Move down')
+    // The normal group head cannot move up, and its tail cannot move down.
+    expect(moveUps[1]).toBeDisabled()
+    expect(moveDowns[2]).toBeDisabled()
+
+    await user.click(moveUps[1])
+    await user.click(moveDowns[2])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(mockFetch.mock.calls.some((call) => call[1]?.method === 'PUT')).toBe(false)
+  })
 })
