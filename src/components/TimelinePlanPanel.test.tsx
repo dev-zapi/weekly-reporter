@@ -16,6 +16,7 @@ function makeItem(
   text: string,
   status: PeriodPlanItemStatus,
   projectScope: ProjectScope = 'work',
+  overrides: Partial<PeriodPlanItem> = {},
 ): PeriodPlanItem {
   return {
     id,
@@ -31,6 +32,7 @@ function makeItem(
     position: id,
     createdAt: new Date('2026-10-12'),
     updatedAt: new Date('2026-10-12'),
+    ...overrides,
   }
 }
 
@@ -301,6 +303,92 @@ describe('TimelinePlanPanel', () => {
     expect(within(personalRow).getByRole('img', { name: 'Status: In Progress' })).toBeInTheDocument()
     expect(within(personalRow).getByRole('img', { name: 'Project scope: Personal' })).toBeInTheDocument()
     expect(within(personalRow).queryByText(/^personal$/i)).not.toBeInTheDocument()
+  })
+
+  it('renders priority as a colour tint with an accessible name and no visible text label', async () => {
+    await renderWith([
+      makeItem(1, 'High item', 'planned', 'work', { priority: 'high' }),
+      makeItem(2, 'Normal item', 'planned', 'work', { priority: 'normal' }),
+      makeItem(3, 'Low item', 'planned', 'work', { priority: 'low' }),
+    ])
+
+    const cases = [
+      { text: 'High item', label: 'Priority: 高', tint: 'bg-rose-500', rowTint: 'bg-rose-50' },
+      { text: 'Normal item', label: 'Priority: 中', tint: 'bg-gray-400', rowTint: 'bg-muted/40' },
+      { text: 'Low item', label: 'Priority: 低', tint: 'bg-sky-500', rowTint: 'bg-sky-50' },
+    ] as const
+
+    for (const { text, label, tint, rowTint } of cases) {
+      const row = screen.getByText(text).closest('li')!
+      expect(row).toHaveClass(rowTint)
+      const priority = within(row).getByRole('img', { name: label })
+      expect(priority).toHaveClass(tint)
+      expect(priority).toHaveTextContent('')
+      // Priority is conveyed by tint only, never by a visible text label.
+      expect(within(row).queryByText(/高|中|低/)).not.toBeInTheDocument()
+    }
+  })
+
+  it('renders important and urgent flags as icon-only indicators with accessible names', async () => {
+    await renderWith([
+      makeItem(1, 'Both flags low', 'planned', 'work', { priority: 'low', isImportant: true, isUrgent: true }),
+      makeItem(2, 'No flags', 'planned', 'work'),
+      makeItem(3, 'Important only', 'planned', 'work', { isImportant: true }),
+      makeItem(4, 'Urgent only', 'planned', 'work', { isUrgent: true }),
+    ])
+
+    const both = screen.getByText('Both flags low').closest('li')!
+    const important = within(both).getByRole('img', { name: 'Important' })
+    const urgent = within(both).getByRole('img', { name: 'Urgent' })
+    expect(important).toHaveTextContent('')
+    expect(urgent).toHaveTextContent('')
+    // Flags are orthogonal to priority: a low-priority item still shows both.
+    expect(within(both).getByRole('img', { name: 'Priority: 低' })).toBeInTheDocument()
+    // Icon-only: neither flag contributes a visible text label.
+    expect(within(both).queryByText(/important|urgent/i)).not.toBeInTheDocument()
+
+    const noFlags = screen.getByText('No flags').closest('li')!
+    expect(within(noFlags).queryByRole('img', { name: 'Important' })).not.toBeInTheDocument()
+    expect(within(noFlags).queryByRole('img', { name: 'Urgent' })).not.toBeInTheDocument()
+
+    const importantOnly = screen.getByText('Important only').closest('li')!
+    expect(within(importantOnly).getByRole('img', { name: 'Important' })).toBeInTheDocument()
+    expect(within(importantOnly).queryByRole('img', { name: 'Urgent' })).not.toBeInTheDocument()
+
+    const urgentOnly = screen.getByText('Urgent only').closest('li')!
+    expect(within(urgentOnly).getByRole('img', { name: 'Urgent' })).toBeInTheDocument()
+    expect(within(urgentOnly).queryByRole('img', { name: 'Important' })).not.toBeInTheDocument()
+  })
+
+  it('renders items in the order returned by the plan endpoint without re-sorting', async () => {
+    await renderWith([
+      makeItem(1, 'Low first', 'planned', 'work', { priority: 'low' }),
+      makeItem(2, 'High second', 'planned', 'work', { priority: 'high' }),
+      makeItem(3, 'Normal third', 'planned', 'work', { priority: 'normal' }),
+    ])
+
+    const rows = within(screen.getByRole('list')).getAllByRole('listitem')
+    const rendered = rows.map((row) => row.textContent ?? '')
+    expect(rendered).toHaveLength(3)
+    expect(rendered[0]).toContain('Low first')
+    expect(rendered[1]).toContain('High second')
+    expect(rendered[2]).toContain('Normal third')
+  })
+
+  it('keeps status filtering independent of priority and flags', async () => {
+    const { user } = await renderWith([
+      makeItem(1, 'Done high', 'done', 'work', { priority: 'high', isImportant: true, isUrgent: true }),
+      makeItem(2, 'Planned low', 'planned', 'work', { priority: 'low', isImportant: true, isUrgent: true }),
+      makeItem(3, 'In progress normal', 'in_progress', 'work', { priority: 'normal' }),
+    ])
+
+    expect(screen.queryByText('Done high')).not.toBeInTheDocument()
+    expect(screen.getByText('Planned low')).toBeInTheDocument()
+    expect(screen.getByText('In progress normal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Done' }))
+
+    expect(screen.getByText('Done high')).toBeInTheDocument()
   })
 
   it('provides link to /plans page', async () => {

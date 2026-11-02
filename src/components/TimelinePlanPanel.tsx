@@ -3,7 +3,7 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { Briefcase, LoaderCircle, User } from 'lucide-react'
+import { Briefcase, LoaderCircle, Star, User, Zap } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
@@ -13,12 +13,71 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
+  PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
   PLAN_ITEM_STATUS_LABELS,
   PLAN_ITEM_STATUS_ORDER,
 } from '@/lib/plan-item-display'
-import type { PeriodPlan, PeriodPlanItem, PeriodPlanItemStatus } from '@/lib/db/schema'
+import type {
+  PeriodPlan,
+  PeriodPlanItem,
+  PeriodPlanItemPriority,
+  PeriodPlanItemStatus,
+} from '@/lib/db/schema'
+
+/**
+ * Priority is a scannable background tint rather than an icon or text label.
+ * Each value gets a distinct tint so the panel can be read at a glance while
+ * remaining orthogonal to the important/urgent flag icons.
+ */
+const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-500 dark:bg-rose-400',
+  normal: 'bg-gray-400 dark:bg-gray-500',
+  low: 'bg-sky-500 dark:bg-sky-400',
+}
+
+/** A softer version of the same tint fills the whole row for at-a-glance scanning. */
+const PLAN_ITEM_PRIORITY_ROW_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-50 dark:bg-rose-950/40',
+  normal: 'bg-muted/40',
+  low: 'bg-sky-50 dark:bg-sky-950/40',
+}
+
+function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
+  return (
+    <span
+      role="img"
+      aria-label={`Priority: ${PLAN_ITEM_PRIORITY_LABELS[priority]}`}
+      data-priority={priority}
+      className={cn(
+        'inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle',
+        PLAN_ITEM_PRIORITY_TINTS[priority],
+      )}
+    />
+  )
+}
+
+/** Important/urgent are icon-only annotations; priority never changes them. */
+function ImportantBadge() {
+  return (
+    <IconBadge
+      Icon={Star}
+      label="Important"
+      className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+    />
+  )
+}
+
+function UrgentBadge() {
+  return (
+    <IconBadge
+      Icon={Zap}
+      label="Urgent"
+      className="bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200"
+    />
+  )
+}
 
 type ApiResponse = {
   plan: PeriodPlan | null
@@ -201,13 +260,34 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
             ) : (
               <ul className="space-y-2">
                 {visibleItems.map((item) => (
-                  <li key={item.id} className="flex items-start gap-2 text-sm">
+                  <li
+                    key={item.id}
+                    data-priority={item.priority}
+                    className={cn(
+                      'flex items-start gap-2 rounded-md px-1 py-0.5 text-sm',
+                      PLAN_ITEM_PRIORITY_ROW_TINTS[item.priority],
+                    )}
+                  >
                     <Badge variant="outline" className="shrink-0 font-mono text-xs">%{item.id}</Badge>
                     <div className="flex-1 font-medium">
                       {item.text}{' '}
                       <StatusBadge status={item.status} />
                       {' '}
                       <ProjectScopeBadge scope={item.projectScope} />
+                      {' '}
+                      <PriorityTint priority={item.priority} />
+                      {item.isImportant && (
+                        <>
+                          {' '}
+                          <ImportantBadge />
+                        </>
+                      )}
+                      {item.isUrgent && (
+                        <>
+                          {' '}
+                          <UrgentBadge />
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}
