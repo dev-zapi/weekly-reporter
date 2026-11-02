@@ -822,6 +822,127 @@ describe('/api/plans', () => {
       expect(item.childItems[0].id).toBe(successorChild.id)
     })
 
+    it('aggregates ancestor children through nested month and child deferral chains', async () => {
+      // Month deferral chain: August root -> September ancestor -> October successor.
+      const augustPlan = createMonthPlan(testDb, '2026-08')
+      const ancestorRoot = createItem(testDb, augustPlan.id, {
+        text: 'Root goal',
+        status: 'deferred',
+      })
+      const septemberPlan = createMonthPlan(testDb, '2026-09')
+      const ancestor = createItem(testDb, septemberPlan.id, {
+        text: 'Root goal',
+        status: 'deferred',
+        deferredFromItemId: ancestorRoot.id,
+      })
+      const octoberPlan = createMonthPlan(testDb, '2026-10')
+      const successor = createItem(testDb, octoberPlan.id, {
+        text: 'Root goal',
+        deferredFromItemId: ancestor.id,
+      })
+
+      // Each ancestor keeps its own attached child; nothing migrates.
+      const augustWeek = createWeekPlan(testDb, '2026-08-10', '2026-08-16')
+      const rootChild = createItem(testDb, augustWeek.id, {
+        text: 'Root child',
+        parentItemId: ancestorRoot.id,
+      })
+      const septemberWeek = createWeekPlan(testDb, '2026-09-07', '2026-09-13')
+      // The September child has its own week deferral predecessor.
+      const predecessorWeek = createWeekPlan(testDb, '2026-08-31', '2026-09-06')
+      const childPredecessor = createItem(testDb, predecessorWeek.id, {
+        text: 'Ancestor child',
+      })
+      const ancestorChild = createItem(testDb, septemberWeek.id, {
+        text: 'Ancestor child',
+        parentItemId: ancestor.id,
+        deferredFromItemId: childPredecessor.id,
+      })
+      const octoberWeek = createWeekPlan(testDb, '2026-10-12', '2026-10-18')
+      const successorChild = createItem(testDb, octoberWeek.id, {
+        text: 'Successor child',
+        parentItemId: successor.id,
+      })
+
+      createEvents(testDb, [
+        ancestorRoot.id,
+        ancestor.id,
+        successor.id,
+        rootChild.id,
+        ancestorChild.id,
+        ancestorChild.id,
+        childPredecessor.id,
+        successorChild.id,
+      ])
+
+      const request = new Request('http://localhost/api/plans?scope=month&month=2026-10')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.items).toHaveLength(1)
+      const [item] = data.items
+      expect(item.id).toBe(successor.id)
+      // Direct: the successor and every ancestor month item in its chain.
+      expect(item.directFulfillmentCount).toBe(3)
+      // Indirect: one event via the root's child, three via the ancestor child
+      // (two own + one from its week deferral predecessor), one via its own
+      // child.
+      expect(item.indirectFulfillmentCount).toBe(5)
+      expect(item.fulfillmentCount).toBe(8)
+      expect(item.childItems).toHaveLength(1)
+      expect(item.childItems[0].id).toBe(successorChild.id)
+    })
+
+    it('keeps the deferred month item and its children in place', async () => {
+      const septemberPlan = createMonthPlan(testDb, '2026-09')
+      const original = createItem(testDb, septemberPlan.id, {
+        text: 'Kept goal',
+        status: 'deferred',
+      })
+      const septemberWeek = createWeekPlan(testDb, '2026-09-07', '2026-09-13')
+      const child = createItem(testDb, septemberWeek.id, {
+        text: 'Still attached',
+        parentItemId: original.id,
+      })
+      const octoberPlan = createMonthPlan(testDb, '2026-10')
+      const successor = createItem(testDb, octoberPlan.id, {
+        text: 'Kept goal',
+        deferredFromItemId: original.id,
+      })
+      createEvents(testDb, [child.id, child.id])
+
+      const septemberResponse = await GET(
+        new Request('http://localhost/api/plans?scope=month&month=2026-09')
+      )
+      const septemberData = await septemberResponse.json()
+
+      expect(septemberResponse.status).toBe(200)
+      expect(septemberData.items).toHaveLength(1)
+      const [originalFromResponse] = septemberData.items
+      expect(originalFromResponse.id).toBe(original.id)
+      // The original still owns its attached child after the deferral.
+      expect(originalFromResponse.childItems).toHaveLength(1)
+      expect(originalFromResponse.childItems[0].id).toBe(child.id)
+      expect(originalFromResponse.indirectFulfillmentCount).toBe(2)
+
+      const octoberResponse = await GET(
+        new Request('http://localhost/api/plans?scope=month&month=2026-10')
+      )
+      const octoberData = await octoberResponse.json()
+
+      expect(octoberResponse.status).toBe(200)
+      expect(octoberData.items).toHaveLength(1)
+      const [successorFromResponse] = octoberData.items
+      expect(successorFromResponse.id).toBe(successor.id)
+      // Nothing migrated: the successor has no children of its own, but it
+      // still carries the ancestor's child's evidence.
+      expect(successorFromResponse.childItems).toEqual([])
+      expect(successorFromResponse.directFulfillmentCount).toBe(0)
+      expect(successorFromResponse.indirectFulfillmentCount).toBe(2)
+      expect(successorFromResponse.fulfillmentCount).toBe(2)
+    })
+
     it('groups attach candidates by week, scoped to the month and covering unparented items only', async () => {
       const monthPlan = createMonthPlan(testDb)
       const goal = createItem(testDb, monthPlan.id, { text: 'Goal' })
