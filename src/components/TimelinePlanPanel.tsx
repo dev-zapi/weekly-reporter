@@ -13,12 +13,43 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
+  PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
   PLAN_ITEM_STATUS_LABELS,
   PLAN_ITEM_STATUS_ORDER,
 } from '@/lib/plan-item-display'
-import type { PeriodPlan, PeriodPlanItem, PeriodPlanItemStatus } from '@/lib/db/schema'
+import type {
+  PeriodPlan,
+  PeriodPlanItem,
+  PeriodPlanItemPriority,
+  PeriodPlanItemStatus,
+} from '@/lib/db/schema'
+
+/**
+ * Priority is a scannable background tint rather than an icon or text label.
+ * Each value gets a distinct tint so the panel can be read at a glance while
+ * remaining orthogonal to the important/urgent flag icons.
+ */
+const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-500 dark:bg-rose-400',
+  normal: 'bg-gray-400 dark:bg-gray-500',
+  low: 'bg-sky-500 dark:bg-sky-400',
+}
+
+function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
+  return (
+    <span
+      role="img"
+      aria-label={`Priority: ${PLAN_ITEM_PRIORITY_LABELS[priority]}`}
+      data-priority={priority}
+      className={cn(
+        'inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle',
+        PLAN_ITEM_PRIORITY_TINTS[priority],
+      )}
+    />
+  )
+}
 
 type ApiResponse = {
   plan: PeriodPlan | null
@@ -208,6 +239,8 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                       <StatusBadge status={item.status} />
                       {' '}
                       <ProjectScopeBadge scope={item.projectScope} />
+                      {' '}
+                      <PriorityTint priority={item.priority} />
                     </div>
                   </li>
                 ))}

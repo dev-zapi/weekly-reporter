@@ -16,6 +16,7 @@ function makeItem(
   text: string,
   status: PeriodPlanItemStatus,
   projectScope: ProjectScope = 'work',
+  overrides: Partial<PeriodPlanItem> = {},
 ): PeriodPlanItem {
   return {
     id,
@@ -31,6 +32,7 @@ function makeItem(
     position: id,
     createdAt: new Date('2026-10-12'),
     updatedAt: new Date('2026-10-12'),
+    ...overrides,
   }
 }
 
@@ -301,6 +303,29 @@ describe('TimelinePlanPanel', () => {
     expect(within(personalRow).getByRole('img', { name: 'Status: In Progress' })).toBeInTheDocument()
     expect(within(personalRow).getByRole('img', { name: 'Project scope: Personal' })).toBeInTheDocument()
     expect(within(personalRow).queryByText(/^personal$/i)).not.toBeInTheDocument()
+  })
+
+  it('renders priority as a colour tint with an accessible name and no visible text label', async () => {
+    await renderWith([
+      makeItem(1, 'High item', 'planned', 'work', { priority: 'high' }),
+      makeItem(2, 'Normal item', 'planned', 'work', { priority: 'normal' }),
+      makeItem(3, 'Low item', 'planned', 'work', { priority: 'low' }),
+    ])
+
+    const cases = [
+      { text: 'High item', label: 'Priority: 高', tint: 'bg-rose-500' },
+      { text: 'Normal item', label: 'Priority: 中', tint: 'bg-gray-400' },
+      { text: 'Low item', label: 'Priority: 低', tint: 'bg-sky-500' },
+    ] as const
+
+    for (const { text, label, tint } of cases) {
+      const row = screen.getByText(text).closest('li')!
+      const priority = within(row).getByRole('img', { name: label })
+      expect(priority).toHaveClass(tint)
+      expect(priority).toHaveTextContent('')
+      // Priority is conveyed by tint only, never by a visible text label.
+      expect(within(row).queryByText(/高|中|低/)).not.toBeInTheDocument()
+    }
   })
 
   it('provides link to /plans page', async () => {
