@@ -1,13 +1,15 @@
 'use client'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Trash2, Forward } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatSystemDateTime } from '@/lib/time-format'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
+import { ReferencePreviewDialog } from './ReferencePreviewDialog'
+import { ContentWithReferences } from './ContentWithReferences'
 import {
   PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_PRIORITY_ORDER,
@@ -23,7 +25,31 @@ import type {
 } from '@/lib/db/schema'
 
 /** A plan item enriched by GET /api/plans with its chain-aggregated fulfillment count. */
-export type PlanItemRowData = PeriodPlanItem & { fulfillmentCount?: number }
+export type PlanItemRowData = PeriodPlanItem & {
+  fulfillmentCount?: number
+  commentCount?: number
+}
+
+/** One plan-side comment as returned by the comments collection endpoint. */
+export type PlanCommentView = {
+  id: number
+  planItemId: number
+  content: string
+  /** null for browser-authored comments (rendered as 用户). */
+  author: string | null
+  createdAt: string
+  /**
+   * The period of the item this comment is pinned to. Present on every
+   * aggregated comment; the UI only shows it for deferral-chain ancestors.
+   */
+  sourcePeriod?: {
+    scope: 'week' | 'month'
+    periodStart: string
+    periodEnd: string
+    monthKey: string | null
+    label: string
+  }
+}
 
 /** One fulfilling event as returned by GET /api/plan-items/[id]/fulfillment. */
 type FulfillingEventView = {
@@ -43,6 +69,11 @@ type Props = {
   onDelete: (id: number) => void
   onDefer: (id: number) => void
   onMove?: (id: number, direction: 'up' | 'down') => void
+  /**
+   * Expand and highlight the comment section on mount. Set by the plans page
+   * when a deep link targets this item (event-side cited-by locate).
+   */
+  autoExpandComments?: boolean
 }
 
 export function PeriodPlanItemRow({
@@ -55,6 +86,7 @@ export function PeriodPlanItemRow({
   onDelete,
   onDefer,
   onMove,
+  autoExpandComments = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
@@ -63,6 +95,18 @@ export function PeriodPlanItemRow({
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
+  // Deep links start with the comment section already open; the effect below
+  // fills it in. Keeping this in the initial state avoids a synchronous
+  // setState in an effect (cascading-render lint).
+  const [commentsExpanded, setCommentsExpanded] = useState(autoExpandComments)
+  const [comments, setComments] = useState<PlanCommentView[] | null>(null)
+  const [commentsLoading, setCommentsLoading] = useState(false)
+  const [commentsError, setCommentsError] = useState<string | null>(null)
+  const [commentDraft, setCommentDraft] = useState('')
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
+  // Comment citations open a read-only event preview; there is no timeline
+  // filter to locate into from the plans page.
+  const [previewEventId, setPreviewEventId] = useState<number | null>(null)
 
   // Lazily load fulfilling events on first expansion so the plans list stays
   // cheap for the common collapsed case.
@@ -81,6 +125,101 @@ export function PeriodPlanItemRow({
       setEventsError(err instanceof Error ? err.message : 'Failed to load fulfilling events')
     } finally {
       setEventsLoading(false)
+    }
+  }
+
+  // Comments are lazily loaded on first expansion, mirroring fulfilling events.
+  const loadComments = useCallback(async () => {
+    setCommentsLoading(true)
+    setCommentsError(null)
+    try {
+      const response = await apiFetch(`/api/plan-items/${item.id}/comments`)
+      if (!response.ok) throw new Error('Failed to load comments' + traceSuffix(response))
+      const data: { comments?: PlanCommentView[] } = await response.json()
+      setComments(data.comments ?? [])
+    } catch (err) {
+      setCommentsError(err instanceof Error ? err.message : 'Failed to load comments')
+    } finally {
+      setCommentsLoading(false)
+    }
+  }, [item.id])
+
+  const handleToggleComments = async () => {
+    const next = !commentsExpanded
+    setCommentsExpanded(next)
+    if (!next || comments !== null) return
+    await loadComments()
+  }
+
+  // Deep link: open the comment section without a click, then scroll it into
+  // view. The section also carries the highlight animation class while
+  // autoExpandComments is set.
+  const commentsSectionRef = useRef<HTMLDivElement>(null)
+  const autoExpandedRef = useRef(false)
+
+  useEffect(() => {
+    if (!autoExpandComments || autoExpandedRef.current) return
+    autoExpandedRef.current = true
+    // Load on a microtask so the effect body never sets state synchronously.
+    void Promise.resolve().then(loadComments)
+  }, [autoExpandComments, loadComments])
+
+  useEffect(() => {
+    if (!autoExpandComments) return
+    const timer = setTimeout(() => {
+      commentsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [autoExpandComments])
+
+  // The badge must match what expansion shows, so a locally loaded list wins
+  // over the server-provided count after an append or delete.
+  const displayCommentCount = comments !== null ? comments.length : item.commentCount
+
+  const handleSubmitComment = async () => {
+    const content = commentDraft.trim()
+    if (!content || commentSubmitting) return
+    setCommentSubmitting(true)
+    setCommentsError(null)
+    try {
+      const response = await apiFetch(`/api/plan-items/${item.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+      if (!response.ok) throw new Error('Failed to add comment' + traceSuffix(response))
+      const created: PlanCommentView = await response.json()
+      setComments((prev) => (prev === null ? [created] : [...prev, created]))
+      setCommentDraft('')
+    } catch (err) {
+      setCommentsError(err instanceof Error ? err.message : 'Failed to add comment')
+    } finally {
+      setCommentSubmitting(false)
+    }
+  }
+
+  const handleCommentKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // IME composition must be checked first so Enter confirming a candidate
+    // never submits the comment.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSubmitComment()
+    }
+  }
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!window.confirm('Delete this comment?')) return
+    try {
+      const response = await apiFetch(`/api/plan-items/${item.id}/comments/${commentId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) throw new Error('Failed to delete comment' + traceSuffix(response))
+      const data: { deleted?: boolean } = await response.json()
+      if (data.deleted === false) throw new Error('Failed to delete comment' + traceSuffix(response))
+      setComments((prev) => (prev ? prev.filter((comment) => comment.id !== commentId) : prev))
+    } catch (err) {
+      setCommentsError(err instanceof Error ? err.message : 'Failed to delete comment')
     }
   }
 
@@ -160,6 +299,9 @@ export function PeriodPlanItemRow({
         {typeof item.fulfillmentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{item.fulfillmentCount} fulfilled</Badge>
         )}
+        {typeof displayCommentCount === 'number' && (
+          <Badge variant="secondary" className="text-xs">{displayCommentCount} comments</Badge>
+        )}
       </div>
 
       <div className="flex-1 space-y-2">
@@ -205,6 +347,16 @@ export function PeriodPlanItemRow({
             aria-expanded={expanded}
           >
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleToggleComments}
+            aria-label="Toggle comments"
+            aria-expanded={commentsExpanded}
+          >
+            <MessageSquare className="h-3 w-3" />
           </Button>
 
           <select
@@ -346,7 +498,86 @@ export function PeriodPlanItemRow({
             )}
           </div>
         )}
+
+        {commentsExpanded && (
+          <div
+            ref={commentsSectionRef}
+            className={`space-y-2 rounded-md border bg-muted/40 p-2 ${
+              autoExpandComments ? 'reference-highlight' : ''
+            }`}
+          >
+            {commentsLoading ? (
+              <div role="status" className="text-xs text-muted-foreground">Loading…</div>
+            ) : commentsError ? (
+              <div role="alert" className="text-xs text-destructive">{commentsError}</div>
+            ) : !comments || comments.length === 0 ? (
+              <div className="text-xs text-muted-foreground">No comments</div>
+            ) : (
+              <ul className="space-y-2">
+                {comments.map((comment) => {
+                  // Comments stay pinned to the item they were written on. In a
+                  // deferred successor they appear aggregated with their source
+                  // period and cannot be deleted from here.
+                  const isAncestorComment = comment.planItemId !== item.id
+                  return (
+                    <li key={comment.id} className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{comment.author ?? '用户'}</span>
+                        <span>{formatSystemDateTime(comment.createdAt)}</span>
+                        {isAncestorComment && comment.sourcePeriod && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {comment.sourcePeriod.label}
+                          </Badge>
+                        )}
+                        {!isAncestorComment && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => void handleDeleteComment(comment.id)}
+                            aria-label={`Delete comment ${comment.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <div className="whitespace-pre-wrap text-sm">
+                        <ContentWithReferences
+                          content={comment.content}
+                          eventReferencesOnly
+                          onReferenceClick={(referenceId) => setPreviewEventId(referenceId)}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            <div className="flex items-start gap-2">
+              <textarea
+                value={commentDraft}
+                onChange={(event) => setCommentDraft(event.target.value)}
+                onKeyDown={handleCommentKeyDown}
+                aria-label="New comment"
+                placeholder="Add a comment… (Enter to post, Shift+Enter for a newline)"
+                className="min-h-16 flex-1 resize-y rounded border bg-transparent px-2 py-1 text-sm"
+              />
+              <Button
+                size="sm"
+                onClick={() => void handleSubmitComment()}
+                disabled={!commentDraft.trim() || commentSubmitting}
+              >
+                Comment
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
+
+      <ReferencePreviewDialog
+        eventId={previewEventId}
+        onClose={() => setPreviewEventId(null)}
+      />
 
       <PlanItemDeleteDialog
         itemId={deleteTarget}

@@ -281,6 +281,13 @@
       "when": 1793599109434,
       "tag": "0039_dapper_red_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1793609809825,
+      "tag": "0040_nappy_vin_gonzales",
+      "breakpoints": true
     }
   ]
 }

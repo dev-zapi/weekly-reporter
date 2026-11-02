@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { segmentContentTokens } from './content-tokens'
+import { segmentContentTokens, segmentEventReferenceTokens } from './content-tokens'
 
 describe('segmentContentTokens', () => {
   it('returns a single text token for plain content', () => {
@@ -86,5 +86,33 @@ describe('segmentContentTokens', () => {
       { type: 'plan-reference', id: 9 },
       { type: 'text', text: ' done' },
     ])
+  })
+})
+
+describe('segmentEventReferenceTokens', () => {
+  it('recognizes @id references', () => {
+    expect(segmentEventReferenceTokens('see @7008 for details')).toEqual([
+      { type: 'text', text: 'see ' },
+      { type: 'event-reference', id: 7008 },
+      { type: 'text', text: ' for details' },
+    ])
+  })
+
+  it('demotes %id plan references and #tags to plain text', () => {
+    expect(segmentEventReferenceTokens('see @17 about %42 #review')).toEqual([
+      { type: 'text', text: 'see ' },
+      { type: 'event-reference', id: 17 },
+      { type: 'text', text: ' about %42 #review' },
+    ])
+  })
+
+  it('leaves content with only plan references and tags as a single text token', () => {
+    expect(segmentEventReferenceTokens('did %42 #review')).toEqual([
+      { type: 'text', text: 'did %42 #review' },
+    ])
+  })
+
+  it('treats non-positive ids as plain text', () => {
+    expect(segmentEventReferenceTokens('@0')).toEqual([{ type: 'text', text: '@0' }])
   })
 })

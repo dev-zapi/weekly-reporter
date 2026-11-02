@@ -1,10 +1,10 @@
 ---
 name: period-plans
 description: >-
-  Manage period plans (周计划/月度计划) and plan items (计划条目). Use this skill whenever the user wants to create, view, update, defer (顺延), or delete weekly or monthly plans and their items. Triggers on phrases like "周计划", "月度计划", "计划条目", "顺延", "周期计划", "list plan items", "defer an item", "weekly plan", "monthly plan", "plan items for this week", "what's planned for next month", "mark this item as done", "move this to next week".
+  Manage period plans (周计划/月度计划) and plan items (计划条目). Use this skill whenever the user wants to create, view, update, defer (顺延), or delete weekly or monthly plans and their items, or to read, add, or delete a plan item's comments (计划项评论). Triggers on phrases like "周计划", "月度计划", "计划条目", "顺延", "周期计划", "list plan items", "defer an item", "weekly plan", "monthly plan", "plan items for this week", "what's planned for next month", "mark this item as done", "move this to next week", "add a comment to a plan item", "计划项评论", "给计划条目加个评论".
 ---
 
-Manage period plans via five Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
+Manage period plans via eight Node.js scripts. All scripts use built-in `fetch` (Node 18+) and read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`; the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
 
 ## Boundary
 
@@ -125,6 +125,50 @@ node {baseDir}/scripts/delete.mjs <id>
 - On success: `✓ Item %<id> deleted`
 - On 404: item not found
 
+## Comments (计划项评论)
+
+Plan items carry append-only comments for plan-side context — blockers, scope adjustments, decisions. Comments are not work facts: they never enter the timeline, event snapshots, report source drafts, or AI generation. Express work that was done as a manual event with a `%id` reference, not as a comment.
+
+Only one token is live inside comment content: `@<eventId>`. It renders as a clickable citation to that timeline event (and arms that event's deletion warning). `%<itemId>` and `#tag` are **plain text** in comments — they never create fulfillment associations or timeline tags. Say so if the user expects `%` or `#` to link from a comment.
+
+Authorship is attribution, not a security boundary: browser comments render as the user; PAT comments are stamped with the caller's self-reported agent identity (`X-Weekly-Reporter-Agent`), falling back to the token name, then the literal `pat`. Comments are deletable but never editable — append a correction instead.
+
+### List comments
+
+```bash
+node {baseDir}/scripts/list-comments.mjs <itemId>
+```
+
+Prints the item's own comments plus its deferral-chain ancestors' comments (chain-aggregated), oldest-first. Each line shows the comment id (`#<commentId>`), the item the comment is pinned to (`%<itemId>`), UTC time, author, source-period label (`Week 2026-10-12 - 2026-10-18` or `Month 2026-09`), and the content:
+
+```
+Plan item %12: 2 comments
+  #7 %9 [2026-10-13 09:00 UTC] [period-plans/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker
+  #8 %12 [2026-10-20 09:00 UTC] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up
+```
+
+The item id on each line is the item the comment is pinned to, which is not necessarily the item you queried — pass it to delete an ancestor's comment. Prints `No comments on plan item %<itemId>.` when there are none.
+
+### Add a comment
+
+```bash
+node {baseDir}/scripts/add-comment.mjs <itemId> --text <text>
+```
+
+- `--text` — comment content (required, non-empty). Leading/trailing whitespace is trimmed by the API.
+- On success: `✓ Comment #<commentId> added to %<itemId> (author: <agentIdentity|patName|pat>)`
+- The comment is visible immediately in the item's plans-page section; it is never added to the timeline or to reports.
+
+### Delete a comment
+
+```bash
+node {baseDir}/scripts/delete-comment.mjs <itemId> <commentId>
+```
+
+- `itemId` is the item the comment is pinned to (the `%<itemId>` on its list line), not the item you are viewing.
+- Confirm with the user before deleting: deletion is permanent and also removes the comment's `@id` citation index rows.
+- On success: `✓ Comment #<commentId> deleted from %<itemId>`
+
 ## Error handling
 
 All scripts exit 0 on success, non-zero on failure. Common errors:
@@ -139,3 +183,4 @@ All scripts exit 0 on success, non-zero on failure. Common errors:
 | `Server error (HTTP 5xx)` | Backend issue | Check server logs |
 | `Period plan not found` | Plan ID doesn't exist | Check the plan ID from list output |
 | `Plan item not found` | Item ID doesn't exist | Check the item ID from list output |
+| `Comment not found` | Comment ID doesn't exist, or it is pinned to another item | Check the `#<commentId>` and `%<itemId>` pair from list-comments output |

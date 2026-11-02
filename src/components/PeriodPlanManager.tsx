@@ -27,6 +27,8 @@ type PeriodParams = Record<string, string>
 type Props = {
   initialScope?: PeriodPlanScope
   initialStart?: string | null
+  /** Deep link from the event-side cited-by marker: expand this item's comments. */
+  initialItemId?: number | null
 }
 
 // The deep-link start is a yyyy-MM-dd period start; parse it as a local date.
@@ -49,7 +51,7 @@ function sameGroupNeighbour(
   return items[neighbour].priority === items[index].priority ? neighbour : null
 }
 
-export function PeriodPlanManager({ initialScope = 'week', initialStart = null }: Props = {}) {
+export function PeriodPlanManager({ initialScope = 'week', initialStart = null, initialItemId = null }: Props = {}) {
   const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
   const [items, setItems] = useState<PeriodPlanItem[]>([])
@@ -142,7 +144,17 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
       })
       if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
-      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)))
+      // PUT returns the bare item row, so carry the listing-only counts over to
+      // keep the fulfillment and comment badges visible after an inline edit.
+      setItems((prev) => prev.map((item) => (
+        item.id === id
+          ? {
+              ...updated,
+              fulfillmentCount: (item as PlanItemRowData).fulfillmentCount,
+              commentCount: (item as PlanItemRowData).commentCount,
+            }
+          : item
+      )))
       // Priority drives the server-side grouping order, so refetch to let a
       // changed item move to its new group. Other edits keep their place.
       if (updates.priority !== undefined) {
@@ -270,6 +282,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
             <PeriodPlanItemRow
               key={item.id}
               item={item}
+              autoExpandComments={item.id === initialItemId}
               parentOptions={scope === 'week' ? parentOptions : []}
               showParentSelector={scope === 'week'}
               canMoveUp={sameGroupNeighbour(items, index, 'up') !== null}

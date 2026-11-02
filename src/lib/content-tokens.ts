@@ -44,9 +44,28 @@ function collectMatches(content: string, regex: RegExp, kind: ReferenceKind): Ra
 }
 
 export function segmentContentTokens(content: string): ContentToken[] {
+  return segment(content, true)
+}
+
+/**
+ * `@`-only segmentation for plan item comments.
+ *
+ * Comments only ever cite events (`@<id>`); `%<itemId>` plan references and
+ * `#tags` are inert text there by design (fulfillment association and timeline
+ * tags stay event-only). Reuses the same canonical boundary rules as the event
+ * content segmentation above, so rendering cannot drift from the write-side
+ * parser.
+ */
+export function segmentEventReferenceTokens(content: string): ContentToken[] {
+  return segment(content, false)
+}
+
+function segment(content: string, includePlanReferences: boolean): ContentToken[] {
   const matches = [
     ...collectMatches(content, REFERENCE_MATCH_REGEX, 'event-reference'),
-    ...collectMatches(content, PLAN_REFERENCE_MATCH_REGEX, 'plan-reference'),
+    ...(includePlanReferences
+      ? collectMatches(content, PLAN_REFERENCE_MATCH_REGEX, 'plan-reference')
+      : []),
   ].sort((a, b) => a.index - b.index)
 
   const tokens: ContentToken[] = []

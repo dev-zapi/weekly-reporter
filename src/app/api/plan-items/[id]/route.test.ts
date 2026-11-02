@@ -1370,5 +1370,49 @@ describe('/api/plan-items/[id]', () => {
       expect(refs).toHaveLength(1)
       expect(refs[0].planItemId).toBe(item2.id)
     })
+
+    it('should cascade-delete the item comments and their citation rows', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [item] = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Item with comments',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [comment] = testDb.insert(schema.planItemComments).values({
+        planItemId: item.id,
+        content: 'plan-side context',
+        author: null,
+        createdAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.commentReferences).values({
+        commentId: comment.id,
+        referencedEventId: 7,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plan-items/' + item.id, {
+        method: 'DELETE',
+      })
+      const params = Promise.resolve({ id: String(item.id) })
+      const response = await DELETE(request, { params })
+
+      expect(response.status).toBe(200)
+      expect(testDb.select().from(schema.planItemComments).all()).toEqual([])
+      expect(testDb.select().from(schema.commentReferences).all()).toEqual([])
+    })
   })
 })

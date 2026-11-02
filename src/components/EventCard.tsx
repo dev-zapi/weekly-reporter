@@ -2,16 +2,23 @@
 import { apiFetch } from '@/lib/api-client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit2, Trash2, FileText, GitBranch } from 'lucide-react'
+import { Edit2, Trash2, FileText, GitBranch, MessageSquare } from 'lucide-react'
 import type { RawEvent } from '@/lib/db/schema'
 import { EventTimestamp } from './EventTimestamp'
 import { ContentWithReferences } from './ContentWithReferences'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
+import { buildPlansDeepLink } from '@/lib/plan-links'
 
 interface EventCardProps {
   event: RawEvent
+  /**
+   * Number of plan item comments citing this event, supplied by the events
+   * list query. Undefined/0 hides the cited-by marker.
+   */
+  commentReferrerCount?: number
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
   onReferenceClick?: (referenceId: number) => void
@@ -19,10 +26,21 @@ interface EventCardProps {
   highlightKey?: number | null
 }
 
-export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightKey }: EventCardProps) {
+interface CommentReferrerSummary {
+  commentId: number
+  planItemId: number
+  excerpt: string
+  author: string | null
+  scope: 'week' | 'month'
+  periodStart: string
+}
+
+export function EventCard({ event, commentReferrerCount, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightKey }: EventCardProps) {
+  const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(event.content)
   const [loading, setLoading] = useState(false)
+  const [locatingCitation, setLocatingCitation] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
   const isManual = event.source === 'manual'
 
@@ -76,29 +94,68 @@ export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanRef
     }
   }
 
+  const handleLocateCitation = async () => {
+    if (locatingCitation) return
+    setLocatingCitation(true)
+    try {
+      const res = await apiFetch(`/api/events/${event.id}/references`)
+      if (!res.ok) return
+      const data: { commentReferrers?: { comments?: CommentReferrerSummary[] } } = await res.json()
+      const first = data.commentReferrers?.comments?.[0]
+      if (first) {
+        router.push(buildPlansDeepLink(first.scope, first.periodStart, first.planItemId))
+      }
+    } catch {
+      // A failed lookup must not break the timeline; leave the user in place.
+    } finally {
+      setLocatingCitation(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (!onDelete) return
 
-    // Check if any events reference this one
+    // Check which content surfaces reference this event: other events
+    // (`@id` in manual events) and plan item comments (also `@id`).
     let referrers: Array<{ id: number; content: string }> = []
+    let commentReferrers: CommentReferrerSummary[] = []
     try {
       const res = await apiFetch(`/api/events/${event.id}/references`)
       if (res.ok) {
-        const data = await res.json()
+        const data: {
+          referrers?: Array<{ id: number; content: string }>
+          commentReferrers?: { comments?: CommentReferrerSummary[] }
+        } = await res.json()
         referrers = data.referrers || []
+        commentReferrers = data.commentReferrers?.comments || []
       }
     } catch {
       // Ignore errors, proceed with deletion
     }
 
-    let message = 'Delete this record?'
+    const warnings: string[] = []
     if (referrers.length > 0) {
       const summaries = referrers.map((r) => {
         const snippet = r.content.length > 40 ? r.content.slice(0, 40) + '…' : r.content
         return `#${r.id}: "${snippet.replace(/\n/g, ' ')}"`
       }).join('\n')
-      message = `This event is referenced by ${referrers.length} event(s). Deleting it will leave dangling references.\n\nReferrers:\n${summaries}\n\nContinue?`
+      warnings.push(
+        `This event is referenced by ${referrers.length} event(s). Deleting it will leave dangling references.\n\nReferrers:\n${summaries}`,
+      )
     }
+    if (commentReferrers.length > 0) {
+      const summaries = commentReferrers.map((c) => {
+        return `Comment #${c.commentId} on plan item %${c.planItemId}: "${c.excerpt}"`
+      }).join('\n')
+      warnings.push(
+        `This event is cited by ${commentReferrers.length} plan item comment(s). Deleting it will leave dangling citations.\n\nCitations:\n${summaries}`,
+      )
+    }
+
+    const message =
+      warnings.length > 0
+        ? `${warnings.join('\n\n')}\n\nContinue?`
+        : 'Delete this record?'
 
     if (confirm(message)) {
       setLoading(true)
@@ -158,6 +215,26 @@ export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanRef
                 <GitBranch className="h-3 w-3" />
               )}
               <EventTimestamp event={event} />
+              {typeof commentReferrerCount === 'number' && commentReferrerCount > 0 && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => void handleLocateCitation()}
+                    disabled={locatingCitation}
+                    aria-label={`Cited by ${commentReferrerCount} ${
+                      commentReferrerCount === 1 ? 'comment' : 'comments'
+                    }`}
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                    Cited by {commentReferrerCount}{' '}
+                    {commentReferrerCount === 1 ? 'comment' : 'comments'}
+                  </Button>
+                </>
+              )}
               {event.metadata?.repo && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
@@ -193,7 +270,13 @@ export function EventCard({ event, onEdit, onDelete, onReferenceClick, onPlanRef
               </Button>
             )}
             {onDelete && (
-              <Button size="sm" variant="ghost" onClick={handleDelete} disabled={loading}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleDelete}
+                disabled={loading}
+                aria-label="Delete event"
+              >
                 <Trash2 className="h-3 w-3" />
               </Button>
             )}

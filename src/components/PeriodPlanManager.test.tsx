@@ -36,19 +36,21 @@ function okJson(payload: unknown) {
 
 /**
  * Route fetch calls by URL + method. GET /api/plans returns the given week
- * items; GET /api/plans?scope=month returns parent options.
+ * items; GET /api/plans?scope=month returns the month items (when the manager
+ * itself is in month scope) or the parent options (week scope).
  */
 function setupApi(options: {
-  items?: Array<PeriodPlanItem & { fulfillmentCount?: number }>
+  items?: Array<PeriodPlanItem & { fulfillmentCount?: number; commentCount?: number }>
   parentItems?: PeriodPlanItem[]
+  monthItems?: Array<PeriodPlanItem & { commentCount?: number }>
   plan?: { id: number } | null
 }) {
-  const { items = [], parentItems = [], plan = null } = options
+  const { items = [], parentItems = [], monthItems = parentItems, plan = null } = options
   mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url.includes('scope=month')) {
-      return okJson({ plan: parentItems.length > 0 ? { id: 2 } : null, items: parentItems })
+      return okJson({ plan: monthItems.length > 0 ? { id: 2 } : null, items: monthItems })
     }
     if (method === 'GET' && url.startsWith('/api/plan-items/')) {
       return okJson({ id: 5, referrers: [] })
@@ -107,6 +109,41 @@ describe('PeriodPlanManager', () => {
     await waitFor(() => {
       expect(screen.getByText('Test item')).toBeInTheDocument()
     })
+  })
+
+  it('expands the comments of the deep-linked item', async () => {
+    setupApi({
+      items: [
+        makeItem({ id: 1, text: 'Other item', position: 1 }),
+        makeItem({ id: 2, text: 'Located item', position: 2 }),
+      ],
+    })
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/plan-items/2/comments')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            comments: [
+              {
+                id: 55,
+                planItemId: 2,
+                content: 'Located comment',
+                author: null,
+                createdAt: '2026-10-14T09:00:00.000Z',
+              },
+            ],
+          }),
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    const { container } = render(<PeriodPlanManager initialItemId={2} />)
+
+    expect(await screen.findByText('Located comment')).toBeInTheDocument()
+    expect(container.querySelector('.reference-highlight')).not.toBeNull()
   })
 
   it('shows completion count', async () => {
@@ -419,6 +456,50 @@ describe('PeriodPlanManager', () => {
       expect(call).toBeDefined()
       expect(call![0]).toContain('month=2026-03')
     })
+  })
+
+  it('shows and expands aggregated comments on month-scope items', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        { ...makeItem({ id: 12, text: 'Month goal', periodPlanId: 2 }), commentCount: 1 },
+      ],
+    })
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/plan-items/12/comments')) {
+        return okJson({
+          comments: [
+            {
+              id: 301,
+              planItemId: 11,
+              content: 'Month-side decision',
+              author: null,
+              createdAt: '2026-10-04T09:00:00.000Z',
+              sourcePeriod: {
+                scope: 'month',
+                periodStart: '2026-09-01',
+                periodEnd: '2026-09-30',
+                monthKey: '2026-09',
+                label: 'Month 2026-09',
+              },
+            },
+          ],
+          commentCount: 1,
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    expect(screen.getByText('1 comments')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Toggle comments'))
+
+    expect(await screen.findByText('Month-side decision')).toBeInTheDocument()
+    expect(screen.getByText('Month 2026-09')).toBeInTheDocument()
   })
 
   it('opens the week period named by a deep link', async () => {
