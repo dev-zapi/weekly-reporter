@@ -42,7 +42,7 @@ function parsePeriodStart(start: string | null | undefined): Date | null {
 // reordered against its immediate neighbour when that neighbour belongs to the
 // same priority group. Group heads/tails therefore have no move target.
 function sameGroupNeighbour(
-  items: PeriodPlanItem[],
+  items: PlanItemRowData[],
   index: number,
   direction: 'up' | 'down'
 ): number | null {
@@ -54,8 +54,8 @@ function sameGroupNeighbour(
 export function PeriodPlanManager({ initialScope = 'week', initialStart = null, initialItemId = null }: Props = {}) {
   const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
-  const [items, setItems] = useState<PeriodPlanItem[]>([])
-  const [parentOptions, setParentOptions] = useState<PeriodPlanItem[]>([])
+  const [items, setItems] = useState<PlanItemRowData[]>([])
+  const [parentOptions, setParentOptions] = useState<PlanItemRowData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newItemText, setNewItemText] = useState('')
@@ -144,14 +144,18 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       })
       if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
-      // PUT returns the bare item row, so carry the listing-only counts over to
-      // keep the fulfillment and comment badges visible after an inline edit.
+      // PUT returns the bare item row, so carry the listing-only fields over to
+      // keep the fulfillment/comment badges and, in month scope, the attached
+      // week items and composed counts visible after an inline edit.
       setItems((prev) => prev.map((item) => (
         item.id === id
           ? {
               ...updated,
-              fulfillmentCount: (item as PlanItemRowData).fulfillmentCount,
-              commentCount: (item as PlanItemRowData).commentCount,
+              fulfillmentCount: item.fulfillmentCount,
+              commentCount: item.commentCount,
+              directFulfillmentCount: item.directFulfillmentCount,
+              indirectFulfillmentCount: item.indirectFulfillmentCount,
+              childItems: item.childItems,
             }
           : item
       )))

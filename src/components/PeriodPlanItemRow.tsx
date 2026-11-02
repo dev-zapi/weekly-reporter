@@ -2,11 +2,13 @@
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatSystemDateTime } from '@/lib/time-format'
+import { buildPlansDeepLink } from '@/lib/plan-links'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
 import { ReferencePreviewDialog } from './ReferencePreviewDialog'
 import { ContentWithReferences } from './ContentWithReferences'
@@ -24,11 +26,43 @@ import type {
   ProjectScope,
 } from '@/lib/db/schema'
 
-/** A plan item enriched by GET /api/plans with its chain-aggregated fulfillment count. */
-export type PlanItemRowData = PeriodPlanItem & {
+/** An attached week item as composed by the month-scope plans response. */
+export type PlanChildItemData = {
+  id: number
+  text: string
+  status: PeriodPlanItemStatus
+  projectScope: ProjectScope
+  priority: PeriodPlanItemPriority
+  isImportant: boolean
+  isUrgent: boolean
+  weekPeriodStart: string
+  weekPeriodEnd: string
+  fulfillmentCount: number
+  commentCount: number
+}
+
+/**
+ * The fields a row renders. Month-scope items carry composed counts and their
+ * attached week items; attached week items carry their week attribution.
+ */
+export type PlanRowItem = Pick<
+  PeriodPlanItem,
+  'id' | 'text' | 'status' | 'priority' | 'isImportant' | 'isUrgent' | 'projectScope'
+> & {
+  parentItemId?: number | null
+  periodPlanId?: number
+  position?: number
   fulfillmentCount?: number
   commentCount?: number
+  directFulfillmentCount?: number
+  indirectFulfillmentCount?: number
+  childItems?: PlanChildItemData[]
+  weekPeriodStart?: string
+  weekPeriodEnd?: string
 }
+
+/** A plan item enriched by GET /api/plans with its chain-aggregated counts. */
+export type PlanItemRowData = PlanRowItem
 
 /** One plan-side comment as returned by the comments collection endpoint. */
 export type PlanCommentView = {
@@ -60,8 +94,8 @@ type FulfillingEventView = {
 }
 
 type Props = {
-  item: PlanItemRowData
-  parentOptions?: PeriodPlanItem[]
+  item: PlanRowItem
+  parentOptions?: PlanRowItem[]
   showParentSelector?: boolean
   canMoveUp?: boolean
   canMoveDown?: boolean
@@ -107,6 +141,14 @@ export function PeriodPlanItemRow({
   // Comment citations open a read-only event preview; there is no timeline
   // filter to locate into from the plans page.
   const [previewEventId, setPreviewEventId] = useState<number | null>(null)
+  // Attached week items are eager in the month-scope payload, so revealing
+  // them is a local toggle; only their fulfilling events load lazily.
+  const [childrenExpanded, setChildrenExpanded] = useState(false)
+
+  // Attached week items render through this same component in a read-only
+  // shape: they carry their week attribution instead of month-item controls.
+  const isWeekChild =
+    typeof item.weekPeriodStart === 'string' && typeof item.weekPeriodEnd === 'string'
 
   // Lazily load fulfilling events on first expansion so the plans list stays
   // cheap for the common collapsed case.
@@ -299,13 +341,23 @@ export function PeriodPlanItemRow({
         {typeof item.fulfillmentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{item.fulfillmentCount} fulfilled</Badge>
         )}
-        {typeof displayCommentCount === 'number' && (
+        {/* Composed month badge: evidence citing the item itself (its deferral
+            chain) versus evidence routed through attached week items. */}
+        {typeof item.directFulfillmentCount === 'number' &&
+          typeof item.indirectFulfillmentCount === 'number' && (
+            <span className="text-xs text-muted-foreground">
+              {item.directFulfillmentCount} direct · {item.indirectFulfillmentCount} indirect
+            </span>
+          )}
+        {!isWeekChild && typeof displayCommentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{displayCommentCount} comments</Badge>
         )}
       </div>
 
       <div className="flex-1 space-y-2">
-        {editing ? (
+        {isWeekChild ? (
+          <div className="text-sm">{item.text}</div>
+        ) : editing ? (
           <div className="flex gap-2">
             <Input
               value={editText}
@@ -349,6 +401,20 @@ export function PeriodPlanItemRow({
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </Button>
 
+          {/* Attached week items are labelled by week and deep-link into that
+              week's tab. Their plan-side operations arrive with the monthly
+              review operation parity work. */}
+          {isWeekChild && item.weekPeriodStart && item.weekPeriodEnd && (
+            <Link
+              href={buildPlansDeepLink('week', item.weekPeriodStart)}
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+            >
+              Week {item.weekPeriodStart} - {item.weekPeriodEnd}
+            </Link>
+          )}
+
+          {!isWeekChild && (
+            <>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -471,7 +537,44 @@ export function PeriodPlanItemRow({
           <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
             <Trash2 className="h-3 w-3" />
           </Button>
+            </>
+          )}
         </div>
+
+        {!isWeekChild && Array.isArray(item.childItems) && (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setChildrenExpanded((prev) => !prev)}
+              aria-label="Toggle attached week items"
+              aria-expanded={childrenExpanded}
+            >
+              {childrenExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Attached week items ({item.childItems.length})
+            </Button>
+
+            {childrenExpanded && (
+              item.childItems.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No attached week items</div>
+              ) : (
+                <div className="space-y-2 pl-3">
+                  {item.childItems.map((child) => (
+                    <div key={child.id} role="group" aria-label={`Week item ${child.text}`}>
+                      <PeriodPlanItemRow
+                        item={child}
+                        onUpdate={onUpdate}
+                        onDelete={onDelete}
+                        onDefer={onDefer}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
 
         {expanded && (
           <div className="space-y-2 rounded-md border bg-muted/40 p-2">
@@ -491,7 +594,9 @@ export function PeriodPlanItemRow({
                         {event.isManual ? 'Manual' : 'Collected'}
                       </Badge>
                     </div>
-                    <div className="text-sm line-clamp-2">{event.content}</div>
+                    <div className={isWeekChild ? 'whitespace-pre-wrap text-sm' : 'text-sm line-clamp-2'}>
+                      {event.content}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -499,7 +604,7 @@ export function PeriodPlanItemRow({
           </div>
         )}
 
-        {commentsExpanded && (
+        {!isWeekChild && commentsExpanded && (
           <div
             ref={commentsSectionRef}
             className={`space-y-2 rounded-md border bg-muted/40 p-2 ${

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanManager } from './PeriodPlanManager'
@@ -34,6 +34,37 @@ function okJson(payload: unknown) {
   return Promise.resolve({ ok: true, json: async () => payload })
 }
 
+type ChildItem = {
+  id: number
+  text: string
+  status: 'planned' | 'in_progress' | 'done' | 'cancelled' | 'deferred'
+  projectScope: 'work' | 'personal'
+  priority: 'high' | 'normal' | 'low'
+  isImportant: boolean
+  isUrgent: boolean
+  weekPeriodStart: string
+  weekPeriodEnd: string
+  fulfillmentCount: number
+  commentCount: number
+}
+
+function makeChild(overrides: Partial<ChildItem> = {}): ChildItem {
+  return {
+    id: 21,
+    text: 'Week child',
+    status: 'planned',
+    projectScope: 'work',
+    priority: 'normal',
+    isImportant: false,
+    isUrgent: false,
+    weekPeriodStart: '2026-10-12',
+    weekPeriodEnd: '2026-10-18',
+    fulfillmentCount: 0,
+    commentCount: 0,
+    ...overrides,
+  }
+}
+
 /**
  * Route fetch calls by URL + method. GET /api/plans returns the given week
  * items; GET /api/plans?scope=month returns the month items (when the manager
@@ -42,7 +73,13 @@ function okJson(payload: unknown) {
 function setupApi(options: {
   items?: Array<PeriodPlanItem & { fulfillmentCount?: number; commentCount?: number }>
   parentItems?: PeriodPlanItem[]
-  monthItems?: Array<PeriodPlanItem & { commentCount?: number }>
+  monthItems?: Array<PeriodPlanItem & {
+    fulfillmentCount?: number
+    commentCount?: number
+    directFulfillmentCount?: number
+    indirectFulfillmentCount?: number
+    childItems?: ChildItem[]
+  }>
   plan?: { id: number } | null
 }) {
   const { items = [], parentItems = [], monthItems = parentItems, plan = null } = options
@@ -500,6 +537,157 @@ describe('PeriodPlanManager', () => {
 
     expect(await screen.findByText('Month-side decision')).toBeInTheDocument()
     expect(screen.getByText('Month 2026-09')).toBeInTheDocument()
+  })
+
+  it('renders the month review tree with attached week items in API order', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          fulfillmentCount: 3,
+          directFulfillmentCount: 1,
+          indirectFulfillmentCount: 2,
+          commentCount: 1,
+          childItems: [
+            makeChild({ id: 21, text: 'High child', priority: 'high' }),
+            makeChild({
+              id: 22,
+              text: 'Normal child',
+              priority: 'normal',
+              weekPeriodStart: '2026-10-26',
+              weekPeriodEnd: '2026-11-01',
+            }),
+          ],
+        },
+      ],
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    expect(screen.getByText('3 fulfilled')).toBeInTheDocument()
+    expect(screen.getByText('1 direct · 2 indirect')).toBeInTheDocument()
+    expect(screen.getByText('1 comments')).toBeInTheDocument()
+
+    // Children are eager in the payload but hidden until the row expands.
+    expect(screen.queryByText('High child')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    const rendered = screen
+      .getAllByText(/^(High|Normal) child$/)
+      .map((element) => element.textContent)
+    expect(rendered).toEqual(['High child', 'Normal child'])
+  })
+
+  it('lazily loads an attached week item’s fulfilling events inside the month tab', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          fulfillmentCount: 1,
+          directFulfillmentCount: 0,
+          indirectFulfillmentCount: 1,
+          childItems: [makeChild({ id: 21, text: 'Week child', fulfillmentCount: 1 })],
+        },
+      ],
+    })
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes('/api/plan-items/21/fulfillment')) {
+        return okJson({
+          events: [
+            {
+              id: 31,
+              content: 'Landed the migration',
+              eventTime: '2026-10-14T09:00:00.000Z',
+              isManual: true,
+            },
+          ],
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    // Expanding the month row alone must not load the child's events.
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/plan-items/21/fulfillment'),
+      expect.anything(),
+    )
+
+    const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    await user.click(childRow.getByLabelText('Toggle fulfillment events'))
+
+    expect(await screen.findByText('Landed the migration')).toBeInTheDocument()
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/plan-items/21/fulfillment'),
+      expect.anything(),
+    )
+  })
+
+  it('deep-links an attached week item to its week view', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          childItems: [makeChild({ id: 21, text: 'Week child' })],
+        },
+      ],
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    expect(screen.getByRole('link', { name: 'Week 2026-10-12 - 2026-10-18' }))
+      .toHaveAttribute('href', '/plans?scope=week&start=2026-10-12')
+  })
+
+  it('keeps attached week items visible after editing a month item', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          childItems: [makeChild({ id: 21, text: 'Week child' })],
+        },
+      ],
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+    expect(screen.getByText('Week child')).toBeInTheDocument()
+
+    // The real PUT echoes the same row; mirror that so the row keeps its key
+    // (and therefore its expanded state) after the edit.
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT' && String(input) === '/api/plan-items/10') {
+        return okJson(makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }))
+      }
+      return baseImplementation(input, init)
+    })
+
+    await user.selectOptions(screen.getByLabelText('Status'), 'done')
+
+    await waitFor(() => {
+      expect(
+        mockFetch.mock.calls.some(
+          (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/10',
+        ),
+      ).toBe(true)
+    })
+    expect(screen.getByText('Week child')).toBeInTheDocument()
   })
 
   it('opens the week period named by a deep link', async () => {
