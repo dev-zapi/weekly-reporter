@@ -66,7 +66,10 @@ for (const item of items) {
   const id = `%${item.id}`
   const statusStr = `[${item.status}]`
   const scopeStr = `[${item.projectScope}]`
-  let line = `  ${id.padEnd(6)} ${statusStr.padEnd(14)} ${scopeStr.padEnd(10)} ${item.text}`
+  const priorityStr = `[priority=${item.priority}]`
+  const importantStr = `[important=${item.isImportant}]`
+  const urgentStr = `[urgent=${item.isUrgent}]`
+  let line = `  ${id.padEnd(6)} ${statusStr.padEnd(14)} ${scopeStr.padEnd(10)} ${priorityStr.padEnd(18)} ${importantStr.padEnd(18)} ${urgentStr.padEnd(16)} ${item.text}`
 
   if (item.parentItemId) {
     line += ` (parent=${item.parentItemId})`

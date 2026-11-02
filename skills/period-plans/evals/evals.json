@@ -52,6 +52,20 @@
         "deferred copy in next week still exists",
         "no orphaned references"
       ]
+    },
+    {
+      "id": 5,
+      "name": "create-and-update-priority-flags",
+      "prompt": "加一条'准备季度复盘'，优先级高、重要但不紧急。然后把它改成低优先级，并清掉重要标记。",
+      "expected_output": "Item created with priority=high, isImportant=true, isUrgent=false. Update changes priority to low and clears isImportant; list output shows [priority=low] [important=false] [urgent=false] for that item.",
+      "files": [],
+      "assertions": [
+        "create accepts --priority high --important true --urgent false",
+        "item has priority=high, isImportant=true, isUrgent=false",
+        "update accepts --priority low --important false",
+        "item has priority=low, isImportant=false, isUrgent=false",
+        "list output shows all three fields explicitly"
+      ]
     }
   ]
 }

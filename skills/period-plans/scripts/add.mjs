@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 // Add a new plan item
-// Usage: add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>]
+// Usage: add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]
 
-import { api, fail, failResponse, parseArgs, json, requireScope, requireDate, requireMonth, requireProjectScope } from './lib/client.mjs'
+import { api, fail, failResponse, parseArgs, json, requireScope, requireDate, requireMonth, requireProjectScope, requirePriority, requireBoolean } from './lib/client.mjs'
 
-const USAGE = `Usage: add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>]`
+const USAGE = `Usage: add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]`
 
 const { flags } = parseArgs(process.argv.slice(2), {
   '--scope': 'value',
@@ -15,6 +15,9 @@ const { flags } = parseArgs(process.argv.slice(2), {
   '--text': 'value',
   '--project': 'value',
   '--parent': 'value',
+  '--priority': 'value',
+  '--important': 'value',
+  '--urgent': 'value',
 }, USAGE)
 
 if (!flags.scope) fail(`Error: --scope is required`, USAGE)
@@ -46,6 +49,18 @@ if (flags.parent) {
   const parentId = Number.parseInt(flags.parent, 10)
   if (!Number.isInteger(parentId)) fail(`Error: --parent must be a numeric item ID, got '${flags.parent}'`)
   payload.parentItemId = parentId
+}
+
+if (flags.priority !== undefined) {
+  payload.priority = requirePriority(flags.priority)
+}
+
+if (flags.important !== undefined) {
+  payload.isImportant = requireBoolean(flags.important, '--important')
+}
+
+if (flags.urgent !== undefined) {
+  payload.isUrgent = requireBoolean(flags.urgent, '--urgent')
 }
 
 const { status, body } = await api('/api/plan-items', json(payload))

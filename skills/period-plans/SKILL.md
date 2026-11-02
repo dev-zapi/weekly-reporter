@@ -22,15 +22,20 @@ A **period plan** covers a specific week (Monday-start natural week) or month (c
 - Text (plain text, no @id/#tag parsing in Phase 1)
 - Status: `planned` | `in_progress` | `done` | `cancelled` | `deferred`
 - Project scope: `work` (default) | `personal`
+- **优先级 (Priority)**: `high` | `normal` (default) | `low` — the item's execution weight and the only grouping/sorting dimension. Items are listed high → normal → low, with manual position preserved inside each group.
+- **重要标记 (Important Flag)**: `true` | `false` (default `false`) — the "important" axis of the four-quadrant judgement. It is a semantic annotation only and does not affect sorting.
+- **紧急标记 (Urgent Flag)**: `true` | `false` (default `false`) — the "urgent" axis of the four-quadrant judgement. It is a semantic annotation only and does not affect sorting.
+
+  The two plan-item markers are orthogonal to priority and to each other (any combination is allowed, including `low` + important + urgent), and both are inherited when an item is deferred. They are a **different entity** from the timeline event importance toggle in the `timeline-events` skill: same-sounding "important", but different records with independent values.
 - Optional parent item (week item → month item; the API enforces "month contains the week's start date" — see Add)
 - Optional deferral link (tracks the chain when an item is deferred to the next period)
-- Position (manual ordering for priority)
+- Position (manual ordering inside a priority group)
 
 **Deferral** is an explicit action that moves an incomplete item to the next period (same scope): it creates a new item in the next period with `status='planned'`, links back to the original via `deferredFromItemId`, and marks the original as `deferred`. Deferral never happens automatically.
 
 ## List
 
-Query plans by scope and period. Output shows the plan metadata and all items with their status, scope, and text.
+Query plans by scope and period. Output shows the plan metadata and all items with their status, scope, priority, important/urgent markers, and text.
 
 ```bash
 node {baseDir}/scripts/list.mjs --scope <week|month> [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>]
@@ -43,10 +48,12 @@ node {baseDir}/scripts/list.mjs --scope <week|month> [--date <YYYY-MM-DD>] [--we
 Output format:
 ```
 Plan: <scope> <periodStart> to <periodEnd> (id=<planId>)
-  %<itemId> [<status>] [<scope>] <text>
-  %<itemId> [<status>] [<scope>] <text> (parent=<parentItemId>)
-  %<itemId> [<status>] [<scope>] <text> (deferred from %<originalId>)
+  %<itemId> [<status>] [<scope>] [priority=<high|normal|low>] [important=<true|false>] [urgent=<true|false>] <text>
+  %<itemId> [<status>] [<scope>] [priority=<...>] [important=<...>] [urgent=<...>] <text> (parent=<parentItemId>)
+  %<itemId> [<status>] [<scope>] [priority=<...>] [important=<...>] [urgent=<...>] <text> (deferred from %<originalId>)
 ```
+
+All three fields are printed for every item, including `false` markers, so the current quadrant position is always visible. Items are ordered by priority group (high, then normal, then low) and by manual position inside each group.
 
 If no plan exists for the period, prints "No plan found for this period."
 
@@ -55,7 +62,7 @@ If no plan exists for the period, prints "No plan found for this period."
 Add a new item to a plan. The plan is auto-created if it doesn't exist.
 
 ```bash
-node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>]
+node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> --week-end <YYYY-MM-DD>] [--month <YYYY-MM>] --text <text> [--project <work|personal>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]
 ```
 
 - `--scope` — plan scope: `week` or `month`
@@ -64,6 +71,11 @@ node {baseDir}/scripts/add.mjs --scope <week|month> [--week-start <YYYY-MM-DD> -
 - `--text` — item text (required)
 - `--project` — item project scope: `work` (default) or `personal`
 - `--parent` — parent item ID (week item → month item). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
+- `--priority` — 优先级 (Priority): `high`, `normal` (default), or `low`. Any other value is rejected by the script before the request.
+- `--important` — 重要标记 (Important Flag): `true` or `false` (default `false`).
+- `--urgent` — 紧急标记 (Urgent Flag): `true` or `false` (default `false`).
+
+The two markers are independent of priority and of each other — for example `--priority low --important true --urgent true` is valid.
 
 On success: `✓ Item created: %<ID> (plan=<planId>)`
 
@@ -72,14 +84,19 @@ On success: `✓ Item created: %<ID> (plan=<planId>)`
 Modify an existing item. At least one flag is required.
 
 ```bash
-node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>]
+node {baseDir}/scripts/update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]
 ```
 
 - `--text` — replace item text
 - `--status` — change status (one of: planned, in_progress, done, cancelled, deferred)
 - `--project` — change project scope (work or personal)
-- `--position` — change sort order (manual priority)
+- `--position` — change manual sort order inside the item's priority group
 - `--parent` — change parent item ID (pass `--parent ""` to clear the parent link). The API enforces that the parent exists, is a month item, and that its month contains the week's start day; invalid links are rejected with HTTP 400.
+- `--priority` — change 优先级 (Priority) to `high`, `normal`, or `low`. This is the only way to change priority; `--position` never does.
+- `--important` — set the 重要标记 (Important Flag) with `true` or `false` (pass `false` to clear it)
+- `--urgent` — set the 紧急标记 (Urgent Flag) with `true` or `false` (pass `false` to clear it)
+
+Omitted fields keep their current values; `false` is a real update. Example clearing both markers: `--important false --urgent false`.
 
 On success: `✓ Item %<id> updated`
 
@@ -117,6 +134,8 @@ All scripts exit 0 on success, non-zero on failure. Common errors:
 | `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
 | `Cannot reach weekly-reporter` | Server not running | Start with `npm run dev` |
 | `Invalid request (HTTP 4xx)` | Bad input | Check the error detail and retry |
+| `--priority must be one of: high, normal, low` | Invalid priority value | Use `high`, `normal`, or `low` |
+| `--important/--urgent must be 'true' or 'false'` | Invalid marker value | Pass the literal `true` or `false` |
 | `Server error (HTTP 5xx)` | Backend issue | Check server logs |
 | `Period plan not found` | Plan ID doesn't exist | Check the plan ID from list output |
 | `Plan item not found` | Item ID doesn't exist | Check the item ID from list output |
