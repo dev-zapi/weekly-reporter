@@ -1,0 +1,1 @@
+ALTER TABLE `period_plan_items` ADD `priority` text DEFAULT 'normal' NOT NULL;
