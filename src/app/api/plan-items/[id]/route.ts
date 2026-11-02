@@ -92,7 +92,7 @@ export const PUT = withAuth(async function PUT(
     }
 
     const body = await request.json()
-    const { text, status, priority, projectScope, position, parentItemId } = body
+    const { text, status, priority, isImportant, isUrgent, projectScope, position, parentItemId } = body
 
     // Validate text if provided
     if (text !== undefined) {
@@ -122,6 +122,22 @@ export const PUT = withAuth(async function PUT(
           { status: 400 }
         )
       }
+    }
+
+    // Validate the quadrant flags if provided. `false` is a real update, so
+    // only `undefined` means "keep the current value".
+    if (isImportant !== undefined && typeof isImportant !== 'boolean') {
+      return NextResponse.json(
+        { error: 'isImportant must be a boolean', code: 'INVALID_IS_IMPORTANT' },
+        { status: 400 }
+      )
+    }
+
+    if (isUrgent !== undefined && typeof isUrgent !== 'boolean') {
+      return NextResponse.json(
+        { error: 'isUrgent must be a boolean', code: 'INVALID_IS_URGENT' },
+        { status: 400 }
+      )
     }
 
     // Validate projectScope if provided
@@ -179,6 +195,8 @@ export const PUT = withAuth(async function PUT(
     if (text !== undefined) updates.text = text.trim()
     if (status !== undefined) updates.status = status
     if (priority !== undefined) updates.priority = priority
+    if (isImportant !== undefined) updates.isImportant = isImportant
+    if (isUrgent !== undefined) updates.isUrgent = isUrgent
     if (projectScope !== undefined) updates.projectScope = projectScope
     if (position !== undefined) updates.position = position
     if (parentItemId !== undefined) updates.parentItemId = parentItemId

@@ -446,6 +446,165 @@ describe('/api/plan-items/[id]', () => {
       expect(data.error.toLowerCase()).toContain('priority')
     })
 
+    it('should update both quadrant flags independently of priority', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        priority: 'normal',
+        isImportant: true,
+        isUrgent: false,
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isImportant: false, isUrgent: true }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.isImportant).toBe(false)
+      expect(data.isUrgent).toBe(true)
+      expect(data.priority).toBe('normal')
+    })
+
+    it('should keep the existing quadrant flags when the update omits them', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        priority: 'low',
+        isImportant: true,
+        isUrgent: true,
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Updated text' }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.text).toBe('Updated text')
+      expect(data.isImportant).toBe(true)
+      expect(data.isUrgent).toBe(true)
+      expect(data.priority).toBe('low')
+    })
+
+    it('should reject a non-boolean isImportant', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isImportant: 'yes' }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('isimportant')
+    })
+
+    it('should reject a non-boolean isUrgent', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isUrgent: null }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('isurgent')
+    })
+
     it('should update projectScope', async () => {
       const now = new Date()
 
