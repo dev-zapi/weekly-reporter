@@ -461,6 +461,8 @@ export const periodPlanItems = sqliteTable('period_plan_items', {
   text: text('text').notNull(),
   status: text('status').notNull().default('planned').$type<PeriodPlanItemStatus>(),
   priority: text('priority').notNull().default('normal').$type<PeriodPlanItemPriority>(),
+  isImportant: integer('is_important', { mode: 'boolean' }).notNull().default(false),
+  isUrgent: integer('is_urgent', { mode: 'boolean' }).notNull().default(false),
   projectScope: text('project_scope').notNull().default('work').$type<ProjectScope>(),
   parentItemId: integer('parent_item_id'),
   deferredFromItemId: integer('deferred_from_item_id'),

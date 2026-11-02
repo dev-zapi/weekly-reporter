@@ -444,6 +444,61 @@ describe('period_plan_items schema', () => {
     expect(item[0].priority).toBe('normal')
   })
 
+  it('should default both quadrant flags to false', () => {
+    const db = createTestDbWithMigrations()
+    const now = new Date()
+
+    const plan = db.insert(schema.periodPlans).values({
+      scope: 'week',
+      periodStart: '2026-10-12',
+      periodEnd: '2026-10-18',
+      monthKey: null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    // Insert without specifying either flag.
+    const item = db.insert(schema.periodPlanItems).values({
+      periodPlanId: plan[0].id,
+      text: 'Task',
+      status: 'planned',
+      projectScope: 'work',
+      parentItemId: null,
+      deferredFromItemId: null,
+      position: 1,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    expect(item[0].isImportant).toBe(false)
+    expect(item[0].isUrgent).toBe(false)
+  })
+
+  it('should backfill existing rows to false when the flags migration runs', () => {
+    const files = migrationFiles()
+    const flagsMigration = files.find((file) => file.startsWith('0039_'))
+    expect(flagsMigration).toBeDefined()
+
+    const sqlite = new Database(':memory:')
+    applyMigrationFiles(sqlite, files.filter((file) => !file.startsWith('0039_')))
+
+    sqlite.exec(`
+      INSERT INTO period_plans (scope, period_start, period_end, month_key, created_at, updated_at)
+      VALUES ('week', '2026-10-12', '2026-10-18', NULL, 0, 0);
+      INSERT INTO period_plan_items (period_plan_id, text, status, project_scope, position, created_at, updated_at)
+      VALUES (1, 'Legacy item', 'planned', 'work', 1, 0, 0);
+    `)
+
+    applyMigrationFiles(sqlite, [flagsMigration!])
+
+    const row = sqlite
+      .prepare('SELECT is_important, is_urgent FROM period_plan_items')
+      .get() as { is_important: number; is_urgent: number }
+    expect(row.is_important).toBe(0)
+    expect(row.is_urgent).toBe(0)
+    sqlite.close()
+  })
+
   it('should backfill existing rows to normal when the priority migration runs', () => {
     const files = migrationFiles()
     const priorityMigration = files.find((file) => file.startsWith('0038_'))
