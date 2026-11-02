@@ -667,6 +667,35 @@ describe('PeriodPlanItemRow', () => {
       expect(screen.getByLabelText('Toggle comments')).toBeInTheDocument()
     })
 
+    it('auto-expands, loads and highlights comments when deep-linked', async () => {
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 7,
+          content: 'Deep-linked comment',
+          author: null,
+          createdAt: '2026-10-14T09:00:00.000Z',
+        },
+      ])
+
+      const { container } = render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, id: 7 }}
+          autoExpandComments
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+
+      expect(await screen.findByText('Deep-linked comment')).toBeInTheDocument()
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/plan-items/7/comments',
+        expect.anything(),
+      )
+      expect(container.querySelector('.reference-highlight')).not.toBeNull()
+    })
+
     it('loads and renders comments with author and no edit affordance', async () => {
       const user = userEvent.setup()
       mockCommentApi([
