@@ -208,3 +208,23 @@ export function requireStatus(value) {
   if (!valid.includes(value)) fail(`Error: --status must be one of: ${valid.join(', ')}, got '${value ?? ''}'`)
   return value
 }
+
+export const PLAN_ITEM_PRIORITIES = ['high', 'normal', 'low']
+
+export function requirePriority(value) {
+  if (!PLAN_ITEM_PRIORITIES.includes(value)) {
+    fail(`Error: --priority must be one of: ${PLAN_ITEM_PRIORITIES.join(', ')}, got '${value ?? ''}'`)
+  }
+  return value
+}
+
+/**
+ * Parse an explicit `true`/`false` flag value. The important/urgent markers are
+ * booleans, and an explicit `false` must reach the API to clear one - a bare
+ * presence flag cannot express that.
+ */
+export function requireBoolean(value, flag) {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  fail(`Error: ${flag} must be 'true' or 'false', got '${value ?? ''}'`)
+}

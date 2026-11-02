@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 // Update a plan item
-// Usage: update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>]
+// Usage: update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]
 
-import { api, fail, failResponse, parseArgs, jsonPut, requireId, requireStatus, requireProjectScope } from './lib/client.mjs'
+import { api, fail, failResponse, parseArgs, jsonPut, requireId, requireStatus, requireProjectScope, requirePriority, requireBoolean } from './lib/client.mjs'
 
-const USAGE = `Usage: update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>]`
+const USAGE = `Usage: update.mjs <id> [--text <text>] [--status <status>] [--project <work|personal>] [--position <n>] [--parent <itemId>] [--priority <high|normal|low>] [--important <true|false>] [--urgent <true|false>]`
 
 const { flags, positional } = parseArgs(process.argv.slice(2), {
   '--text': 'value',
@@ -13,6 +13,9 @@ const { flags, positional } = parseArgs(process.argv.slice(2), {
   '--project': 'value',
   '--position': 'value',
   '--parent': 'value',
+  '--priority': 'value',
+  '--important': 'value',
+  '--urgent': 'value',
 }, USAGE)
 
 const id = requireId(positional[0], USAGE)
@@ -54,7 +57,22 @@ if (flags.parent !== undefined) {
   hasUpdate = true
 }
 
-if (!hasUpdate) fail(`Error: at least one of --text, --status, --project, --position, --parent is required`, USAGE)
+if (flags.priority !== undefined) {
+  payload.priority = requirePriority(flags.priority)
+  hasUpdate = true
+}
+
+if (flags.important !== undefined) {
+  payload.isImportant = requireBoolean(flags.important, '--important')
+  hasUpdate = true
+}
+
+if (flags.urgent !== undefined) {
+  payload.isUrgent = requireBoolean(flags.urgent, '--urgent')
+  hasUpdate = true
+}
+
+if (!hasUpdate) fail(`Error: at least one of --text, --status, --project, --position, --parent, --priority, --important, --urgent is required`, USAGE)
 
 const { status, body } = await api(`/api/plan-items/${id}`, jsonPut(payload))
 
