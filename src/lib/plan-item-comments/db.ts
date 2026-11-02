@@ -24,6 +24,32 @@ export interface NewCommentInput {
   author: string | null
 }
 
+/** Excerpt length for the event-side cited-by backlink. */
+export const COMMENT_REFERRER_EXCERPT_LENGTH = 80
+
+/**
+ * A comment citing a given event, enriched with the item it is pinned to and
+ * that item's period so the event side can locate it on the plans page.
+ */
+export interface CommentReferrer {
+  commentId: number
+  planItemId: number
+  excerpt: string
+  author: string | null
+  createdAt: Date
+  scope: PeriodPlanScope
+  periodStart: string
+  periodEnd: string
+  monthKey: string | null
+}
+
+function toExcerpt(content: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  return normalized.length > COMMENT_REFERRER_EXCERPT_LENGTH
+    ? `${normalized.slice(0, COMMENT_REFERRER_EXCERPT_LENGTH)}…`
+    : normalized
+}
+
 /** The period an aggregated comment was written in, for source-period labels. */
 export interface CommentSourcePeriod {
   scope: PeriodPlanScope
@@ -196,6 +222,51 @@ export function deleteComment(db: DrizzleDb, commentId: number): boolean {
       .all()
     return deleted.length > 0
   })
+}
+
+/**
+ * List the comments that cite an event, with their owning plan item and source
+ * period. Backs the event-side cited-by marker and deletion warning.
+ */
+export function findCommentReferrers(
+  db: DrizzleDb,
+  referencedEventId: number,
+): CommentReferrer[] {
+  const rows = db
+    .select({
+      commentId: planItemComments.id,
+      content: planItemComments.content,
+      author: planItemComments.author,
+      createdAt: planItemComments.createdAt,
+      planItemId: planItemComments.planItemId,
+      scope: periodPlans.scope,
+      periodStart: periodPlans.periodStart,
+      periodEnd: periodPlans.periodEnd,
+      monthKey: periodPlans.monthKey,
+    })
+    .from(commentReferences)
+    .innerJoin(planItemComments, eq(commentReferences.commentId, planItemComments.id))
+    .innerJoin(periodPlanItems, eq(planItemComments.planItemId, periodPlanItems.id))
+    .innerJoin(periodPlans, eq(periodPlanItems.periodPlanId, periodPlans.id))
+    .where(eq(commentReferences.referencedEventId, referencedEventId))
+    .orderBy(asc(planItemComments.createdAt), asc(planItemComments.id))
+    .all()
+
+  return rows.map(({ content, ...row }) => ({
+    ...row,
+    excerpt: toExcerpt(content),
+  }))
+}
+
+/**
+ * Cascade helper for event deletion: drop citation index rows pointing at the
+ * deleted event while leaving the comment text untouched, so the `@id` becomes
+ * a dangling citation (same shape as event-reference deletion).
+ */
+export function deleteCommentReferencesForEvent(tx: QueryRunner, eventId: number): void {
+  tx.delete(commentReferences)
+    .where(eq(commentReferences.referencedEventId, eventId))
+    .run()
 }
 
 /**
