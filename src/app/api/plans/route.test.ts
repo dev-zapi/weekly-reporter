@@ -543,5 +543,59 @@ describe('/api/plans', () => {
       expect(itemWithoutComments).toBeTruthy()
       expect(data.items[1].commentCount).toBe(0)
     })
+
+    it('should aggregate comment counts across the deferral chain', async () => {
+      const now = new Date('2026-10-12T00:00:00.000Z')
+
+      const previousPlan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-05',
+        periodEnd: '2026-10-11',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const original = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: previousPlan[0].id,
+        text: 'Deferred task',
+        status: 'deferred',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const successor = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Deferred task',
+        position: 1,
+        deferredFromItemId: original[0].id,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      testDb.insert(schema.planItemComments).values([
+        { planItemId: original[0].id, content: 'ancestor note', author: null, createdAt: now },
+        { planItemId: successor[0].id, content: 'successor note', author: null, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plans?scope=week&date=2026-10-15')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.items).toHaveLength(1)
+      expect(data.items[0].id).toBe(successor[0].id)
+      expect(data.items[0].commentCount).toBe(2)
+    })
   })
 })

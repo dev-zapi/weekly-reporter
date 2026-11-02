@@ -29,6 +29,36 @@ describe('/api/plan-items/[id]/comments', () => {
     client?.close?.()
   })
 
+  function seedPeriodItem(params: {
+    scope: 'week' | 'month'
+    periodStart: string
+    periodEnd: string
+    monthKey?: string | null
+    deferredFromItemId?: number | null
+    text?: string
+  }) {
+    const now = new Date('2026-10-12T00:00:00.000Z')
+    const plan = testDb.insert(schema.periodPlans).values({
+      scope: params.scope,
+      periodStart: params.periodStart,
+      periodEnd: params.periodEnd,
+      monthKey: params.monthKey ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    const item = testDb.insert(schema.periodPlanItems).values({
+      periodPlanId: plan[0].id,
+      text: params.text ?? 'Ship the feature',
+      deferredFromItemId: params.deferredFromItemId ?? null,
+      position: 1,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    return item[0]
+  }
+
   function seedItem(weekOffset = 0) {
     const now = new Date('2026-10-12T00:00:00.000Z')
     const startDay = 12 + weekOffset * 7
@@ -126,6 +156,122 @@ describe('/api/plan-items/[id]/comments', () => {
 
       expect(data.comments).toHaveLength(1)
       expect(data.comments[0].content).toBe('Mine')
+    })
+
+    it('aggregates deferral-chain ancestor comments oldest-first with source-period labels', async () => {
+      const original = seedPeriodItem({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        text: 'Original task',
+      })
+      const successor = seedPeriodItem({
+        scope: 'week',
+        periodStart: '2026-10-19',
+        periodEnd: '2026-10-25',
+        deferredFromItemId: original.id,
+        text: 'Original task',
+      })
+
+      testDb.insert(schema.planItemComments).values([
+        {
+          planItemId: successor.id,
+          content: 'Successor follow-up',
+          author: null,
+          createdAt: new Date('2026-10-20T09:00:00.000Z'),
+        },
+        {
+          planItemId: original.id,
+          content: 'Original blocker',
+          author: 'period-plans/claude',
+          createdAt: new Date('2026-10-13T09:00:00.000Z'),
+        },
+      ]).run()
+
+      const response = await GET(
+        new Request(`http://localhost/api/plan-items/${successor.id}/comments`),
+        { params: Promise.resolve({ id: String(successor.id) }) },
+      )
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.commentCount).toBe(2)
+      expect(data.comments.map((c: { content: string }) => c.content)).toEqual([
+        'Original blocker',
+        'Successor follow-up',
+      ])
+      expect(data.comments[0].planItemId).toBe(original.id)
+      expect(data.comments[0].sourcePeriod).toMatchObject({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        label: 'Week 2026-10-12 - 2026-10-18',
+      })
+      expect(data.comments[1].planItemId).toBe(successor.id)
+      expect(data.comments[1].sourcePeriod.label).toBe('Week 2026-10-19 - 2026-10-25')
+    })
+
+    it('keeps comments pinned to the original item and does not expose the successor there', async () => {
+      const original = seedPeriodItem({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+      })
+      const successor = seedPeriodItem({
+        scope: 'week',
+        periodStart: '2026-10-19',
+        periodEnd: '2026-10-25',
+        deferredFromItemId: original.id,
+      })
+
+      testDb.insert(schema.planItemComments).values([
+        { planItemId: original.id, content: 'Original note', author: null, createdAt: new Date('2026-10-13T09:00:00.000Z') },
+        { planItemId: successor.id, content: 'Successor note', author: null, createdAt: new Date('2026-10-20T09:00:00.000Z') },
+      ]).run()
+
+      const response = await GET(
+        new Request(`http://localhost/api/plan-items/${original.id}/comments`),
+        { params: Promise.resolve({ id: String(original.id) }) },
+      )
+      const data = await response.json()
+
+      expect(data.commentCount).toBe(1)
+      expect(data.comments.map((c: { content: string }) => c.content)).toEqual(['Original note'])
+      expect(data.comments[0].planItemId).toBe(original.id)
+      expect(data.comments[0].sourcePeriod.label).toBe('Week 2026-10-12 - 2026-10-18')
+    })
+
+    it('labels month-scope source periods by month and aggregates month deferrals', async () => {
+      const original = seedPeriodItem({
+        scope: 'month',
+        periodStart: '2026-09-01',
+        periodEnd: '2026-09-30',
+        monthKey: '2026-09',
+      })
+      const successor = seedPeriodItem({
+        scope: 'month',
+        periodStart: '2026-10-01',
+        periodEnd: '2026-10-31',
+        monthKey: '2026-10',
+        deferredFromItemId: original.id,
+      })
+
+      testDb.insert(schema.planItemComments).values([
+        { planItemId: original.id, content: 'September decision', author: null, createdAt: new Date('2026-09-15T09:00:00.000Z') },
+      ]).run()
+
+      const response = await GET(
+        new Request(`http://localhost/api/plan-items/${successor.id}/comments`),
+        { params: Promise.resolve({ id: String(successor.id) }) },
+      )
+      const data = await response.json()
+
+      expect(data.commentCount).toBe(1)
+      expect(data.comments[0].sourcePeriod).toMatchObject({
+        scope: 'month',
+        monthKey: '2026-09',
+        label: 'Month 2026-09',
+      })
     })
   })
 

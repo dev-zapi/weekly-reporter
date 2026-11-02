@@ -593,6 +593,13 @@ describe('PeriodPlanItemRow', () => {
       content: string
       author: string | null
       createdAt: string
+      sourcePeriod?: {
+        scope: 'week' | 'month'
+        periodStart: string
+        periodEnd: string
+        monthKey: string | null
+        label: string
+      }
     }
 
     function mockCommentApi(
@@ -687,6 +694,94 @@ describe('PeriodPlanItemRow', () => {
       expect(screen.getByText('period-plans/claude')).toBeInTheDocument()
       expect(screen.getByText('用户')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /edit comment/i })).not.toBeInTheDocument()
+    })
+
+    it('marks deferral-chain ancestor comments with their source period and keeps them non-deletable', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 3,
+          content: 'Ancestor blocker',
+          author: 'period-plans/claude',
+          createdAt: '2026-10-13T09:00:00.000Z',
+          sourcePeriod: {
+            scope: 'week',
+            periodStart: '2026-10-05',
+            periodEnd: '2026-10-11',
+            monthKey: null,
+            label: 'Week 2026-10-05 - 2026-10-11',
+          },
+        },
+        {
+          id: 202,
+          planItemId: 7,
+          content: 'Own follow-up',
+          author: null,
+          createdAt: '2026-10-15T09:00:00.000Z',
+          sourcePeriod: {
+            scope: 'week',
+            periodStart: '2026-10-12',
+            periodEnd: '2026-10-18',
+            monthKey: null,
+            label: 'Week 2026-10-12 - 2026-10-18',
+          },
+        },
+      ])
+
+      renderRow({ commentCount: 2 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+
+      expect(await screen.findByText('Ancestor blocker')).toBeInTheDocument()
+      expect(screen.getByText('Week 2026-10-05 - 2026-10-11')).toBeInTheDocument()
+      // The owning item's period is not repeated on its own comments.
+      expect(screen.queryByText('Week 2026-10-12 - 2026-10-18')).not.toBeInTheDocument()
+      // Ancestor comments are read-only from the successor item.
+      expect(screen.queryByLabelText('Delete comment 201')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Delete comment 202')).toBeInTheDocument()
+    })
+
+    it('keeps the aggregated badge equal to the comments shown when expanded', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 3,
+          content: 'Ancestor blocker',
+          author: null,
+          createdAt: '2026-10-13T09:00:00.000Z',
+          sourcePeriod: {
+            scope: 'week',
+            periodStart: '2026-10-05',
+            periodEnd: '2026-10-11',
+            monthKey: null,
+            label: 'Week 2026-10-05 - 2026-10-11',
+          },
+        },
+        {
+          id: 202,
+          planItemId: 7,
+          content: 'Own follow-up',
+          author: null,
+          createdAt: '2026-10-15T09:00:00.000Z',
+        },
+        {
+          id: 203,
+          planItemId: 7,
+          content: 'Another own note',
+          author: null,
+          createdAt: '2026-10-16T09:00:00.000Z',
+        },
+      ])
+
+      renderRow({ commentCount: 3 })
+      expect(screen.getByText('3 comments')).toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Toggle comments'))
+
+      await screen.findByText('Ancestor blocker')
+      const list = screen.getByRole('list')
+      expect(within(list).getAllByRole('listitem')).toHaveLength(3)
     })
 
     it('shows an empty message when an item has no comments', async () => {
