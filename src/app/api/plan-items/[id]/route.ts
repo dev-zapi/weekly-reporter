@@ -9,6 +9,7 @@ import {
   getFulfillmentChain,
   deleteEventPlanReferencesByPlanItem,
 } from '@/lib/plan-references'
+import { deleteCommentsByPlanItem } from '@/lib/plan-item-comments'
 
 export const GET = withAuth(async function GET(
   request: Request,
@@ -228,23 +229,26 @@ export const DELETE = withAuth(async function DELETE(
       )
     }
 
-    // Clear the parent link on children so deleting a parent never leaves a
-    // dangling structural reference. deferredFromItemId chains are historical
-    // provenance and are intentionally left untouched.
-    await db.update(periodPlanItems)
-      .set({ parentItemId: null, updatedAt: new Date() })
-      .where(eq(periodPlanItems.parentItemId, itemId))
-      .run()
+    // Everything that depends on the item goes in one transaction: clear child
+    // parent links, drop inbound fulfillment index rows, cascade the item's
+    // plan-side comments (and their citation rows), then delete the item.
+    // deferredFromItemId chains are historical provenance and stay untouched.
+    db.transaction((tx) => {
+      tx.update(periodPlanItems)
+        .set({ parentItemId: null, updatedAt: new Date() })
+        .where(eq(periodPlanItems.parentItemId, itemId))
+        .run()
 
-    // Clear inbound association rows so fulfillment reads never point at a dead
-    // item. The `%id` text stays in event content (a dangling reference, per
-    // ADR-0019); only the index row is removed, mirroring deleteEventReferences.
-    deleteEventPlanReferencesByPlanItem(db, itemId)
+      // Clear inbound association rows so fulfillment reads never point at a
+      // dead item. The `%id` text stays in event content (a dangling reference,
+      // per ADR-0019); only the index row is removed.
+      deleteEventPlanReferencesByPlanItem(tx, itemId)
+      deleteCommentsByPlanItem(tx, itemId)
 
-    // Delete the item
-    await db.delete(periodPlanItems)
-      .where(eq(periodPlanItems.id, itemId))
-      .run()
+      tx.delete(periodPlanItems)
+        .where(eq(periodPlanItems.id, itemId))
+        .run()
+    })
 
     // Deletion proceeds regardless of references (dangling references align
     // with ADR-0019); the referrer warning is surfaced before deletion via GET.

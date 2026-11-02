@@ -498,5 +498,50 @@ describe('/api/plans', () => {
       expect(data.items[2].isUrgent).toBe(true)
       expect(data.items[0].isImportant).toBe(false)
     })
+
+    it('should include the comment count for each item', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const [itemWithComments, itemWithoutComments] = testDb.insert(schema.periodPlanItems).values([
+        {
+          periodPlanId: plan[0].id,
+          text: 'Has context',
+          position: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          periodPlanId: plan[0].id,
+          text: 'No context',
+          position: 2,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]).returning().all()
+
+      testDb.insert(schema.planItemComments).values([
+        { planItemId: itemWithComments.id, content: 'first', author: null, createdAt: now },
+        { planItemId: itemWithComments.id, content: 'second', author: 'agent', createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plans?scope=week&date=2026-10-15')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.items[0].text).toBe('Has context')
+      expect(data.items[0].commentCount).toBe(2)
+      expect(itemWithoutComments).toBeTruthy()
+      expect(data.items[1].commentCount).toBe(0)
+    })
   })
 })
