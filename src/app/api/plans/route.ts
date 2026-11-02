@@ -113,7 +113,8 @@ export const GET = withAuth(async function GET(request: Request) {
 
     // Group by priority (high -> normal -> low), then manual position within a
     // group. A CASE is required: plain lexicographic ASC would order high, low,
-    // normal. This endpoint is the single source of display order.
+    // normal. This is the only item-ordering site; labels and tints for both
+    // UIs live in plan-item-display.ts.
     const items = await db.select()
       .from(periodPlanItems)
       .where(eq(periodPlanItems.periodPlanId, planRow.id))
