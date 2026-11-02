@@ -9,11 +9,18 @@ import { Badge } from '@/components/ui/badge'
 import { formatSystemDateTime } from '@/lib/time-format'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
 import {
+  PLAN_ITEM_PRIORITY_LABELS,
+  PLAN_ITEM_PRIORITY_ORDER,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_LABELS,
   PLAN_ITEM_STATUS_ORDER,
 } from '@/lib/plan-item-display'
-import type { PeriodPlanItem, PeriodPlanItemStatus, ProjectScope } from '@/lib/db/schema'
+import type {
+  PeriodPlanItem,
+  PeriodPlanItemPriority,
+  PeriodPlanItemStatus,
+  ProjectScope,
+} from '@/lib/db/schema'
 
 /** A plan item enriched by GET /api/plans with its chain-aggregated fulfillment count. */
 export type PlanItemRowData = PeriodPlanItem & { fulfillmentCount?: number }
@@ -106,6 +113,10 @@ export function PeriodPlanItemRow({
     onUpdate(item.id, { status })
   }
 
+  const handlePriorityChange = (priority: PeriodPlanItemPriority) => {
+    onUpdate(item.id, { priority })
+  }
+
   const handleProjectScopeChange = (projectScope: ProjectScope) => {
     onUpdate(item.id, { projectScope })
   }
@@ -181,6 +192,19 @@ export function PeriodPlanItemRow({
             {PLAN_ITEM_STATUS_ORDER.map((status) => (
               <option key={status} value={status}>
                 {PLAN_ITEM_STATUS_LABELS[status]}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={item.priority}
+            onChange={(event) => handlePriorityChange(event.target.value as PeriodPlanItemPriority)}
+            className="h-7 rounded border bg-transparent px-2 text-xs"
+            aria-label="Priority"
+          >
+            {PLAN_ITEM_PRIORITY_ORDER.map((priority) => (
+              <option key={priority} value={priority}>
+                {PLAN_ITEM_PRIORITY_LABELS[priority]}
               </option>
             ))}
           </select>

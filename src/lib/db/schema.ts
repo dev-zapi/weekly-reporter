@@ -436,6 +436,8 @@ export type NewSystemPromptRow = typeof systemPrompts.$inferInsert
 export type PeriodPlanScope = 'week' | 'month'
 export const PERIOD_PLAN_ITEM_STATUSES = ['planned', 'in_progress', 'done', 'cancelled', 'deferred'] as const
 export type PeriodPlanItemStatus = (typeof PERIOD_PLAN_ITEM_STATUSES)[number]
+export const PERIOD_PLAN_ITEM_PRIORITIES = ['high', 'normal', 'low'] as const
+export type PeriodPlanItemPriority = (typeof PERIOD_PLAN_ITEM_PRIORITIES)[number]
 
 export const periodPlans = sqliteTable('period_plans', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -458,6 +460,7 @@ export const periodPlanItems = sqliteTable('period_plan_items', {
   periodPlanId: integer('period_plan_id').notNull(),
   text: text('text').notNull(),
   status: text('status').notNull().default('planned').$type<PeriodPlanItemStatus>(),
+  priority: text('priority').notNull().default('normal').$type<PeriodPlanItemPriority>(),
   projectScope: text('project_scope').notNull().default('work').$type<ProjectScope>(),
   parentItemId: integer('parent_item_id'),
   deferredFromItemId: integer('deferred_from_item_id'),

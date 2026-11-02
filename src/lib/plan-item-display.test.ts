@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { PERIOD_PLAN_ITEM_PRIORITIES, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
 import {
+  PLAN_ITEM_PRIORITY_LABELS,
+  PLAN_ITEM_PRIORITY_ORDER,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
   PLAN_ITEM_STATUS_LABELS,
@@ -24,5 +26,12 @@ describe('plan item display maps', () => {
       expect(PLAN_ITEM_STATUS_ICONS[status]).toBeDefined()
     }
     expect(Object.keys(PLAN_ITEM_STATUS_ICONS)).toHaveLength(PERIOD_PLAN_ITEM_STATUSES.length)
+  })
+
+  it('labels every priority and lists them high to low', () => {
+    for (const priority of PERIOD_PLAN_ITEM_PRIORITIES) {
+      expect(PLAN_ITEM_PRIORITY_LABELS[priority]).toBeTruthy()
+    }
+    expect(PLAN_ITEM_PRIORITY_ORDER).toEqual(['high', 'normal', 'low'])
   })
 })

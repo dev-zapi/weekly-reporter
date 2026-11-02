@@ -12,6 +12,7 @@ describe('PeriodPlanItemRow', () => {
     periodPlanId: 1,
     text: 'Test item',
     status: 'planned' as const,
+    priority: 'normal' as const,
     projectScope: 'work' as const,
     parentItemId: null,
     deferredFromItemId: null,
@@ -67,8 +68,27 @@ describe('PeriodPlanItemRow', () => {
     expect(mockOnUpdate).toHaveBeenCalledWith(1, { status: 'done' })
   })
 
-  it('calls onUpdate when project scope is changed', async () => {
+  it('shows the item priority and reports priority changes', async () => {
     const user = userEvent.setup()
+
+    render(
+      <PeriodPlanItemRow
+        item={mockItem}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    const prioritySelect = screen.getByLabelText('Priority') as HTMLSelectElement
+    expect(prioritySelect.value).toBe('normal')
+
+    await user.selectOptions(prioritySelect, 'high')
+
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { priority: 'high' })
+  })
+
+  it('calls onUpdate when project scope is changed', async () => {    const user = userEvent.setup()
 
     render(
       <PeriodPlanItemRow

@@ -1,7 +1,7 @@
 import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
-import { eq, and, asc } from 'drizzle-orm'
+import { eq, and, asc, sql } from 'drizzle-orm'
 import { periodPlans, periodPlanItems } from '@/lib/db/schema'
 import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
@@ -111,11 +111,16 @@ export const GET = withAuth(async function GET(request: Request) {
 
     const planRow = plan[0]
 
-    // Query items for this plan, ordered by position
+    // Group by priority (high -> normal -> low), then manual position within a
+    // group. A CASE is required: plain lexicographic ASC would order high, low,
+    // normal. This endpoint is the single source of display order.
     const items = await db.select()
       .from(periodPlanItems)
       .where(eq(periodPlanItems.periodPlanId, planRow.id))
-      .orderBy(asc(periodPlanItems.position))
+      .orderBy(
+        sql`CASE ${periodPlanItems.priority} WHEN 'high' THEN 0 WHEN 'normal' THEN 1 WHEN 'low' THEN 2 ELSE 3 END`,
+        asc(periodPlanItems.position)
+      )
       .all()
 
     // Add fulfillment count to each item

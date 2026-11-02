@@ -22,6 +22,7 @@ function makeItem(
     periodPlanId: 1,
     text,
     status,
+    priority: 'normal',
     projectScope,
     parentItemId: null,
     deferredFromItemId: null,

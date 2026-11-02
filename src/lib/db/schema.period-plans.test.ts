@@ -6,22 +6,30 @@ import { eq } from 'drizzle-orm'
 import fs from 'node:fs'
 import path from 'node:path'
 
-function createTestDbWithMigrations() {
-  const sqlite = new Database(':memory:')
+function migrationFiles() {
+  const migrationsDir = path.join(__dirname, '../../../drizzle')
+  return fs.readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+}
 
-  // Apply the period plans migration
-  const migrationPath = path.join(__dirname, '../../../drizzle/0035_flowery_timeslip.sql')
-  const migrationSql = fs.readFileSync(migrationPath, 'utf-8')
-
-  // Split by statement breakpoint and execute each statement
-  const statements = migrationSql.split('--> statement-breakpoint')
-  for (const stmt of statements) {
-    const trimmed = stmt.trim()
-    if (trimmed) {
-      sqlite.exec(trimmed)
+function applyMigrationFiles(sqlite: InstanceType<typeof Database>, files: string[]) {
+  const migrationsDir = path.join(__dirname, '../../../drizzle')
+  for (const file of files) {
+    const migrationSql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8')
+    const statements = migrationSql.split('--> statement-breakpoint')
+    for (const stmt of statements) {
+      const trimmed = stmt.trim()
+      if (trimmed) {
+        sqlite.exec(trimmed)
+      }
     }
   }
+}
 
+function createTestDbWithMigrations() {
+  const sqlite = new Database(':memory:')
+  applyMigrationFiles(sqlite, migrationFiles())
   return drizzle(sqlite, { schema })
 }
 
@@ -405,5 +413,56 @@ describe('period_plan_items schema', () => {
     }).returning().all()
 
     expect(item[0].status).toBe('planned')
+  })
+
+  it('should default priority to normal', () => {
+    const db = createTestDbWithMigrations()
+    const now = new Date()
+
+    const plan = db.insert(schema.periodPlans).values({
+      scope: 'week',
+      periodStart: '2026-10-12',
+      periodEnd: '2026-10-18',
+      monthKey: null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    // Insert without specifying priority
+    const item = db.insert(schema.periodPlanItems).values({
+      periodPlanId: plan[0].id,
+      text: 'Task',
+      status: 'planned',
+      projectScope: 'work',
+      parentItemId: null,
+      deferredFromItemId: null,
+      position: 1,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().all()
+
+    expect(item[0].priority).toBe('normal')
+  })
+
+  it('should backfill existing rows to normal when the priority migration runs', () => {
+    const files = migrationFiles()
+    const priorityMigration = files.find((file) => file.startsWith('0038_'))
+    expect(priorityMigration).toBeDefined()
+
+    const sqlite = new Database(':memory:')
+    applyMigrationFiles(sqlite, files.filter((file) => file !== priorityMigration))
+
+    sqlite.exec(`
+      INSERT INTO period_plans (scope, period_start, period_end, month_key, created_at, updated_at)
+      VALUES ('week', '2026-10-12', '2026-10-18', NULL, 0, 0);
+      INSERT INTO period_plan_items (period_plan_id, text, status, project_scope, position, created_at, updated_at)
+      VALUES (1, 'Legacy item', 'planned', 'work', 1, 0, 0);
+    `)
+
+    applyMigrationFiles(sqlite, [priorityMigration!])
+
+    const row = sqlite.prepare('SELECT priority FROM period_plan_items').get() as { priority: string }
+    expect(row.priority).toBe('normal')
+    sqlite.close()
   })
 })

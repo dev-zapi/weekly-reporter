@@ -332,6 +332,120 @@ describe('/api/plan-items/[id]', () => {
       expect(data.status).toBe('done')
     })
 
+    it('should update priority', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        priority: 'normal',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: 'high' }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.priority).toBe('high')
+      expect(data.position).toBe(1)
+    })
+
+    it('should keep the existing priority when the update omits it', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        priority: 'low',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'Updated text' }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      expect(data.priority).toBe('low')
+    })
+
+    it('should reject an invalid priority', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: plan[0].id,
+        text: 'Task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item[0].id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priority: 'urgent' }),
+      })
+      const params = Promise.resolve({ id: String(item[0].id) })
+      const response = await PUT(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('priority')
+    })
+
     it('should update projectScope', async () => {
       const now = new Date()
 

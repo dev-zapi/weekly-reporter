@@ -2,7 +2,7 @@ import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq } from 'drizzle-orm'
-import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db/schema'
+import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_STATUSES, PERIOD_PLAN_ITEM_PRIORITIES } from '@/lib/db/schema'
 import { validateParentLink } from '@/lib/plan-items'
 import {
   findPlanReferrers,
@@ -92,7 +92,7 @@ export const PUT = withAuth(async function PUT(
     }
 
     const body = await request.json()
-    const { text, status, projectScope, position, parentItemId } = body
+    const { text, status, priority, projectScope, position, parentItemId } = body
 
     // Validate text if provided
     if (text !== undefined) {
@@ -109,6 +109,16 @@ export const PUT = withAuth(async function PUT(
       if (!PERIOD_PLAN_ITEM_STATUSES.includes(status)) {
         return NextResponse.json(
           { error: `Invalid status. Must be one of: ${PERIOD_PLAN_ITEM_STATUSES.join(', ')}` },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Validate priority if provided
+    if (priority !== undefined) {
+      if (!PERIOD_PLAN_ITEM_PRIORITIES.includes(priority)) {
+        return NextResponse.json(
+          { error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}` },
           { status: 400 }
         )
       }
@@ -168,6 +178,7 @@ export const PUT = withAuth(async function PUT(
 
     if (text !== undefined) updates.text = text.trim()
     if (status !== undefined) updates.status = status
+    if (priority !== undefined) updates.priority = priority
     if (projectScope !== undefined) updates.projectScope = projectScope
     if (position !== undefined) updates.position = position
     if (parentItemId !== undefined) updates.parentItemId = parentItemId

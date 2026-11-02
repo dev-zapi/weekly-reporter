@@ -267,6 +267,13 @@
       "when": 1792488175677,
       "tag": "0037_auth_pat_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1793598139956,
+      "tag": "0038_zippy_thunderbolts",
+      "breakpoints": true
     }
   ]
 }

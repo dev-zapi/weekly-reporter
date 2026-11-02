@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Circle, CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
-import type { PeriodPlanItemStatus } from '@/lib/db/schema'
+import type { PeriodPlanItemPriority, PeriodPlanItemStatus } from '@/lib/db/schema'
 
 /**
  * Single source of truth for how plan-item statuses are labelled and coloured
@@ -38,3 +38,18 @@ export const PLAN_ITEM_STATUS_ICONS: Record<PeriodPlanItemStatus, LucideIcon> = 
   cancelled: CircleX,
   deferred: ArrowRight,
 }
+
+/**
+ * Priority labels are also display order: high -> normal -> low, matching the
+ * grouping the plans endpoint applies. The manager uses the short Chinese
+ * labels for its explicit per-row control.
+ */
+export const PLAN_ITEM_PRIORITY_LABELS: Record<PeriodPlanItemPriority, string> = {
+  high: '高',
+  normal: '中',
+  low: '低',
+}
+
+export const PLAN_ITEM_PRIORITY_ORDER = Object.keys(
+  PLAN_ITEM_PRIORITY_LABELS,
+) as PeriodPlanItemPriority[]
