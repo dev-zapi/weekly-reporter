@@ -23,6 +23,8 @@ function makeItem(
     text,
     status,
     priority: 'normal',
+    isImportant: false,
+    isUrgent: false,
     projectScope,
     parentItemId: null,
     deferredFromItemId: null,
