@@ -1,11 +1,16 @@
 'use client'
 
 import { type ReactNode } from 'react'
-import { segmentContentTokens } from '@/lib/content-tokens'
+import { segmentContentTokens, segmentEventReferenceTokens } from '@/lib/content-tokens'
 
 interface ContentWithReferencesProps {
   content: string
   isManual?: boolean
+  /**
+   * Segment only `@<id>` event citations. Used for plan item comments, where
+   * `%<id>` and `#tag` are deliberately inert text.
+   */
+  eventReferencesOnly?: boolean
   onReferenceClick?: (referenceId: number) => void
   onPlanReferenceClick?: (planItemId: number) => void
 }
@@ -13,16 +18,20 @@ interface ContentWithReferencesProps {
 export function ContentWithReferences({
   content,
   isManual,
+  eventReferencesOnly,
   onReferenceClick,
   onPlanReferenceClick,
 }: ContentWithReferencesProps) {
   // Only manual events participate in reference recognition (per spec).
-  // Auto-collected events' content is rendered as plain text.
-  if (!isManual) {
+  // Auto-collected events' content is rendered as plain text. Comments opt in
+  // explicitly via eventReferencesOnly.
+  if (!isManual && !eventReferencesOnly) {
     return <>{content}</>
   }
 
-  const tokens = segmentContentTokens(content)
+  const tokens = eventReferencesOnly
+    ? segmentEventReferenceTokens(content)
+    : segmentContentTokens(content)
 
   // No reference tokens — render the raw content without extra spans.
   if (!tokens.some((token) => token.type !== 'text')) {

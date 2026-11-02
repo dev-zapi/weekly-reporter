@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { formatSystemDateTime } from '@/lib/time-format'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
+import { ReferencePreviewDialog } from './ReferencePreviewDialog'
+import { ContentWithReferences } from './ContentWithReferences'
 import {
   PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_PRIORITY_ORDER,
@@ -82,6 +84,9 @@ export function PeriodPlanItemRow({
   const [commentsError, setCommentsError] = useState<string | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [commentSubmitting, setCommentSubmitting] = useState(false)
+  // Comment citations open a read-only event preview; there is no timeline
+  // filter to locate into from the plans page.
+  const [previewEventId, setPreviewEventId] = useState<number | null>(null)
 
   // Lazily load fulfilling events on first expansion so the plans list stays
   // cheap for the common collapsed case.
@@ -473,7 +478,13 @@ export function PeriodPlanItemRow({
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
-                    <div className="whitespace-pre-wrap text-sm">{comment.content}</div>
+                    <div className="whitespace-pre-wrap text-sm">
+                      <ContentWithReferences
+                        content={comment.content}
+                        eventReferencesOnly
+                        onReferenceClick={(referenceId) => setPreviewEventId(referenceId)}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -499,6 +510,11 @@ export function PeriodPlanItemRow({
           </div>
         )}
       </div>
+
+      <ReferencePreviewDialog
+        eventId={previewEventId}
+        onClose={() => setPreviewEventId(null)}
+      />
 
       <PlanItemDeleteDialog
         itemId={deleteTarget}

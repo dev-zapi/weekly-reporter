@@ -1,6 +1,7 @@
 import 'server-only'
 import { asc, eq, inArray } from 'drizzle-orm'
 import { commentReferences, planItemComments, type PlanItemComment } from '@/lib/db/schema'
+import { parseReferences } from '@/lib/references/parse'
 
 type DrizzleDb = ReturnType<typeof import('@/lib/db').getDb>
 // The tx inside db.transaction() shares the query-builder interface of db but
@@ -36,18 +37,44 @@ export function getCommentCount(db: DrizzleDb, planItemId: number): number {
     .all().length
 }
 
+/**
+ * Create a comment and index its `@<eventId>` citations in the same
+ * transaction. This is the only parse: comments are immutable, so there is no
+ * re-sync path later (deletion is the only mutation). `%<itemId>` and `#tag`
+ * are deliberately never parsed here — plan references and tags stay plain text
+ * inside comments.
+ */
 export function createComment(db: DrizzleDb, input: NewCommentInput): PlanItemComment {
-  const inserted = db
-    .insert(planItemComments)
-    .values({
-      planItemId: input.planItemId,
-      content: input.content,
-      author: input.author,
-      createdAt: new Date(),
-    })
-    .returning()
-    .all()
-  return inserted[0]
+  const referencedIds = parseReferences(input.content)
+
+  return db.transaction((tx) => {
+    const inserted = tx
+      .insert(planItemComments)
+      .values({
+        planItemId: input.planItemId,
+        content: input.content,
+        author: input.author,
+        createdAt: new Date(),
+      })
+      .returning()
+      .all()
+    const comment = inserted[0]
+
+    if (referencedIds.length > 0) {
+      const now = new Date()
+      tx.insert(commentReferences)
+        .values(
+          referencedIds.map((referencedEventId) => ({
+            commentId: comment.id,
+            referencedEventId,
+            createdAt: now,
+          })),
+        )
+        .run()
+    }
+
+    return comment
+  })
 }
 
 export function findComment(db: DrizzleDb, commentId: number): PlanItemComment | null {

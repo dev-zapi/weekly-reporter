@@ -223,6 +223,46 @@ describe('/api/plan-items/[id]/comments', () => {
       expect(response.status).toBe(201)
       expect(data.author).toBe('period-plans-skill')
     })
+
+    it('parses @id citations once at write and ignores %id/#tag tokens', async () => {
+      const item = seedItem()
+
+      const response = await postJson(item.id, {
+        content: 'blocked by @17 and @17 again — see %42 #review',
+      })
+
+      expect(response.status).toBe(201)
+
+      const rows = testDb.select().from(schema.commentReferences).all()
+      expect(rows.map((row) => row.referencedEventId)).toEqual([17])
+    })
+
+    it('does not re-parse citations when comments are read back', async () => {
+      const item = seedItem()
+      await postJson(item.id, { content: 'blocked by @17' })
+
+      await GET(
+        new Request(`http://localhost/api/plan-items/${item.id}/comments`),
+        { params: Promise.resolve({ id: String(item.id) }) },
+      )
+
+      expect(testDb.select().from(schema.commentReferences).all()).toHaveLength(1)
+    })
+
+    it('accepts a dangling citation and keeps its index row', async () => {
+      const item = seedItem()
+
+      const response = await postJson(item.id, { content: 'was motivated by @999' })
+
+      expect(response.status).toBe(201)
+      expect(
+        testDb
+          .select()
+          .from(schema.commentReferences)
+          .all()
+          .map((row) => row.referencedEventId),
+      ).toEqual([999])
+    })
   })
 
   it('does not export an update handler', async () => {
