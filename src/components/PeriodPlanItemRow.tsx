@@ -3,10 +3,17 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Trash2, Forward } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Paperclip, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { formatSystemDateTime } from '@/lib/time-format'
 import { buildPlansDeepLink } from '@/lib/plan-links'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
@@ -39,6 +46,24 @@ export type PlanChildItemData = {
   weekPeriodEnd: string
   fulfillmentCount: number
   commentCount: number
+}
+
+/** An unparented week item offered by the month-scope attach candidates. */
+export type AttachCandidateItem = {
+  id: number
+  text: string
+  status: PeriodPlanItemStatus
+  projectScope: ProjectScope
+  priority: PeriodPlanItemPriority
+  isImportant: boolean
+  isUrgent: boolean
+}
+
+/** One week's unparented items, as grouped by the month-scope response. */
+export type AttachCandidateWeek = {
+  periodStart: string
+  periodEnd: string
+  items: AttachCandidateItem[]
 }
 
 /**
@@ -104,6 +129,17 @@ type Props = {
   onDefer: (id: number) => void
   onMove?: (id: number, direction: 'up' | 'down') => void
   /**
+   * Month scope: the month's unparented week items grouped by week. The picker
+   * on each monthly item attaches one of them via the existing update endpoint.
+   */
+  attachCandidates?: AttachCandidateWeek[]
+  onAttach?: (childId: number, parentItemId: number) => void
+  /**
+   * Month scope: the month's items, offered to an attached week item so it can
+   * be detached or re-parented in place.
+   */
+  childParentOptions?: PlanRowItem[]
+  /**
    * Expand and highlight the comment section on mount. Set by the plans page
    * when a deep link targets this item (event-side cited-by locate).
    */
@@ -120,6 +156,9 @@ export function PeriodPlanItemRow({
   onDelete,
   onDefer,
   onMove,
+  attachCandidates = [],
+  onAttach,
+  childParentOptions = [],
   autoExpandComments = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
@@ -144,6 +183,7 @@ export function PeriodPlanItemRow({
   // Attached week items are eager in the month-scope payload, so revealing
   // them is a local toggle; only their fulfilling events load lazily.
   const [childrenExpanded, setChildrenExpanded] = useState(false)
+  const [attachOpen, setAttachOpen] = useState(false)
 
   // Attached week items render through this same component in a read-only
   // shape: they carry their week attribution instead of month-item controls.
@@ -413,6 +453,24 @@ export function PeriodPlanItemRow({
             </Link>
           )}
 
+          {/* Attached week items detach or re-parent in place through the same
+              parent-link update the week tab uses. */}
+          {isWeekChild && parentOptions.length > 0 && (
+            <select
+              value={item.parentItemId ?? ''}
+              onChange={(event) => handleParentChange(event.target.value)}
+              className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
+              aria-label="Parent month item"
+            >
+              <option value="">No month parent</option>
+              {parentOptions.map((parent) => (
+                <option key={parent.id} value={parent.id}>
+                  {parent.text}
+                </option>
+              ))}
+            </select>
+          )}
+
           {!isWeekChild && (
             <>
           <Button
@@ -537,6 +595,19 @@ export function PeriodPlanItemRow({
           <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
             <Trash2 className="h-3 w-3" />
           </Button>
+
+          {onAttach && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              aria-label="Attach week item"
+              onClick={() => setAttachOpen(true)}
+            >
+              <Paperclip className="h-3 w-3" />
+              Attach
+            </Button>
+          )}
             </>
           )}
         </div>
@@ -563,7 +634,8 @@ export function PeriodPlanItemRow({
                   {item.childItems.map((child) => (
                     <div key={child.id} role="group" aria-label={`Week item ${child.text}`}>
                       <PeriodPlanItemRow
-                        item={child}
+                        item={{ ...child, parentItemId: item.id }}
+                        parentOptions={childParentOptions}
                         onUpdate={onUpdate}
                         onDelete={onDelete}
                         onDefer={onDefer}
@@ -678,6 +750,54 @@ export function PeriodPlanItemRow({
           </div>
         )}
       </div>
+
+      {!isWeekChild && onAttach && (
+        <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Attach week item</DialogTitle>
+              <DialogDescription>
+                Only unparented week items from the weeks of this month are listed.
+              </DialogDescription>
+            </DialogHeader>
+
+            {attachCandidates.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No unparented week items in this month.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attachCandidates.map((week) => (
+                  <div
+                    key={week.periodStart}
+                    role="group"
+                    aria-label={`Week ${week.periodStart} - ${week.periodEnd}`}
+                    className="space-y-1"
+                  >
+                    <div className="text-xs font-medium text-muted-foreground">
+                      Week {week.periodStart} - {week.periodEnd}
+                    </div>
+                    {week.items.map((candidate) => (
+                      <Button
+                        key={candidate.id}
+                        variant="ghost"
+                        size="sm"
+                        className="flex h-auto w-full justify-start px-2 py-1 text-left text-sm"
+                        onClick={() => {
+                          onAttach(candidate.id, item.id)
+                          setAttachOpen(false)
+                        }}
+                      >
+                        {candidate.text}
+                      </Button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ReferencePreviewDialog
         eventId={previewEventId}

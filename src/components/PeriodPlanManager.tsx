@@ -13,13 +13,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
-import { PeriodPlanItemRow, type PlanItemRowData } from './PeriodPlanItemRow'
+import { PeriodPlanItemRow, type AttachCandidateWeek, type PlanItemRowData } from './PeriodPlanItemRow'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
 import type { PeriodPlan, PeriodPlanItem, PeriodPlanScope } from '@/lib/db/schema'
 
 type PlanResponse = {
   plan: PeriodPlan | null
   items: PlanItemRowData[]
+  attachCandidates?: AttachCandidateWeek[]
 }
 
 type PeriodParams = Record<string, string>
@@ -56,6 +57,9 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
   const [items, setItems] = useState<PlanItemRowData[]>([])
   const [parentOptions, setParentOptions] = useState<PlanItemRowData[]>([])
+  // Month scope: the month's unparented week items grouped by week, straight
+  // from the aggregated response. Week scope never uses them.
+  const [attachCandidates, setAttachCandidates] = useState<AttachCandidateWeek[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newItemText, setNewItemText] = useState('')
@@ -85,6 +89,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       if (!response.ok) throw new Error('Failed to load plan' + traceSuffix(response))
       const data: PlanResponse = await response.json()
       setItems(data.items)
+      setAttachCandidates(data.attachCandidates ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load plan')
     } finally {
@@ -144,6 +149,12 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       })
       if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
+      // Structural edits on an attached week item (attach, detach, re-parent)
+      // reshape the tree and the candidate list, so refetch the month payload.
+      if (!items.some((item) => item.id === id)) {
+        await fetchPlan()
+        return
+      }
       // PUT returns the bare item row, so carry the listing-only fields over to
       // keep the fulfillment/comment badges and, in month scope, the attached
       // week items and composed counts visible after an inline edit.
@@ -167,6 +178,12 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update item')
     }
+  }
+
+  // Attaching is an ordinary parent-link update on the week item; the existing
+  // update endpoint is the only write surface.
+  const handleAttachItem = (childId: number, parentItemId: number) => {
+    void handleUpdateItem(childId, { parentItemId })
   }
 
   const handleDeleteItem = async (id: number) => {
@@ -289,6 +306,9 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               autoExpandComments={item.id === initialItemId}
               parentOptions={scope === 'week' ? parentOptions : []}
               showParentSelector={scope === 'week'}
+              attachCandidates={scope === 'month' ? attachCandidates : []}
+              onAttach={scope === 'month' ? handleAttachItem : undefined}
+              childParentOptions={scope === 'month' ? items : []}
               canMoveUp={sameGroupNeighbour(items, index, 'up') !== null}
               canMoveDown={sameGroupNeighbour(items, index, 'down') !== null}
               onUpdate={handleUpdateItem}
