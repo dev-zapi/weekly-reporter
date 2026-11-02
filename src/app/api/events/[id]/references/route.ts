@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { rawEvents } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { findReferrers } from '@/lib/references'
+import { findCommentReferrers } from '@/lib/plan-item-comments'
 
 export const GET = withAuth(async function GET(
   _request: NextRequest,
@@ -33,7 +34,17 @@ export const GET = withAuth(async function GET(
     }
 
     const referrers = findReferrers(db, id)
-    return NextResponse.json({ referrers })
+    // Comment citations are a second, independent content surface for `@id`.
+    // Return them separately so callers can tell event referrers from plan-side
+    // citations (count, excerpts, and the owning item needed to locate them).
+    const commentReferrers = findCommentReferrers(db, id)
+    return NextResponse.json({
+      referrers,
+      commentReferrers: {
+        count: commentReferrers.length,
+        comments: commentReferrers,
+      },
+    })
   } catch (error) {
     console.error('Error fetching event referrers:', error)
     return NextResponse.json(

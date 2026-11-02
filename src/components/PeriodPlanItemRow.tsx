@@ -1,7 +1,7 @@
 'use client'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,6 +69,11 @@ type Props = {
   onDelete: (id: number) => void
   onDefer: (id: number) => void
   onMove?: (id: number, direction: 'up' | 'down') => void
+  /**
+   * Expand and highlight the comment section on mount. Set by the plans page
+   * when a deep link targets this item (event-side cited-by locate).
+   */
+  autoExpandComments?: boolean
 }
 
 export function PeriodPlanItemRow({
@@ -81,6 +86,7 @@ export function PeriodPlanItemRow({
   onDelete,
   onDefer,
   onMove,
+  autoExpandComments = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
@@ -89,7 +95,10 @@ export function PeriodPlanItemRow({
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null)
-  const [commentsExpanded, setCommentsExpanded] = useState(false)
+  // Deep links start with the comment section already open; the effect below
+  // fills it in. Keeping this in the initial state avoids a synchronous
+  // setState in an effect (cascading-render lint).
+  const [commentsExpanded, setCommentsExpanded] = useState(autoExpandComments)
   const [comments, setComments] = useState<PlanCommentView[] | null>(null)
   const [commentsLoading, setCommentsLoading] = useState(false)
   const [commentsError, setCommentsError] = useState<string | null>(null)
@@ -120,10 +129,7 @@ export function PeriodPlanItemRow({
   }
 
   // Comments are lazily loaded on first expansion, mirroring fulfilling events.
-  const handleToggleComments = async () => {
-    const next = !commentsExpanded
-    setCommentsExpanded(next)
-    if (!next || comments !== null) return
+  const loadComments = useCallback(async () => {
     setCommentsLoading(true)
     setCommentsError(null)
     try {
@@ -136,7 +142,35 @@ export function PeriodPlanItemRow({
     } finally {
       setCommentsLoading(false)
     }
+  }, [item.id])
+
+  const handleToggleComments = async () => {
+    const next = !commentsExpanded
+    setCommentsExpanded(next)
+    if (!next || comments !== null) return
+    await loadComments()
   }
+
+  // Deep link: open the comment section without a click, then scroll it into
+  // view. The section also carries the highlight animation class while
+  // autoExpandComments is set.
+  const commentsSectionRef = useRef<HTMLDivElement>(null)
+  const autoExpandedRef = useRef(false)
+
+  useEffect(() => {
+    if (!autoExpandComments || autoExpandedRef.current) return
+    autoExpandedRef.current = true
+    // Load on a microtask so the effect body never sets state synchronously.
+    void Promise.resolve().then(loadComments)
+  }, [autoExpandComments, loadComments])
+
+  useEffect(() => {
+    if (!autoExpandComments) return
+    const timer = setTimeout(() => {
+      commentsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [autoExpandComments])
 
   // The badge must match what expansion shows, so a locally loaded list wins
   // over the server-provided count after an append or delete.
@@ -466,7 +500,12 @@ export function PeriodPlanItemRow({
         )}
 
         {commentsExpanded && (
-          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+          <div
+            ref={commentsSectionRef}
+            className={`space-y-2 rounded-md border bg-muted/40 p-2 ${
+              autoExpandComments ? 'reference-highlight' : ''
+            }`}
+          >
             {commentsLoading ? (
               <div role="status" className="text-xs text-muted-foreground">Loading…</div>
             ) : commentsError ? (

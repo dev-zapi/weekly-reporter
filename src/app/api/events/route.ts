@@ -1,8 +1,8 @@
 import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
-import { desc, eq, between, sql, inArray } from 'drizzle-orm'
-import { rawEvents, eventTags } from '@/lib/db/schema'
+import { desc, eq, between, sql, inArray, getTableColumns } from 'drizzle-orm'
+import { rawEvents, eventTags, commentReferences } from '@/lib/db/schema'
 import { parseTags, syncEventTags, TAG_CHARSET_REGEX } from '@/lib/tags'
 import { parseReferences, syncEventReferences } from '@/lib/references'
 import { parsePlanReferences, syncEventPlanReferences } from '@/lib/plan-references'
@@ -69,7 +69,18 @@ export const GET = withAuth(async function GET(request: Request) {
       )
     }
 
-    let query = db.select()
+    // Comment citations (plan-side `@id` references) are a separate surface
+    // from event references. Counting them in the list query lets event cards
+    // show the cited-by marker without an N+1 request per card.
+    const commentReferrerCount = sql<number>`(
+      SELECT COUNT(*) FROM ${commentReferences}
+      WHERE ${commentReferences.referencedEventId} = raw_events.id
+    )`.mapWith(Number)
+
+    let query = db.select({
+      ...getTableColumns(rawEvents),
+      commentReferrerCount,
+    })
       .from(rawEvents)
       .$dynamic()
     if (conditions.length > 0) {

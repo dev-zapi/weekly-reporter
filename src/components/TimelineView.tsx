@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react'
 import { startOfWeek, endOfWeek, getWeek } from 'date-fns'
 import { TimelineViewSwitcher } from './TimelineViewSwitcher'
 import { TimelineGroup } from './TimelineGroup'
+import type { TimelineEvent } from '@/lib/event-view'
 import type { RawEvent } from '@/lib/db/schema'
 import { toValidDate } from '@/lib/time-format'
 
 type ViewMode = 'day' | 'week' | 'month'
 
 interface TimelineViewProps {
-  events: RawEvent[]
+  events: TimelineEvent[]
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
   onReferenceClick?: (referenceId: number) => void
@@ -19,8 +20,8 @@ interface TimelineViewProps {
   highlightKey?: number | null
 }
 
-function groupEventsByViewMode(events: RawEvent[], viewMode: ViewMode): Map<string, RawEvent[]> {
-  const groups = new Map<string, RawEvent[]>()
+function groupEventsByViewMode(events: TimelineEvent[], viewMode: ViewMode): Map<string, TimelineEvent[]> {
+  const groups = new Map<string, TimelineEvent[]>()
   
   events.forEach((event) => {
     const eventDate = toValidDate(event.eventTime)
@@ -57,7 +58,7 @@ function groupEventsByViewMode(events: RawEvent[], viewMode: ViewMode): Map<stri
 
 export function TimelineView({ events, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightEventId, highlightKey }: TimelineViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('day')
-  const [groups, setGroups] = useState<Map<string, RawEvent[]>>(new Map())
+  const [groups, setGroups] = useState<Map<string, TimelineEvent[]>>(new Map())
   
   useEffect(() => {
     const grouped = groupEventsByViewMode(events, viewMode)

@@ -109,6 +109,41 @@ describe('PeriodPlanManager', () => {
     })
   })
 
+  it('expands the comments of the deep-linked item', async () => {
+    setupApi({
+      items: [
+        makeItem({ id: 1, text: 'Other item', position: 1 }),
+        makeItem({ id: 2, text: 'Located item', position: 2 }),
+      ],
+    })
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/plan-items/2/comments')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            comments: [
+              {
+                id: 55,
+                planItemId: 2,
+                content: 'Located comment',
+                author: null,
+                createdAt: '2026-10-14T09:00:00.000Z',
+              },
+            ],
+          }),
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    const { container } = render(<PeriodPlanManager initialItemId={2} />)
+
+    expect(await screen.findByText('Located comment')).toBeInTheDocument()
+    expect(container.querySelector('.reference-highlight')).not.toBeNull()
+  })
+
   it('shows completion count', async () => {
     setupApi({
       items: [

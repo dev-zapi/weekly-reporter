@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm'
 import { parseTags, syncEventTags } from '@/lib/tags'
 import { parseReferences, syncEventReferences, deleteEventReferences } from '@/lib/references'
 import { parsePlanReferences, syncEventPlanReferences, deleteEventPlanReferences } from '@/lib/plan-references'
+import { deleteCommentReferencesForEvent } from '@/lib/plan-item-comments'
 
 type EventUpdateData = Partial<Pick<RawEvent, 'content' | 'eventTime' | 'isImportant' | 'updatedAt'>>
 
@@ -186,6 +187,9 @@ export const DELETE = withAuth(async function DELETE(
       tx.delete(eventTags).where(eq(eventTags.eventId, id)).run()
       deleteEventReferences(tx, id)
       deleteEventPlanReferences(tx, id)
+      // Comment text stays; only the citation index rows pointing at the
+      // deleted event are removed, leaving dangling citations by design.
+      deleteCommentReferencesForEvent(tx, id)
       tx.delete(rawEvents).where(eq(rawEvents.id, id)).run()
     })
     return new NextResponse(null, { status: 204 })
