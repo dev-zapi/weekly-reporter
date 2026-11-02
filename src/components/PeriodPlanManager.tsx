@@ -1,19 +1,20 @@
 'use client'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   addWeeks,
   subWeeks,
   addMonths,
   subMonths,
+  startOfWeek,
 } from 'date-fns'
 import { ChevronLeft, ChevronRight, Plus, LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
-import { PeriodPlanItemRow, type PlanItemRowData } from './PeriodPlanItemRow'
+import { PeriodPlanItemRow, type PlanItemRowData, type PlanChildItemData } from './PeriodPlanItemRow'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
 import type { PeriodPlan, PeriodPlanItem, PeriodPlanScope } from '@/lib/db/schema'
 
@@ -38,6 +39,39 @@ function parsePeriodStart(start: string | null | undefined): Date | null {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
+/**
+ * The Monday-start weeks attributed to a month: weeks whose start day falls
+ * inside the month range. This mirrors the server's derived week→month
+ * attribution, so a week starting in an adjacent month is never offered.
+ */
+function getMonthWeekOptions(date: Date): Array<{ start: string; end: string }> {
+  const month = getMonthPeriodRange(date)
+  const firstMonday = startOfWeek(new Date(`${month.start}T00:00:00`), { weekStartsOn: 1 })
+  const weeks: Array<{ start: string; end: string }> = []
+  for (let cursor = firstMonday; ; cursor = addWeeks(cursor, 1)) {
+    const range = getWeekPeriodRange(cursor)
+    if (range.start > month.end) break
+    if (range.start >= month.start) weeks.push(range)
+  }
+  return weeks
+}
+
+/**
+ * Merge a PUT response into an attached week item, preserving the fields the
+ * aggregated month payload owns (week attribution and composed counts).
+ */
+function mergeChildRow(child: PlanChildItemData, updated: PeriodPlanItem): PlanChildItemData {
+  return {
+    ...child,
+    ...updated,
+    id: child.id,
+    weekPeriodStart: child.weekPeriodStart,
+    weekPeriodEnd: child.weekPeriodEnd,
+    fulfillmentCount: child.fulfillmentCount,
+    commentCount: child.commentCount,
+  }
+}
+
 // Items are grouped by priority on the server, so an item can only be
 // reordered against its immediate neighbour when that neighbour belongs to the
 // same priority group. Group heads/tails therefore have no move target.
@@ -59,6 +93,10 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newItemText, setNewItemText] = useState('')
+  // Week-targeted creation inside the month review: a new week item lands in
+  // the chosen week's plan without leaving the view.
+  const [newWeekItemText, setNewWeekItemText] = useState('')
+  const [targetWeekStart, setTargetWeekStart] = useState('')
 
   // Derive the period parameters used by both the read and write endpoints.
   const getPeriodParams = useCallback((): PeriodParams => {
@@ -75,6 +113,14 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       month: getMonthPeriodRange(currentDate).monthKey,
     }
   }, [scope, currentDate])
+
+  // The month's attributed weeks, offered as creation targets in month scope.
+  const weekOptions = useMemo(
+    () => (scope === 'month' ? getMonthWeekOptions(currentDate) : []),
+    [scope, currentDate]
+  )
+  const targetWeek =
+    weekOptions.find((week) => week.start === targetWeekStart) ?? weekOptions[0] ?? null
 
   const fetchPlan = useCallback(async () => {
     setLoading(true)
@@ -135,6 +181,31 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     }
   }
 
+  const handleAddWeekItem = async () => {
+    const text = newWeekItemText.trim()
+    if (!text || !targetWeek) return
+    try {
+      // The week plan is auto-ensured by the existing creation endpoint; the
+      // item arrives unparented, so it enters the tree via the attach picker.
+      const response = await apiFetch('/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'week',
+          weekStart: targetWeek.start,
+          weekEnd: targetWeek.end,
+          text,
+          projectScope: 'work',
+        }),
+      })
+      if (!response.ok) throw new Error('Failed to add week item' + traceSuffix(response))
+      setNewWeekItemText('')
+      await fetchPlan()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add week item')
+    }
+  }
+
   const handleUpdateItem = async (id: number, updates: Partial<PeriodPlanItem>) => {
     try {
       const response = await apiFetch(`/api/plan-items/${id}`, {
@@ -144,21 +215,30 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       })
       if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
-      // PUT returns the bare item row, so carry the listing-only fields over to
-      // keep the fulfillment/comment badges and, in month scope, the attached
-      // week items and composed counts visible after an inline edit.
-      setItems((prev) => prev.map((item) => (
-        item.id === id
-          ? {
-              ...updated,
-              fulfillmentCount: item.fulfillmentCount,
-              commentCount: item.commentCount,
-              directFulfillmentCount: item.directFulfillmentCount,
-              indirectFulfillmentCount: item.indirectFulfillmentCount,
-              childItems: item.childItems,
-            }
-          : item
-      )))
+      // PUT returns the bare item row. Update either the month-level item or an
+      // attached week item in place, carrying listing-only fields over so the
+      // badges, children and week attribution stay visible after an inline edit.
+      setItems((prev) => prev.map((item) => {
+        if (item.id === id) {
+          return {
+            ...updated,
+            fulfillmentCount: item.fulfillmentCount,
+            commentCount: item.commentCount,
+            directFulfillmentCount: item.directFulfillmentCount,
+            indirectFulfillmentCount: item.indirectFulfillmentCount,
+            childItems: item.childItems,
+          }
+        }
+        if (item.childItems?.some((child) => child.id === id)) {
+          return {
+            ...item,
+            childItems: item.childItems.map((child) =>
+              child.id === id ? mergeChildRow(child, updated) : child
+            ),
+          }
+        }
+        return item
+      }))
       // Priority drives the server-side grouping order, so refetch to let a
       // changed item move to its new group. Other edits keep their place.
       if (updates.priority !== undefined) {
@@ -177,7 +257,17 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
       // warnings are surfaced pre-deletion via the confirm dialog's GET.
       const data: { deleted?: boolean } = await response.json()
       if (data.deleted === false) throw new Error('Failed to delete item' + traceSuffix(response))
-      setItems((prev) => prev.filter((item) => item.id !== id))
+      // A deleted month item disappears; a deleted attached week item is
+      // removed from its parent's child list.
+      setItems((prev) =>
+        prev
+          .filter((item) => item.id !== id)
+          .map((item) =>
+            item.childItems
+              ? { ...item, childItems: item.childItems.filter((child) => child.id !== id) }
+              : item
+          )
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item')
     }
@@ -297,6 +387,46 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               onMove={handleMoveItem}
             />
           ))}
+        </div>
+      )}
+
+      {scope === 'month' && weekOptions.length > 0 && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="text-sm font-medium">Add a week item</div>
+          <p className="text-xs text-muted-foreground">
+            Pick one of this month&apos;s weeks; the item lands in that week&apos;s plan.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <select
+              aria-label="Target week"
+              value={targetWeek?.start ?? ''}
+              onChange={(event) => setTargetWeekStart(event.target.value)}
+              className="h-9 rounded border bg-transparent px-2 text-sm"
+            >
+              {weekOptions.map((week) => (
+                <option key={week.start} value={week.start}>
+                  Week {week.start} - {week.end}
+                </option>
+              ))}
+            </select>
+            <Input
+              aria-label="New week item text"
+              value={newWeekItemText}
+              onChange={(event) => setNewWeekItemText(event.target.value)}
+              placeholder="Add a week item..."
+              className="flex-1"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void handleAddWeekItem()
+              }}
+            />
+            <Button
+              onClick={() => void handleAddWeekItem()}
+              disabled={!newWeekItemText.trim() || !targetWeek}
+            >
+              <Plus className="h-4 w-4" />
+              Add week item
+            </Button>
+          </div>
         </div>
       )}
 
