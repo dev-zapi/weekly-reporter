@@ -5,8 +5,9 @@ import { eq, and, asc, gte, lte, inArray, sql } from 'drizzle-orm'
 import { periodPlans, periodPlanItems, type PeriodPlan, type PeriodPlanItem } from '@/lib/db/schema'
 import { getWeekPeriodRange, getMonthPeriodRange, getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
-import { getFulfillmentChain, getFulfillmentCount } from '@/lib/plan-references'
+import { getFulfillmentChain, getFulfillmentCount, getFulfillmentEventIds } from '@/lib/plan-references'
 import { getChainCommentCount } from '@/lib/plan-item-comments'
+import { PLAN_ITEM_PRIORITY_ORDER } from '@/lib/plan-item-display'
 
 export const GET = withAuth(async function GET(request: Request) {
   try {
@@ -123,8 +124,9 @@ export const GET = withAuth(async function GET(request: Request) {
 
     // Group by priority (high -> normal -> low), then manual position within a
     // group. A CASE is required: plain lexicographic ASC would order high, low,
-    // normal. This is the only item-ordering site; labels and tints for both
-    // UIs live in plan-item-display.ts.
+    // normal. This SQL orders the month/week flat listing; child rows and
+    // attach candidates use compareByPriorityThenPosition below. Labels, tints,
+    // and the display order both UIs share live in plan-item-display.ts.
     const items = await db.select()
       .from(periodPlanItems)
       .where(eq(periodPlanItems.periodPlanId, planRow.id))
@@ -170,10 +172,14 @@ export const GET = withAuth(async function GET(request: Request) {
   }
 })
 
-const PRIORITY_RANK: Record<string, number> = { high: 0, normal: 1, low: 2 }
+function priorityRank(priority: PeriodPlanItem['priority']): number {
+  const index = PLAN_ITEM_PRIORITY_ORDER.indexOf(priority)
+  // Unknown values sort after every known priority, as the SQL CASE does.
+  return index === -1 ? PLAN_ITEM_PRIORITY_ORDER.length : index
+}
 
 function compareByPriorityThenPosition(a: PeriodPlanItem, b: PeriodPlanItem): number {
-  const byPriority = (PRIORITY_RANK[a.priority] ?? 3) - (PRIORITY_RANK[b.priority] ?? 3)
+  const byPriority = priorityRank(a.priority) - priorityRank(b.priority)
   if (byPriority !== 0) return byPriority
   if (a.position !== b.position) return a.position - b.position
   return a.id - b.id
@@ -256,9 +262,13 @@ async function getAttachCandidates(monthStart: string, monthEnd: string) {
  * Compose the 月度回看 payload for a month plan:
  * - each monthly item carries its attached week items (week attribution included)
  * - composed fulfillment = direct (events citing the monthly item, chain
- *   aggregated) + indirect (per attached week item, chain aggregated per child)
+ *   aggregated) + indirect (events via attached week items, chain aggregated
+ *   per child). The two groups are derived from one distinct-event union, so
+ *   evidence that overlaps children or the direct group is counted once.
  * - a deferred monthly successor also aggregates the children attached to its
- *   deferral-chain ancestors (the mirror of the week-item deferral rule)
+ *   deferral-chain ancestors (the mirror of the week-item deferral rule); those
+ *   children are exposed as a labeled read-only group so their evidence is
+ *   inspectable in place
  * - attach candidates are the month's weeks' unparented week items, grouped by
  *   week; unparented items never appear in the tree
  *
@@ -282,10 +292,19 @@ async function composeMonthReview(planRow: PeriodPlan, monthItems: PeriodPlanIte
     monthItems.map(async (item) => {
       const childRows = (childrenByParent.get(item.id) ?? []).sort(compareByPriorityThenPosition)
 
-      const [directFulfillmentCount, commentCount] = await Promise.all([
-        getFulfillmentCount(item.id),
-        getChainCommentCount(item.id)
-      ])
+      // Deferral mirror: a successor aggregates not just its own attached week
+      // items but also those attached to the month items it was deferred from.
+      // Children themselves never migrate.
+      const chain = await getFulfillmentChain(item.id)
+      const ancestorIds = chain.filter((id) => id !== item.id)
+      const ancestorChildren = ancestorIds.length === 0
+        ? []
+        : await db.select()
+            .from(periodPlanItems)
+            .where(inArray(periodPlanItems.parentItemId, ancestorIds))
+            .all()
+
+      const commentCount = await getChainCommentCount(item.id)
 
       const childItems = await Promise.all(
         childRows.map(async (child) => {
@@ -305,27 +324,37 @@ async function composeMonthReview(planRow: PeriodPlan, monthItems: PeriodPlanIte
             weekPeriodStart: weekPlan.periodStart,
             weekPeriodEnd: weekPlan.periodEnd,
             fulfillmentCount,
+            // Exposed for the week-item comment sections tracked in #80; the
+            // month tree does not render comments on week children yet.
             commentCount: childCommentCount
           }
         })
       )
 
-      // Deferral mirror: a successor aggregates not just its own attached week
-      // items but also those attached to the month items it was deferred from.
-      // Children themselves never migrate.
-      const chain = await getFulfillmentChain(item.id)
-      const ancestorIds = chain.filter((id) => id !== item.id)
-      const ancestorChildren = ancestorIds.length === 0
-        ? []
-        : await db.select()
-            .from(periodPlanItems)
-            .where(inArray(periodPlanItems.parentItemId, ancestorIds))
-            .all()
+      const inheritedChildGroups = await composeInheritedChildGroups(ancestorIds, ancestorChildren)
 
-      const indirectCounts = await Promise.all(
-        [...childRows, ...ancestorChildren].map((child) => getFulfillmentCount(child.id))
+      // One distinct-event union for the whole composed badge: direct evidence
+      // cites the month deferral chain, indirect evidence cites any attached
+      // week item (own or inherited) or any link of those items' own chains.
+      // Counting per chain and summing would double-count overlapping evidence.
+      const indirectItemIds = Array.from(
+        new Set(
+          (
+            await Promise.all(
+              [...childRows, ...ancestorChildren].map((child) => getFulfillmentChain(child.id))
+            )
+          ).flat()
+        )
       )
-      const indirectFulfillmentCount = indirectCounts.reduce((sum, count) => sum + count, 0)
+      const [directEventIds, indirectEventIds] = await Promise.all([
+        getFulfillmentEventIds(chain),
+        getFulfillmentEventIds(indirectItemIds)
+      ])
+      let indirectFulfillmentCount = 0
+      for (const eventId of indirectEventIds) {
+        if (!directEventIds.has(eventId)) indirectFulfillmentCount += 1
+      }
+      const directFulfillmentCount = directEventIds.size
 
       return {
         ...item,
@@ -333,7 +362,8 @@ async function composeMonthReview(planRow: PeriodPlan, monthItems: PeriodPlanIte
         indirectFulfillmentCount,
         fulfillmentCount: directFulfillmentCount + indirectFulfillmentCount,
         commentCount,
-        childItems
+        childItems,
+        inheritedChildGroups
       }
     })
   )
@@ -342,4 +372,95 @@ async function composeMonthReview(planRow: PeriodPlan, monthItems: PeriodPlanIte
     items,
     attachCandidates: buildAttachCandidates(weekPlans, weekItems)
   }
+}
+
+/**
+ * The ancestor month items' attached week items, grouped by the ancestor month
+ * they came from. The successor renders these as a labeled read-only group so
+ * the indirect evidence in its badge is inspectable in place; the children
+ * stay attached to their original month and are operated on there.
+ */
+async function composeInheritedChildGroups(
+  ancestorIds: number[],
+  ancestorChildren: PeriodPlanItem[]
+) {
+  if (ancestorChildren.length === 0) return []
+
+  const db = getDb()
+  const ancestorRows = await db
+    .select({ id: periodPlanItems.id, periodPlanId: periodPlanItems.periodPlanId })
+    .from(periodPlanItems)
+    .where(inArray(periodPlanItems.id, ancestorIds))
+    .all()
+  const ancestorPlans = await db
+    .select()
+    .from(periodPlans)
+    .where(inArray(periodPlans.id, ancestorRows.map((row) => row.periodPlanId)))
+    .all()
+  const monthByAncestorId = new Map(
+    ancestorRows.map((row) => {
+      const plan = ancestorPlans.find((candidate) => candidate.id === row.periodPlanId)!
+      return [row.id, plan.monthKey ?? plan.periodStart.slice(0, 7)] as const
+    })
+  )
+
+  const childWeekPlans = await db
+    .select()
+    .from(periodPlans)
+    .where(inArray(periodPlans.id, ancestorChildren.map((child) => child.periodPlanId)))
+    .all()
+  const childWeekPlanById = new Map(childWeekPlans.map((plan) => [plan.id, plan]))
+
+  const childrenByParent = new Map<number, PeriodPlanItem[]>()
+  for (const child of ancestorChildren) {
+    if (child.parentItemId === null) continue
+    const siblings = childrenByParent.get(child.parentItemId) ?? []
+    siblings.push(child)
+    childrenByParent.set(child.parentItemId, siblings)
+  }
+
+  const groups: Array<{
+    ancestorItemId: number
+    ancestorMonth: string
+    items: Array<{
+      id: number
+      text: string
+      status: PeriodPlanItem['status']
+      projectScope: PeriodPlanItem['projectScope']
+      priority: PeriodPlanItem['priority']
+      isImportant: boolean
+      isUrgent: boolean
+      weekPeriodStart: string
+      weekPeriodEnd: string
+      fulfillmentCount: number
+    }>
+  }> = []
+
+  for (const ancestorId of ancestorIds) {
+    const rows = (childrenByParent.get(ancestorId) ?? []).sort(compareByPriorityThenPosition)
+    if (rows.length === 0) continue
+    groups.push({
+      ancestorItemId: ancestorId,
+      ancestorMonth: monthByAncestorId.get(ancestorId)!,
+      items: await Promise.all(
+        rows.map(async (child) => {
+          const weekPlan = childWeekPlanById.get(child.periodPlanId)!
+          return {
+            id: child.id,
+            text: child.text,
+            status: child.status,
+            projectScope: child.projectScope,
+            priority: child.priority,
+            isImportant: child.isImportant,
+            isUrgent: child.isUrgent,
+            weekPeriodStart: weekPlan.periodStart,
+            weekPeriodEnd: weekPlan.periodEnd,
+            fulfillmentCount: await getFulfillmentCount(child.id)
+          }
+        })
+      )
+    })
+  }
+
+  return groups
 }

@@ -756,6 +756,8 @@ describe('/api/plans', () => {
         commentCount: 0,
       })
       expect(byId.has(orphan.id)).toBe(false)
+      // A non-deferred month item has no ancestor groups.
+      expect(item.inheritedChildGroups).toEqual([])
     })
 
     it('separates direct evidence from indirect evidence in the composed count', async () => {
@@ -777,6 +779,68 @@ describe('/api/plans', () => {
       expect(data.items[0].directFulfillmentCount).toBe(2)
       expect(data.items[0].indirectFulfillmentCount).toBe(3)
       expect(data.items[0].fulfillmentCount).toBe(5)
+    })
+
+    it('counts an event citing both the month item and an attached child once', async () => {
+      const monthPlan = createMonthPlan(testDb)
+      const goal = createItem(testDb, monthPlan.id, { text: 'Goal' })
+      const week3 = createWeekPlan(testDb, '2026-10-12', '2026-10-18')
+      const child = createItem(testDb, week3.id, { text: 'Child', parentItemId: goal.id })
+
+      // One piece of work referencing both the month item and its week child.
+      createEvents(testDb, [goal.id])
+      testDb.insert(schema.eventPlanReferences).values({
+        eventId: 1,
+        planItemId: child.id,
+        createdAt: now,
+      }).run()
+
+      const request = new Request('http://localhost/api/plans?scope=month&month=2026-10')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      const [item] = data.items
+      expect(item.directFulfillmentCount).toBe(1)
+      expect(item.indirectFulfillmentCount).toBe(0)
+      expect(item.fulfillmentCount).toBe(1)
+    })
+
+    it('deduplicates evidence shared by children in the same deferral chain', async () => {
+      const monthPlan = createMonthPlan(testDb)
+      const goal = createItem(testDb, monthPlan.id, { text: 'Goal' })
+      // The week item was deferred within the month: the defer endpoint keeps
+      // the original's parent and the successor inherits it, so both children
+      // hang off the same month item.
+      const week3 = createWeekPlan(testDb, '2026-10-12', '2026-10-18')
+      const original = createItem(testDb, week3.id, {
+        text: 'Task',
+        parentItemId: goal.id,
+        status: 'deferred',
+      })
+      const week4 = createWeekPlan(testDb, '2026-10-19', '2026-10-25')
+      createItem(testDb, week4.id, {
+        text: 'Task',
+        parentItemId: goal.id,
+        deferredFromItemId: original.id,
+      })
+
+      // One event citing the original; both children's chains contain it.
+      createEvents(testDb, [original.id])
+
+      const request = new Request('http://localhost/api/plans?scope=month&month=2026-10')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      const [item] = data.items
+      expect(item.childItems).toHaveLength(2)
+      // Per-child badges stay chain-local; the composed total counts the work once.
+      expect(item.childItems.map((child: { fulfillmentCount: number }) => child.fulfillmentCount))
+        .toEqual([1, 1])
+      expect(item.directFulfillmentCount).toBe(0)
+      expect(item.indirectFulfillmentCount).toBe(1)
+      expect(item.fulfillmentCount).toBe(1)
     })
 
     it("mirrors week-item deferral by aggregating the ancestor month item's children", async () => {
@@ -817,9 +881,24 @@ describe('/api/plans', () => {
       // Indirect aggregates the successor's own children plus the ancestor's.
       expect(item.indirectFulfillmentCount).toBe(3)
       expect(item.fulfillmentCount).toBe(5)
-      // Only the successor's own children are rendered in the tree.
+      // Only the successor's own children are rendered in its child tree; the
+      // ancestor's child is exposed as a labeled read-only group so its
+      // evidence stays inspectable.
       expect(item.childItems).toHaveLength(1)
       expect(item.childItems[0].id).toBe(successorChild.id)
+      expect(item.inheritedChildGroups).toHaveLength(1)
+      expect(item.inheritedChildGroups[0]).toMatchObject({
+        ancestorItemId: ancestor.id,
+        ancestorMonth: '2026-09',
+      })
+      expect(item.inheritedChildGroups[0].items).toHaveLength(1)
+      expect(item.inheritedChildGroups[0].items[0]).toMatchObject({
+        id: ancestorChild.id,
+        text: 'Ancestor child',
+        weekPeriodStart: '2026-09-07',
+        weekPeriodEnd: '2026-09-13',
+        fulfillmentCount: 2,
+      })
     })
 
     it('aggregates ancestor children through nested month and child deferral chains', async () => {
@@ -892,6 +971,19 @@ describe('/api/plans', () => {
       expect(item.fulfillmentCount).toBe(8)
       expect(item.childItems).toHaveLength(1)
       expect(item.childItems[0].id).toBe(successorChild.id)
+      // Both ancestor months surface as labeled groups, nearest ancestor first.
+      expect(item.inheritedChildGroups.map(
+        (group: { ancestorMonth: string }) => group.ancestorMonth
+      )).toEqual(['2026-09', '2026-08'])
+      expect(item.inheritedChildGroups.map(
+        (group: { ancestorItemId: number }) => group.ancestorItemId
+      )).toEqual([ancestor.id, ancestorRoot.id])
+      expect(item.inheritedChildGroups[0].items.map(
+        (child: { id: number }) => child.id
+      )).toEqual([ancestorChild.id])
+      expect(item.inheritedChildGroups[1].items.map(
+        (child: { id: number }) => child.id
+      )).toEqual([rootChild.id])
     })
 
     it('keeps the deferred month item and its children in place', async () => {
@@ -936,8 +1028,16 @@ describe('/api/plans', () => {
       const [successorFromResponse] = octoberData.items
       expect(successorFromResponse.id).toBe(successor.id)
       // Nothing migrated: the successor has no children of its own, but it
-      // still carries the ancestor's child's evidence.
+      // still carries the ancestor's child's evidence and exposes it as an
+      // inherited read-only group.
       expect(successorFromResponse.childItems).toEqual([])
+      expect(successorFromResponse.inheritedChildGroups).toHaveLength(1)
+      expect(successorFromResponse.inheritedChildGroups[0]).toMatchObject({
+        ancestorItemId: original.id,
+        ancestorMonth: '2026-09',
+      })
+      expect(successorFromResponse.inheritedChildGroups[0].items).toHaveLength(1)
+      expect(successorFromResponse.inheritedChildGroups[0].items[0].id).toBe(child.id)
       expect(successorFromResponse.directFulfillmentCount).toBe(0)
       expect(successorFromResponse.indirectFulfillmentCount).toBe(2)
       expect(successorFromResponse.fulfillmentCount).toBe(2)

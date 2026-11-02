@@ -48,6 +48,20 @@ export type PlanChildItemData = {
   commentCount: number
 }
 
+/**
+ * A week item attached to a deferral-chain ancestor's month item. The
+ * successor renders it as a read-only group so the ancestor month's evidence
+ * is inspectable in place; the item stays owned by that earlier month.
+ */
+export type PlanInheritedChildItem = Omit<PlanChildItemData, 'commentCount'>
+
+/** One ancestor month's inherited week items. */
+export type PlanInheritedChildGroup = {
+  ancestorItemId: number
+  ancestorMonth: string
+  items: PlanInheritedChildItem[]
+}
+
 /** An unparented week item offered by the month-scope attach candidates. */
 export type AttachCandidateItem = {
   id: number
@@ -82,6 +96,7 @@ export type PlanRowItem = Pick<
   directFulfillmentCount?: number
   indirectFulfillmentCount?: number
   childItems?: PlanChildItemData[]
+  inheritedChildGroups?: PlanInheritedChildGroup[]
   weekPeriodStart?: string
   weekPeriodEnd?: string
 }
@@ -140,6 +155,12 @@ type Props = {
    */
   childParentOptions?: PlanRowItem[]
   /**
+   * Render the row for review only: fulfillment expansion and the week deep
+   * link stay available, but operation controls are hidden. Used for week
+   * items inherited from a deferred ancestor's month.
+   */
+  readOnly?: boolean
+  /**
    * Expand and highlight the comment section on mount. Set by the plans page
    * when a deep link targets this item (event-side cited-by locate).
    */
@@ -160,6 +181,7 @@ export function PeriodPlanItemRow({
   onAttach,
   childParentOptions = [],
   autoExpandComments = false,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
@@ -183,6 +205,7 @@ export function PeriodPlanItemRow({
   // Attached week items are eager in the month-scope payload, so revealing
   // them is a local toggle; only their fulfilling events load lazily.
   const [childrenExpanded, setChildrenExpanded] = useState(false)
+  const [inheritedExpanded, setInheritedExpanded] = useState(false)
   const [attachOpen, setAttachOpen] = useState(false)
 
   // Attached week items render through this same component in a read-only
@@ -453,165 +476,171 @@ export function PeriodPlanItemRow({
             </Link>
           )}
 
-          {/* Attached week items detach or re-parent in place through the same
-              parent-link update the week tab uses. */}
-          {isWeekChild && parentOptions.length > 0 && (
-            <select
-              value={item.parentItemId ?? ''}
-              onChange={(event) => handleParentChange(event.target.value)}
-              className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
-              aria-label="Parent month item"
-            >
-              <option value="">No month parent</option>
-              {parentOptions.map((parent) => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.text}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {!isWeekChild && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleToggleComments}
-              aria-label="Toggle comments"
-              aria-expanded={commentsExpanded}
-            >
-              <MessageSquare className="h-3 w-3" />
-            </Button>
-          )}
-
-          {/* Operation parity (status, priority, flags, scope, defer, delete):
-              both monthly items and attached week items write through the same
-              plan-item endpoints. */}
-          <select
-            value={item.status}
-            onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Status"
-          >
-            {PLAN_ITEM_STATUS_ORDER.map((status) => (
-              <option key={status} value={status}>
-                {PLAN_ITEM_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={item.priority}
-            onChange={(event) => handlePriorityChange(event.target.value as PeriodPlanItemPriority)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Priority"
-          >
-            {PLAN_ITEM_PRIORITY_ORDER.map((priority) => (
-              <option key={priority} value={priority}>
-                {PLAN_ITEM_PRIORITY_LABELS[priority]}
-              </option>
-            ))}
-          </select>
-
-          <Button
-            type="button"
-            variant={item.isImportant ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7 px-2 text-xs"
-            aria-label="Toggle plan item important flag"
-            aria-pressed={item.isImportant}
-            onClick={handleImportantToggle}
-          >
-            Important
-          </Button>
-
-          <Button
-            type="button"
-            variant={item.isUrgent ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7 px-2 text-xs"
-            aria-label="Toggle plan item urgent flag"
-            aria-pressed={item.isUrgent}
-            onClick={handleUrgentToggle}
-          >
-            Urgent
-          </Button>
-
-          <select
-            value={item.projectScope}
-            onChange={(event) => handleProjectScopeChange(event.target.value as ProjectScope)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Project scope"
-          >
-            <option value="work">Work</option>
-            <option value="personal">Personal</option>
-          </select>
-
-          {!isWeekChild && (showParentSelector || parentOptions.length > 0) && (
-            <select
-              value={item.parentItemId ?? ''}
-              onChange={(event) => handleParentChange(event.target.value)}
-              className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
-              aria-label="Parent month item"
-            >
-              <option value="">No month parent</option>
-              {parentOptions.map((parent) => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.text}
-                </option>
-              ))}
-            </select>
-          )}
-
-          {!isWeekChild && onMove && (
+          {/* Inherited rows are review-only: expansion and the week deep link
+              stay, while every write control is hidden. */}
+          {!readOnly && (
             <>
+              {/* Attached week items detach or re-parent in place through the same
+                  parent-link update the week tab uses. */}
+              {isWeekChild && parentOptions.length > 0 && (
+                <select
+                  value={item.parentItemId ?? ''}
+                  onChange={(event) => handleParentChange(event.target.value)}
+                  className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
+                  aria-label="Parent month item"
+                >
+                  <option value="">No month parent</option>
+                  {parentOptions.map((parent) => (
+                    <option key={parent.id} value={parent.id}>
+                      {parent.text}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {!isWeekChild && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleToggleComments}
+                  aria-label="Toggle comments"
+                  aria-expanded={commentsExpanded}
+                >
+                  <MessageSquare className="h-3 w-3" />
+                </Button>
+              )}
+
+              {/* Operation parity (status, priority, flags, scope, defer, delete):
+                  both monthly items and attached week items write through the same
+                  plan-item endpoints. */}
+              <select
+                value={item.status}
+                onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Status"
+              >
+                {PLAN_ITEM_STATUS_ORDER.map((status) => (
+                  <option key={status} value={status}>
+                    {PLAN_ITEM_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={item.priority}
+                onChange={(event) => handlePriorityChange(event.target.value as PeriodPlanItemPriority)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Priority"
+              >
+                {PLAN_ITEM_PRIORITY_ORDER.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {PLAN_ITEM_PRIORITY_LABELS[priority]}
+                  </option>
+                ))}
+              </select>
+
+              <Button
+                type="button"
+                variant={item.isImportant ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                aria-label="Toggle plan item important flag"
+                aria-pressed={item.isImportant}
+                onClick={handleImportantToggle}
+              >
+                Important
+              </Button>
+
+              <Button
+                type="button"
+                variant={item.isUrgent ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                aria-label="Toggle plan item urgent flag"
+                aria-pressed={item.isUrgent}
+                onClick={handleUrgentToggle}
+              >
+                Urgent
+              </Button>
+
+              <select
+                value={item.projectScope}
+                onChange={(event) => handleProjectScopeChange(event.target.value as ProjectScope)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Project scope"
+              >
+                <option value="work">Work</option>
+                <option value="personal">Personal</option>
+              </select>
+
+              {!isWeekChild && (showParentSelector || parentOptions.length > 0) && (
+                <select
+                  value={item.parentItemId ?? ''}
+                  onChange={(event) => handleParentChange(event.target.value)}
+                  className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
+                  aria-label="Parent month item"
+                >
+                  <option value="">No month parent</option>
+                  {parentOptions.map((parent) => (
+                    <option key={parent.id} value={parent.id}>
+                      {parent.text}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {!isWeekChild && onMove && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onMove(item.id, 'up')}
+                    disabled={!canMoveUp}
+                    aria-label="Move up"
+                  >
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onMove(item.id, 'down')}
+                    disabled={!canMoveDown}
+                    aria-label="Move down"
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+
               <Button
                 variant="ghost"
                 size="icon-xs"
-                onClick={() => onMove(item.id, 'up')}
-                disabled={!canMoveUp}
-                aria-label="Move up"
+                onClick={handleDefer}
+                disabled={!canDefer}
+                title={canDefer ? 'Defer to next period' : 'Only incomplete items can be deferred'}
+                aria-label="Defer to next period"
               >
-                <ArrowUp className="h-3 w-3" />
+                <Forward className="h-3 w-3" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onMove(item.id, 'down')}
-                disabled={!canMoveDown}
-                aria-label="Move down"
-              >
-                <ArrowDown className="h-3 w-3" />
+              <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
+                <Trash2 className="h-3 w-3" />
               </Button>
+
+              {/* Attaching a week item is month-side only; attached week items keep
+                  the shared operation controls above. */}
+              {!isWeekChild && onAttach && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  aria-label="Attach week item"
+                  onClick={() => setAttachOpen(true)}
+                >
+                  <Paperclip className="h-3 w-3" />
+                  Attach
+                </Button>
+              )}
             </>
-          )}
-
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleDefer}
-            disabled={!canDefer}
-            title={canDefer ? 'Defer to next period' : 'Only incomplete items can be deferred'}
-            aria-label="Defer to next period"
-          >
-            <Forward className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
-            <Trash2 className="h-3 w-3" />
-          </Button>
-
-          {/* Attaching a week item is month-side only; attached week items keep
-              the shared operation controls above. */}
-          {!isWeekChild && onAttach && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2 text-xs"
-              aria-label="Attach week item"
-              onClick={() => setAttachOpen(true)}
-            >
-              <Paperclip className="h-3 w-3" />
-              Attach
-            </Button>
           )}
         </div>
 
@@ -647,6 +676,51 @@ export function PeriodPlanItemRow({
                   ))}
                 </div>
               )
+            )}
+          </div>
+        )}
+
+        {!isWeekChild && Array.isArray(item.inheritedChildGroups) && item.inheritedChildGroups.length > 0 && (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setInheritedExpanded((prev) => !prev)}
+              aria-label="Toggle inherited week items"
+              aria-expanded={inheritedExpanded}
+            >
+              {inheritedExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Inherited week items (
+              {item.inheritedChildGroups.reduce((total, group) => total + group.items.length, 0)})
+            </Button>
+
+            {inheritedExpanded && (
+              <div className="space-y-2 pl-3">
+                {item.inheritedChildGroups.map((group) => (
+                  <div
+                    key={group.ancestorItemId}
+                    role="group"
+                    aria-label={`Inherited from ${group.ancestorMonth}`}
+                    className="space-y-2"
+                  >
+                    <div className="text-xs font-medium text-muted-foreground">
+                      From {group.ancestorMonth}
+                    </div>
+                    {group.items.map((child) => (
+                      <div key={child.id} role="group" aria-label={`Inherited week item ${child.text}`}>
+                        <PeriodPlanItemRow
+                          item={child}
+                          onUpdate={onUpdate}
+                          onDelete={onDelete}
+                          onDefer={onDefer}
+                          readOnly
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}

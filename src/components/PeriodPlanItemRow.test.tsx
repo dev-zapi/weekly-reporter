@@ -1154,6 +1154,74 @@ describe('PeriodPlanItemRow', () => {
       expect(link).toHaveAttribute('href', '/plans?scope=week&start=2026-10-12')
     })
 
+    it('renders inherited week items from ancestor months as a read-only, expandable group', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          events: [
+            {
+              id: 51,
+              content: 'Inherited evidence',
+              eventTime: '2026-09-09T09:00:00.000Z',
+              isManual: true,
+            },
+          ],
+        }),
+      })
+      renderMonthItem({
+        fulfillmentCount: 1,
+        directFulfillmentCount: 0,
+        indirectFulfillmentCount: 1,
+        childItems: [],
+        inheritedChildGroups: [
+          {
+            ancestorItemId: 99,
+            ancestorMonth: '2026-09',
+            items: [
+              {
+                id: 41,
+                text: 'Inherited child',
+                status: 'planned',
+                projectScope: 'work',
+                priority: 'normal',
+                isImportant: false,
+                isUrgent: false,
+                weekPeriodStart: '2026-09-07',
+                weekPeriodEnd: '2026-09-13',
+                fulfillmentCount: 1,
+              },
+            ],
+          },
+        ],
+      })
+
+      expect(screen.queryByText('Inherited child')).not.toBeInTheDocument()
+      await user.click(screen.getByLabelText('Toggle inherited week items'))
+
+      expect(screen.getByText('From 2026-09')).toBeInTheDocument()
+      const row = within(
+        screen.getByRole('group', { name: 'Inherited week item Inherited child' }),
+      )
+      expect(row.getByText('Inherited child')).toBeInTheDocument()
+      expect(row.getByText('Week 2026-09-07 - 2026-09-13')).toBeInTheDocument()
+      // Review-only: no write or comment controls.
+      expect(row.queryByLabelText('Status')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Priority')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Defer to next period')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Delete item')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
+
+      // Its fulfilling events expand in place, so the indirect badge is
+      // inspectable without navigating to the ancestor month.
+      await user.click(row.getByLabelText('Toggle fulfillment events'))
+      expect(await screen.findByText('Inherited evidence')).toBeInTheDocument()
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/plan-items/41/fulfillment'),
+        expect.anything(),
+      )
+    })
+
     it('keeps child week item rows free of comment and edit controls', async () => {
       const user = userEvent.setup()
       renderMonthItem({ childItems: [makeChild({ id: 21 })] })
