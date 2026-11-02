@@ -359,6 +359,37 @@ describe('TimelinePlanPanel', () => {
     expect(within(urgentOnly).queryByRole('img', { name: 'Important' })).not.toBeInTheDocument()
   })
 
+  it('renders items in the order returned by the plan endpoint without re-sorting', async () => {
+    await renderWith([
+      makeItem(1, 'Low first', 'planned', 'work', { priority: 'low' }),
+      makeItem(2, 'High second', 'planned', 'work', { priority: 'high' }),
+      makeItem(3, 'Normal third', 'planned', 'work', { priority: 'normal' }),
+    ])
+
+    const rows = within(screen.getByRole('list')).getAllByRole('listitem')
+    const rendered = rows.map((row) => row.textContent ?? '')
+    expect(rendered).toHaveLength(3)
+    expect(rendered[0]).toContain('Low first')
+    expect(rendered[1]).toContain('High second')
+    expect(rendered[2]).toContain('Normal third')
+  })
+
+  it('keeps status filtering independent of priority and flags', async () => {
+    const { user } = await renderWith([
+      makeItem(1, 'Done high', 'done', 'work', { priority: 'high', isImportant: true, isUrgent: true }),
+      makeItem(2, 'Planned low', 'planned', 'work', { priority: 'low', isImportant: true, isUrgent: true }),
+      makeItem(3, 'In progress normal', 'in_progress', 'work', { priority: 'normal' }),
+    ])
+
+    expect(screen.queryByText('Done high')).not.toBeInTheDocument()
+    expect(screen.getByText('Planned low')).toBeInTheDocument()
+    expect(screen.getByText('In progress normal')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Done' }))
+
+    expect(screen.getByText('Done high')).toBeInTheDocument()
+  })
+
   it('provides link to /plans page', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
