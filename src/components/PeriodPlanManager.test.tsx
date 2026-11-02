@@ -17,6 +17,7 @@ function makeItem(overrides: Partial<PeriodPlanItem> = {}): PeriodPlanItem {
     periodPlanId: 1,
     text: 'Item',
     status: 'planned',
+    priority: 'normal',
     projectScope: 'work',
     parentItemId: null,
     deferredFromItemId: null,
@@ -279,8 +280,53 @@ describe('PeriodPlanManager', () => {
     })
   })
 
-  it('deletes an item only after confirming in the dialog', async () => {
+  it('renders items in the priority-grouped order returned by the API', async () => {
+    setupApi({
+      items: [
+        makeItem({ id: 1, text: 'High item', priority: 'high', position: 5 }),
+        makeItem({ id: 2, text: 'Normal item', priority: 'normal', position: 1 }),
+        makeItem({ id: 3, text: 'Low item', priority: 'low', position: 2 }),
+      ],
+    })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('High item')).toBeInTheDocument())
+
+    const renderedOrder = screen
+      .getAllByText(/^(High|Normal|Low) item$/)
+      .map((element) => element.textContent)
+    expect(renderedOrder).toEqual(['High item', 'Normal item', 'Low item'])
+  })
+
+  it('saves a priority change without touching position and refreshes the list', async () => {
     const user = userEvent.setup()
+    setupApi({ items: [makeItem({ id: 3, text: 'Do it', position: 2 })] })
+    render(<PeriodPlanManager />)
+
+    await waitFor(() => expect(screen.getByText('Do it')).toBeInTheDocument())
+
+    const weekPlanFetchCount = () =>
+      mockFetch.mock.calls.filter(
+        (call) =>
+          (call[1]?.method ?? 'GET') === 'GET' &&
+          String(call[0]).startsWith('/api/plans?scope=week'),
+      ).length
+    const fetchesBefore = weekPlanFetchCount()
+
+    await user.selectOptions(screen.getByLabelText('Priority'), 'high')
+
+    await waitFor(() => {
+      const putCall = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/3',
+      )
+      expect(putCall).toBeDefined()
+      expect(JSON.parse(putCall![1].body as string)).toEqual({ priority: 'high' })
+    })
+
+    await waitFor(() => expect(weekPlanFetchCount()).toBeGreaterThan(fetchesBefore))
+  })
+
+  it('deletes an item only after confirming in the dialog', async () => {    const user = userEvent.setup()
     setupApi({ items: [makeItem({ id: 5, text: 'Remove me' })] })
     render(<PeriodPlanManager />)
 
