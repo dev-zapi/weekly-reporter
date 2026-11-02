@@ -6,7 +6,6 @@ import { periodPlanItems } from '@/lib/db/schema'
 import {
   createComment,
   deriveCommentAuthor,
-  getChainCommentCount,
   listChainComments,
 } from '@/lib/plan-item-comments'
 
@@ -45,10 +44,10 @@ export const GET = withAuth(async function GET(
       )
     }
 
-    return NextResponse.json({
-      comments: await listChainComments(itemId),
-      commentCount: await getChainCommentCount(itemId),
-    })
+    // The expanded section is the source of truth for the badge, so the count
+    // is derived from the same list rather than a second chain walk.
+    const comments = await listChainComments(itemId)
+    return NextResponse.json({ comments, commentCount: comments.length })
   } catch (error) {
     console.error('Error fetching plan item comments:', error)
     return NextResponse.json(
