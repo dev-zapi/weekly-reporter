@@ -66,6 +66,21 @@
         "item has priority=low, isImportant=false, isUrgent=false",
         "list output shows all three fields explicitly"
       ]
+    },
+    {
+      "id": 6,
+      "name": "comment-add-list-delete",
+      "prompt": "给'完成 API 文档'加一条评论：'评审阻塞，等 @17 合入；关联 %42 #review'。然后列出这条条目的评论，确认 @17 是引用而 %42 和 #review 是普通文本。最后删掉这条评论。",
+      "expected_output": "Comment created and shown on the item; list-comments shows it oldest-first with author, UTC time and source-period label; the text keeps %42 and #review literally while @17 is indexed as an event citation; delete-comment removes it.",
+      "files": [],
+      "assertions": [
+        "add-comment succeeds and prints the comment id and author",
+        "list-comments shows the new comment with its source-period label",
+        "comment author is the self-reported agent identity or token name fallback",
+        "content keeps %42 and #review as plain text",
+        "@17 is indexed as an event citation",
+        "delete-comment removes the comment"
+      ]
     }
   ]
 }
