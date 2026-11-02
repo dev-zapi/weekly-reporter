@@ -113,11 +113,15 @@ export const POST = withAuth(async function POST(
     const maxPosition = maxPositionResult[0]?.maxPos || 0
     const newPosition = maxPosition + 1
 
-    // Create the deferred item in the next period
+    // Create the deferred item in the next period. Priority and the
+    // important/urgent flags travel with the item; only status is reset.
     const newDeferredItem = await db.insert(periodPlanItems).values({
       periodPlanId: nextPlanId,
       text: originalItem.text,
       status: 'planned',
+      priority: originalItem.priority,
+      isImportant: originalItem.isImportant,
+      isUrgent: originalItem.isUrgent,
       projectScope: originalItem.projectScope,
       parentItemId: inheritedParentItemId,
       deferredFromItemId: originalItem.id,
