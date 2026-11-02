@@ -243,6 +243,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
             directFulfillmentCount: item.directFulfillmentCount,
             indirectFulfillmentCount: item.indirectFulfillmentCount,
             childItems: item.childItems,
+            inheritedChildGroups: item.inheritedChildGroups,
           }
         }
         if (item.childItems?.some((child) => child.id === id)) {

@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanManager } from './PeriodPlanManager'
+import type { PlanInheritedChildGroup } from './PeriodPlanItemRow'
 import type { PeriodPlanItem } from '@/lib/db/schema'
 
 vi.mock('next/navigation', () => ({
@@ -99,6 +100,7 @@ function setupApi(options: {
     directFulfillmentCount?: number
     indirectFulfillmentCount?: number
     childItems?: ChildItem[]
+    inheritedChildGroups?: PlanInheritedChildGroup[]
   }>
   plan?: { id: number } | null
   attachCandidates?: AttachCandidateWeek[]
@@ -721,6 +723,64 @@ describe('PeriodPlanManager', () => {
       ).toBe(true)
     })
     expect(screen.getByText('Week child')).toBeInTheDocument()
+  })
+
+  it('keeps inherited week items visible after an inline edit that does not refetch', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Deferred month goal', periodPlanId: 3 }),
+          fulfillmentCount: 1,
+          directFulfillmentCount: 0,
+          indirectFulfillmentCount: 1,
+          childItems: [],
+          inheritedChildGroups: [
+            {
+              ancestorItemId: 5,
+              ancestorMonth: '2026-09',
+              items: [
+                {
+                  id: 21,
+                  text: 'Earlier week child',
+                  status: 'planned',
+                  projectScope: 'work',
+                  priority: 'normal',
+                  isImportant: false,
+                  isUrgent: false,
+                  weekPeriodStart: '2026-09-14',
+                  weekPeriodEnd: '2026-09-20',
+                  fulfillmentCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Deferred month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle inherited week items'))
+    expect(screen.getByText('Earlier week child')).toBeInTheDocument()
+
+    // The PUT response is the bare item row and a status edit does not refetch,
+    // so the read-only inherited section must survive the inline merge.
+    await user.selectOptions(screen.getByLabelText('Status'), 'done')
+
+    await waitFor(() => {
+      const putCall = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/10',
+      )
+      expect(putCall).toBeDefined()
+      expect(JSON.parse(putCall![1].body as string)).toEqual({ status: 'done' })
+    })
+    expect(screen.getByText('Earlier week child')).toBeInTheDocument()
+    expect(screen.getByLabelText('Toggle inherited week items')).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
   })
 
   it('opens the week period named by a deep link', async () => {
