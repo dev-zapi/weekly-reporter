@@ -442,8 +442,8 @@ export function PeriodPlanItemRow({
           </Button>
 
           {/* Attached week items are labelled by week and deep-link into that
-              week's tab. Their plan-side operations arrive with the monthly
-              review operation parity work. */}
+              week's tab. They share the monthly item's operation controls
+              below; only comments and structural controls stay month-side. */}
           {isWeekChild && item.weekPeriodStart && item.weekPeriodEnd && (
             <Link
               href={buildPlansDeepLink('week', item.weekPeriodStart)}
@@ -472,17 +472,20 @@ export function PeriodPlanItemRow({
           )}
 
           {!isWeekChild && (
-            <>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleToggleComments}
-            aria-label="Toggle comments"
-            aria-expanded={commentsExpanded}
-          >
-            <MessageSquare className="h-3 w-3" />
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={handleToggleComments}
+              aria-label="Toggle comments"
+              aria-expanded={commentsExpanded}
+            >
+              <MessageSquare className="h-3 w-3" />
+            </Button>
+          )}
 
+          {/* Operation parity (status, priority, flags, scope, defer, delete):
+              both monthly items and attached week items write through the same
+              plan-item endpoints. */}
           <select
             value={item.status}
             onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
@@ -543,7 +546,7 @@ export function PeriodPlanItemRow({
             <option value="personal">Personal</option>
           </select>
 
-          {(showParentSelector || parentOptions.length > 0) && (
+          {!isWeekChild && (showParentSelector || parentOptions.length > 0) && (
             <select
               value={item.parentItemId ?? ''}
               onChange={(event) => handleParentChange(event.target.value)}
@@ -559,7 +562,7 @@ export function PeriodPlanItemRow({
             </select>
           )}
 
-          {onMove && (
+          {!isWeekChild && onMove && (
             <>
               <Button
                 variant="ghost"
@@ -596,7 +599,9 @@ export function PeriodPlanItemRow({
             <Trash2 className="h-3 w-3" />
           </Button>
 
-          {onAttach && (
+          {/* Attaching a week item is month-side only; attached week items keep
+              the shared operation controls above. */}
+          {!isWeekChild && onAttach && (
             <Button
               variant="outline"
               size="sm"
@@ -607,8 +612,6 @@ export function PeriodPlanItemRow({
               <Paperclip className="h-3 w-3" />
               Attach
             </Button>
-          )}
-            </>
           )}
         </div>
 

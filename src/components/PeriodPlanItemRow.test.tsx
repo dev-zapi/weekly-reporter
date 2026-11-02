@@ -1162,8 +1162,62 @@ describe('PeriodPlanItemRow', () => {
 
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
       expect(childRow.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
-      expect(childRow.queryByLabelText('Status')).not.toBeInTheDocument()
-      expect(childRow.queryByLabelText('Delete item')).not.toBeInTheDocument()
+      // The text stays read-only inside the monthly review tree.
+      expect(childRow.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    it('offers status, priority and flag operations on attached week items', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.selectOptions(childRow.getByLabelText('Status'), 'done')
+      await user.selectOptions(childRow.getByLabelText('Priority'), 'high')
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item important flag' }))
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { status: 'done' })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { priority: 'high' })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { isImportant: true })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { isUrgent: true })
+    })
+
+    it('defers an attached week item after confirmation', async () => {
+      const user = userEvent.setup()
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Defer to next period'))
+
+      expect(mockOnDefer).toHaveBeenCalledWith(21)
+    })
+
+    it('warns about referring events before deleting an attached week item', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          referrers: [
+            { id: 11, content: 'Worked on %21', eventTime: '2026-10-14T09:00:00.000Z' },
+          ],
+        }),
+      })
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Delete item'))
+
+      expect(await screen.findByText('Worked on %21')).toBeInTheDocument()
+      expect(screen.getByText(/referenced by 1 event/i)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      expect(mockOnDelete).toHaveBeenCalledWith(21)
     })
 
     it('offers only the provided attach candidates, grouped by week, and reports the pick', async () => {

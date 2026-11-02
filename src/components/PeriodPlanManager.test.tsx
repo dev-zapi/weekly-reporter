@@ -133,7 +133,9 @@ function setupApi(options: {
       return Promise.resolve({ ok: true, status: 201, json: async () => makeItem({ id: 100 }) })
     }
     if (method === 'PUT') {
-      return okJson(makeItem())
+      // The real endpoint echoes the updated row, including its id.
+      const id = Number(url.split('/').pop())
+      return okJson(makeItem({ id }))
     }
     if (method === 'DELETE') {
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ deleted: true }) })
@@ -709,7 +711,7 @@ describe('PeriodPlanManager', () => {
       return baseImplementation(input, init)
     })
 
-    await user.selectOptions(screen.getByLabelText('Status'), 'done')
+    await user.selectOptions(screen.getAllByLabelText('Status')[0], 'done')
 
     await waitFor(() => {
       expect(
@@ -1104,5 +1106,272 @@ describe('PeriodPlanManager', () => {
     })
     await user.click(screen.getAllByLabelText('Toggle attached week items')[1])
     expect(screen.getByText('Week child')).toBeInTheDocument()
+  })
+
+  describe('month review operations', () => {
+    function monthReviewItems() {
+      return [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          fulfillmentCount: 0,
+          directFulfillmentCount: 0,
+          indirectFulfillmentCount: 0,
+          childItems: [
+            makeChild({ id: 21, text: 'Week child' }),
+          ],
+        },
+      ]
+    }
+
+    function monthFetchCount() {
+      return mockFetch.mock.calls.filter(
+        (call) =>
+          (call[1]?.method ?? 'GET') === 'GET' &&
+          String(call[0]).includes('/api/plans?scope=month'),
+      ).length
+    }
+
+    async function expandAttachedWeekItems() {
+      const user = userEvent.setup()
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      return user
+    }
+
+    it('updates an attached week item status through the API and keeps the tree', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      const user = await expandAttachedWeekItems()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.selectOptions(childRow.getByLabelText('Status'), 'done')
+
+      await waitFor(() => {
+        const putCall = mockFetch.mock.calls.find(
+          (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/21',
+        )
+        expect(putCall).toBeDefined()
+        expect(JSON.parse(putCall![1].body as string)).toEqual({ status: 'done' })
+      })
+      // The attached child stays in the tree after the inline edit.
+      expect(screen.getByRole('link', { name: 'Week 2026-10-12 - 2026-10-18' })).toBeInTheDocument()
+    })
+
+    it('changes an attached week item priority and refetches the ordered tree', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      const user = await expandAttachedWeekItems()
+      const fetchesBefore = monthFetchCount()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.selectOptions(childRow.getByLabelText('Priority'), 'high')
+
+      await waitFor(() => {
+        const putCall = mockFetch.mock.calls.find(
+          (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/21',
+        )
+        expect(putCall).toBeDefined()
+        expect(JSON.parse(putCall![1].body as string)).toEqual({ priority: 'high' })
+      })
+      await waitFor(() => expect(monthFetchCount()).toBeGreaterThan(fetchesBefore))
+    })
+
+    it('toggles flags on an attached week item without refetching the list', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      const user = await expandAttachedWeekItems()
+      const fetchesBefore = monthFetchCount()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item important flag' }))
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+
+      await waitFor(() => {
+        const bodies = mockFetch.mock.calls
+          .filter((call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/21')
+          .map((call) => JSON.parse(call[1].body as string))
+        expect(bodies).toContainEqual({ isImportant: true })
+        expect(bodies).toContainEqual({ isUrgent: true })
+      })
+      expect(monthFetchCount()).toBe(fetchesBefore)
+    })
+
+    it('deletes an attached week item from the month tree', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      const user = await expandAttachedWeekItems()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Delete item'))
+      await user.click(await screen.findByRole('button', { name: /^delete$/i }))
+
+      await waitFor(() => {
+        expect(
+          mockFetch.mock.calls.some(
+            (call) => call[1]?.method === 'DELETE' && call[0] === '/api/plan-items/21',
+          ),
+        ).toBe(true)
+      })
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('link', { name: 'Week 2026-10-12 - 2026-10-18' }),
+        ).not.toBeInTheDocument()
+      })
+    })
+
+    it('defers an attached week item and refetches the month review', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      const user = await expandAttachedWeekItems()
+      const fetchesBefore = monthFetchCount()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Defer to next period'))
+
+      await waitFor(() => {
+        expect(
+          mockFetch.mock.calls.some(
+            (call) => call[1]?.method === 'POST' && call[0] === '/api/plan-items/21/defer',
+          ),
+        ).toBe(true)
+      })
+      // Refetching the month review is what surfaces the deferral mirror.
+      await waitFor(() => expect(monthFetchCount()).toBeGreaterThan(fetchesBefore))
+    })
+
+    it('shows the deferred successor’s mirrored aggregation after deferring a month item', async () => {
+      setupApi({
+        monthItems: [
+          {
+            ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+            fulfillmentCount: 0,
+            directFulfillmentCount: 0,
+            indirectFulfillmentCount: 0,
+            childItems: [],
+          },
+        ],
+      })
+      const baseImplementation = mockFetch.getMockImplementation()!
+      let deferred = false
+      mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        if (
+          method === 'GET' &&
+          url.includes('/api/plans?scope=month') &&
+          url.includes('month=2026-11') &&
+          deferred
+        ) {
+          // The successor aggregates the ancestor's and its children's events.
+          return okJson({
+            plan: { id: 3 },
+            items: [
+              {
+                ...makeItem({ id: 100, text: 'Month goal', periodPlanId: 3 }),
+                fulfillmentCount: 3,
+                directFulfillmentCount: 0,
+                indirectFulfillmentCount: 3,
+                childItems: [],
+              },
+            ],
+          })
+        }
+        if (method === 'POST' && url === '/api/plan-items/10/defer') {
+          deferred = true
+        }
+        return baseImplementation(input, init)
+      })
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const user = userEvent.setup()
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+      await user.click(screen.getByLabelText('Defer to next period'))
+
+      await waitFor(() => {
+        expect(
+          mockFetch.mock.calls.some(
+            (call) => call[1]?.method === 'POST' && call[0] === '/api/plan-items/10/defer',
+          ),
+        ).toBe(true)
+      })
+
+      // Reviewing the next month surfaces the mirror rule's aggregation.
+      await user.click(screen.getByRole('button', { name: 'Next period' }))
+      expect(await screen.findByText('0 direct · 3 indirect')).toBeInTheDocument()
+    })
+
+    it('creates a new week item in the chosen week of the month', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      const user = userEvent.setup()
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+
+      const weekSelect = screen.getByLabelText('Target week') as HTMLSelectElement
+      // October 2026's Monday-start weeks attributed to the month. The week
+      // starting 2026-09-28 belongs to September and is not offered.
+      expect(
+        within(weekSelect)
+          .getAllByRole('option')
+          .map((option) => option.textContent),
+      ).toEqual([
+        'Week 2026-10-05 - 2026-10-11',
+        'Week 2026-10-12 - 2026-10-18',
+        'Week 2026-10-19 - 2026-10-25',
+        'Week 2026-10-26 - 2026-11-01',
+      ])
+
+      await user.selectOptions(weekSelect, '2026-10-12')
+      await user.type(screen.getByLabelText('New week item text'), 'Draft spec')
+      await user.click(screen.getByRole('button', { name: 'Add week item' }))
+
+      await waitFor(() => {
+        const postCall = mockFetch.mock.calls.find(
+          (call) => call[1]?.method === 'POST' && call[0] === '/api/plan-items',
+        )
+        expect(postCall).toBeDefined()
+        expect(JSON.parse(postCall![1].body as string)).toEqual({
+          scope: 'week',
+          weekStart: '2026-10-12',
+          weekEnd: '2026-10-18',
+          text: 'Draft spec',
+          projectScope: 'work',
+        })
+      })
+      expect((screen.getByLabelText('New week item text') as HTMLInputElement).value).toBe('')
+    })
+
+    it('still creates monthly items from the month tab', async () => {
+      setupApi({ monthItems: monthReviewItems() })
+      const user = userEvent.setup()
+      render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+      expect(await screen.findByText('Month goal')).toBeInTheDocument()
+
+      await user.type(screen.getByPlaceholderText(/add a new plan item/i), 'Monthly goal')
+      await user.click(screen.getByRole('button', { name: /^add$/i }))
+
+      await waitFor(() => {
+        const postCall = mockFetch.mock.calls.find(
+          (call) => call[1]?.method === 'POST' && call[0] === '/api/plan-items',
+        )
+        expect(postCall).toBeDefined()
+        const body = JSON.parse(postCall![1].body as string)
+        expect(body.scope).toBe('month')
+        expect(body.month).toBe('2026-10')
+        expect(body.text).toBe('Monthly goal')
+      })
+    })
   })
 })
