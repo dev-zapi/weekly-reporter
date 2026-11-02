@@ -125,8 +125,90 @@ describe('/api/plan-items', () => {
       expect(data.position).toBe(1)
     })
 
-    it('should default projectScope to work when not provided', async () => {
+    it('should create item with the provided priority', async () => {
       const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Urgent task',
+          priority: 'high'
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.priority).toBe('high')
+    })
+
+    it('should default priority to normal when not provided', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Normal task'
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.priority).toBe('normal')
+    })
+
+    it('should reject an invalid priority', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Task',
+          priority: 'urgent'
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('priority')
+    })
+
+    it('should default projectScope to work when not provided', async () => {      const now = new Date()
 
       const plan = testDb.insert(schema.periodPlans).values({
         scope: 'week',

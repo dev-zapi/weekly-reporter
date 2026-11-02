@@ -2,7 +2,7 @@ import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
 import { eq, sql } from 'drizzle-orm'
-import { periodPlans, periodPlanItems, type PeriodPlan } from '@/lib/db/schema'
+import { periodPlans, periodPlanItems, PERIOD_PLAN_ITEM_PRIORITIES, type PeriodPlan } from '@/lib/db/schema'
 import { getMonthPeriodRangeByKey } from '@/lib/periods'
 import { DATE_REGEX, MONTH_REGEX } from '@/lib/validations'
 import { ensurePeriodPlan, validateParentLink } from '@/lib/plan-items'
@@ -19,6 +19,7 @@ export const POST = withAuth(async function POST(request: Request) {
       month,
       text,
       projectScope = 'work',
+      priority = 'normal',
       parentItemId
     } = body
 
@@ -34,6 +35,14 @@ export const POST = withAuth(async function POST(request: Request) {
     if (projectScope !== 'work' && projectScope !== 'personal') {
       return NextResponse.json(
         { error: 'projectScope must be "work" or "personal"' },
+        { status: 400 }
+      )
+    }
+
+    // Validate priority
+    if (!PERIOD_PLAN_ITEM_PRIORITIES.includes(priority)) {
+      return NextResponse.json(
+        { error: `Invalid priority. Must be one of: ${PERIOD_PLAN_ITEM_PRIORITIES.join(', ')}` },
         { status: 400 }
       )
     }
@@ -142,6 +151,7 @@ export const POST = withAuth(async function POST(request: Request) {
       periodPlanId: targetPlanId,
       text: text.trim(),
       status: 'planned',
+      priority,
       projectScope,
       parentItemId: parentItemId || null,
       deferredFromItemId: null,
