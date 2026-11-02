@@ -114,6 +114,92 @@ describe('/api/plan-items/[id]/defer', () => {
       expect(updatedOriginal[0].status).toBe('deferred')
     })
 
+    it('should inherit priority, important, and urgent flags from the original item', async () => {
+      const now = new Date()
+
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item1 = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'High priority task',
+        status: 'in_progress',
+        priority: 'high',
+        isImportant: true,
+        isUrgent: true,
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item1[0].id + '/defer', {
+        method: 'POST',
+      })
+      const params = Promise.resolve({ id: String(item1[0].id) })
+      const response = await POST(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.priority).toBe('high')
+      expect(data.isImportant).toBe(true)
+      expect(data.isUrgent).toBe(true)
+
+      // The original keeps its own priority and flags; only its status flips.
+      const updatedOriginal = testDb.select().from(schema.periodPlanItems)
+        .where(eq(schema.periodPlanItems.id, item1[0].id))
+        .all()
+      expect(updatedOriginal[0].priority).toBe('high')
+      expect(updatedOriginal[0].isImportant).toBe(true)
+      expect(updatedOriginal[0].isUrgent).toBe(true)
+      expect(updatedOriginal[0].status).toBe('deferred')
+    })
+
+    it('should keep default priority and flags when deferring a default item', async () => {
+      const now = new Date()
+
+      const week1 = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const item1 = testDb.insert(schema.periodPlanItems).values({
+        periodPlanId: week1[0].id,
+        text: 'Default task',
+        status: 'planned',
+        projectScope: 'work',
+        parentItemId: null,
+        deferredFromItemId: null,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items/' + item1[0].id + '/defer', {
+        method: 'POST',
+      })
+      const params = Promise.resolve({ id: String(item1[0].id) })
+      const response = await POST(request, { params })
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.priority).toBe('normal')
+      expect(data.isImportant).toBe(false)
+      expect(data.isUrgent).toBe(false)
+    })
+
     it('should defer month item to next month', async () => {
       const now = new Date()
 
