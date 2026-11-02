@@ -595,10 +595,23 @@ describe('PeriodPlanItemRow', () => {
       createdAt: string
     }
 
-    function mockCommentApi(comments: CommentView[]) {
+    function mockCommentApi(
+      comments: CommentView[],
+      eventResponses: Record<number, { status: number; body?: unknown }> = {},
+    ) {
       mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         const method = init?.method ?? 'GET'
+        const eventMatch = url.match(/\/api\/events\/(\d+)/)
+        if (eventMatch) {
+          const eventResponse = eventResponses[Number(eventMatch[1])]
+          if (!eventResponse) throw new Error(`Unexpected event fetch: ${url}`)
+          return {
+            ok: eventResponse.status !== 404,
+            status: eventResponse.status,
+            json: async () => eventResponse.body,
+          }
+        }
         if (url.includes('/comments') && method === 'GET') {
           return { ok: true, json: async () => ({ comments }) }
         }
@@ -782,6 +795,85 @@ describe('PeriodPlanItemRow', () => {
         )
       })
       expect(screen.queryByText('Old note')).not.toBeInTheDocument()
+    })
+
+    it('renders @id citations in comments as links and keeps %id/#tag as plain text', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 7,
+          content: 'see @17 about %42 #review',
+          author: null,
+          createdAt: '2026-10-14T09:00:00.000Z',
+        },
+      ])
+
+      renderRow({ commentCount: 1 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+
+      expect(await screen.findByRole('button', { name: '@17' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '%42' })).not.toBeInTheDocument()
+      expect(screen.getByText(/%42 #review/)).toBeInTheDocument()
+    })
+
+    it('opens a read-only event preview when a comment citation is clicked', async () => {
+      const user = userEvent.setup()
+      mockCommentApi(
+        [
+          {
+            id: 201,
+            planItemId: 7,
+            content: 'see @17',
+            author: null,
+            createdAt: '2026-10-14T09:00:00.000Z',
+          },
+        ],
+        {
+          17: {
+            status: 200,
+            body: {
+              id: 17,
+              content: 'The motivating event',
+              eventTime: '2026-10-13T09:00:00.000Z',
+              source: 'manual',
+              isImportant: false,
+              tags: [],
+            },
+          },
+        },
+      )
+
+      renderRow({ commentCount: 1 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      await user.click(await screen.findByRole('button', { name: '@17' }))
+
+      expect(await screen.findByText('Event #17')).toBeInTheDocument()
+      expect(screen.getByText('The motivating event')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /locate this event/i })).not.toBeInTheDocument()
+    })
+
+    it('reports a missing event when a dangling citation is clicked', async () => {
+      const user = userEvent.setup()
+      mockCommentApi(
+        [
+          {
+            id: 201,
+            planItemId: 7,
+            content: 'see @999',
+            author: null,
+            createdAt: '2026-10-14T09:00:00.000Z',
+          },
+        ],
+        { 999: { status: 404 } },
+      )
+
+      renderRow({ commentCount: 1 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      await user.click(await screen.findByRole('button', { name: '@999' }))
+
+      expect(await screen.findByText('Event Not Found')).toBeInTheDocument()
+      expect(screen.getByText(/does not exist or has been deleted/i)).toBeInTheDocument()
     })
   })
 })

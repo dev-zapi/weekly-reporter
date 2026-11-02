@@ -10,7 +10,11 @@ import { ContentWithReferences } from './ContentWithReferences'
 interface ReferencePreviewDialogProps {
   eventId: number | null
   onClose: () => void
-  onLocate: (eventId: number) => void
+  /**
+   * Optional locate action. Omitted from the plans page, where there is no
+   * timeline filter to locate into — the card is then strictly read-only.
+   */
+  onLocate?: (eventId: number) => void
 }
 
 interface EventData {
@@ -81,11 +85,13 @@ export function ReferencePreviewDialog({ eventId, onClose, onLocate }: Reference
                 ))}
               </div>
             )}
-            <div className="flex justify-end pt-2">
-              <Button size="sm" onClick={() => onLocate(event.id)}>
-                Locate this event
-              </Button>
-            </div>
+            {onLocate && (
+              <div className="flex justify-end pt-2">
+                <Button size="sm" onClick={() => onLocate(event.id)}>
+                  Locate this event
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
