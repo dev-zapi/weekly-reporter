@@ -499,8 +499,8 @@ export type PlanItemComment = typeof planItemComments.$inferSelect
 export type NewPlanItemComment = typeof planItemComments.$inferInsert
 
 // Citation index for @id event references written inside comments. Parsed once
-// at comment creation (comments are immutable); stays empty until the citation
-// ticket wires it. Shape mirrors event_references plus a surrogate id.
+// at comment creation (comments are immutable); deletion of a comment removes
+// its rows, and event deletion later removes rows pointing at the event.
 export const commentReferences = sqliteTable('comment_references', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   commentId: integer('comment_id').notNull(),
