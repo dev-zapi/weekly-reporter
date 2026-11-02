@@ -11,6 +11,7 @@ import { ActivityHeatmap, type HeatmapData } from '@/components/ActivityHeatmap'
 import { Button } from '@/components/ui/button'
 import { Loader2, Calendar, X } from 'lucide-react'
 import type { RawEvent, PeriodPlanScope } from '@/lib/db/schema'
+import type { TimelineEvent } from '@/lib/event-view'
 import { useSyncAllSources } from '@/components/SyncAllSources'
 import { TimelinePlanPanel } from '@/components/TimelinePlanPanel'
 import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
@@ -22,7 +23,7 @@ const EVENTS_PAGE_LIMIT = 30
 const REFERENCE_LOAD_MAX_PAGES = 5
 
 interface EventsPage {
-  events: RawEvent[]
+  events: TimelineEvent[]
   nextCursor: { id: number; eventTime: number } | null
   hasMore: boolean
 }
@@ -36,7 +37,7 @@ function formatLocalDate(date: Date): string {
 
 export default function TimelinePage() {
   const router = useRouter()
-  const [events, setEvents] = useState<RawEvent[]>([])
+  const [events, setEvents] = useState<TimelineEvent[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([])
   const [selectedHeatmapDate, setSelectedHeatmapDate] = useState<string | null>(null)
   const [selectedSources, setSelectedSources] = useState<SourceFilter[]>(() => {

@@ -1,11 +1,12 @@
 'use client'
 
 import { EventCard } from './EventCard'
+import type { TimelineEvent } from '@/lib/event-view'
 import type { RawEvent } from '@/lib/db/schema'
 
 interface TimelineGroupProps {
   title: string
-  events: RawEvent[]
+  events: TimelineEvent[]
   onEdit?: (id: number, data: Partial<RawEvent>) => Promise<void>
   onDelete?: (id: number) => Promise<void>
   onReferenceClick?: (referenceId: number) => void
@@ -23,6 +24,7 @@ export function TimelineGroup({ title, events, onEdit, onDelete, onReferenceClic
           <EventCard
             key={event.id}
             event={event}
+            commentReferrerCount={event.commentReferrerCount}
             onEdit={onEdit}
             onDelete={onDelete}
             onReferenceClick={onReferenceClick}

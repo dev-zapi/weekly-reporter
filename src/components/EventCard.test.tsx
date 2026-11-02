@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EventCard } from './EventCard'
 import type { RawEvent } from '@/lib/db/schema'
+import { apiFetch } from '@/lib/api-client'
+
+const navigation = vi.hoisted(() => ({ push: vi.fn() }))
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: navigation.push }),
+}))
+
+vi.mock('@/lib/api-client', () => ({
+  apiFetch: vi.fn(),
 }))
 
 describe('EventCard', () => {
@@ -27,6 +34,8 @@ describe('EventCard', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-13T14:00:00'))
+    navigation.push.mockReset()
+    vi.mocked(apiFetch).mockReset()
   })
 
   afterEach(() => {
@@ -169,6 +178,107 @@ describe('EventCard', () => {
       expect(screen.queryByText(/Updated:/)).not.toBeInTheDocument()
       expect(screen.queryByText(/Authored:/)).not.toBeInTheDocument()
       expect(screen.queryByText(/Synced:/)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('评论引用标记 (cited-by marker)', () => {
+    it('does not render the marker without citing comments', () => {
+      const event = makeEvent(new Date('2026-07-13T13:00:00'))
+      render(<EventCard event={event} />)
+      expect(screen.queryByRole('button', { name: /cited by/i })).not.toBeInTheDocument()
+
+      render(<EventCard event={event} commentReferrerCount={0} />)
+      expect(screen.queryByRole('button', { name: /cited by/i })).not.toBeInTheDocument()
+    })
+
+    it('renders the cited-by marker when at least one comment cites the event', () => {
+      const event = makeEvent(new Date('2026-07-13T13:00:00'))
+      render(<EventCard event={event} commentReferrerCount={2} />)
+
+      expect(screen.getByRole('button', { name: /cited by 2 comments/i })).toBeInTheDocument()
+    })
+
+    it('locates the citing plan item on the plans page when activated', async () => {
+      vi.useRealTimers()
+      vi.mocked(apiFetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            referrers: [],
+            commentReferrers: {
+              count: 1,
+              comments: [
+                {
+                  commentId: 9,
+                  planItemId: 42,
+                  excerpt: 'Decision @7',
+                  author: 'period-plans/claude',
+                  createdAt: '2026-10-14T09:00:00.000Z',
+                  scope: 'week',
+                  periodStart: '2026-10-12',
+                  periodEnd: '2026-10-18',
+                  monthKey: null,
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+      const event = makeEvent(new Date('2026-07-13T13:00:00'))
+      render(<EventCard event={event} commentReferrerCount={1} />)
+
+      fireEvent.click(screen.getByRole('button', { name: /cited by 1 comment/i }))
+
+      await waitFor(() => {
+        expect(navigation.push).toHaveBeenCalledWith(
+          '/plans?scope=week&start=2026-10-12&item=42',
+        )
+      })
+    })
+  })
+
+  describe('删除警告包含评论引用', () => {
+    it('warns about citing plan item comments before deleting', async () => {
+      vi.useRealTimers()
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      vi.mocked(apiFetch).mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            referrers: [],
+            commentReferrers: {
+              count: 1,
+              comments: [
+                {
+                  commentId: 9,
+                  planItemId: 42,
+                  excerpt: 'Decision @7',
+                  author: null,
+                  createdAt: '2026-10-14T09:00:00.000Z',
+                  scope: 'week',
+                  periodStart: '2026-10-12',
+                  periodEnd: '2026-10-18',
+                  monthKey: null,
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+      )
+
+      const onDelete = vi.fn()
+      const event = makeEvent(new Date('2026-07-13T13:00:00'), { id: 7 })
+      render(<EventCard event={event} onDelete={onDelete} />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Delete event' }))
+
+      await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+      const message = String(confirmSpy.mock.calls.at(-1)?.[0])
+      expect(message).toMatch(/cited by 1 plan item comment/i)
+      expect(message).toContain('%42')
+      expect(message).toContain('Decision @7')
+      expect(onDelete).not.toHaveBeenCalled()
     })
   })
 })
