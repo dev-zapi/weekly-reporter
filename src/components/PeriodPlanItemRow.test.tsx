@@ -2,6 +2,7 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+import type { AttachCandidateWeek, PlanRowItem } from './PeriodPlanItemRow'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
@@ -1035,7 +1036,14 @@ describe('PeriodPlanItemRow', () => {
 
     function renderMonthItem(
       overrides: Record<string, unknown> = {},
-      handlers: { onUpdate?: typeof mockOnUpdate; onDelete?: typeof mockOnDelete; onDefer?: typeof mockOnDefer } = {},
+      props: Partial<{
+        onUpdate: typeof mockOnUpdate
+        onDelete: typeof mockOnDelete
+        onDefer: typeof mockOnDefer
+        attachCandidates: AttachCandidateWeek[]
+        onAttach: (childId: number, parentItemId: number) => void
+        childParentOptions: PlanRowItem[]
+      }> = {},
     ) {
       return render(
         <PeriodPlanItemRow
@@ -1046,9 +1054,12 @@ describe('PeriodPlanItemRow', () => {
             periodPlanId: 2,
             ...overrides,
           }}
-          onUpdate={handlers.onUpdate ?? mockOnUpdate}
-          onDelete={handlers.onDelete ?? mockOnDelete}
-          onDefer={handlers.onDefer ?? mockOnDefer}
+          onUpdate={props.onUpdate ?? mockOnUpdate}
+          onDelete={props.onDelete ?? mockOnDelete}
+          onDefer={props.onDefer ?? mockOnDefer}
+          attachCandidates={props.attachCandidates}
+          onAttach={props.onAttach}
+          childParentOptions={props.childParentOptions}
         />
       )
     }
@@ -1153,6 +1164,110 @@ describe('PeriodPlanItemRow', () => {
       expect(childRow.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
       expect(childRow.queryByLabelText('Status')).not.toBeInTheDocument()
       expect(childRow.queryByLabelText('Delete item')).not.toBeInTheDocument()
+    })
+
+    it('offers only the provided attach candidates, grouped by week, and reports the pick', async () => {
+      const user = userEvent.setup()
+      const onAttach = vi.fn()
+      renderMonthItem(
+        { childItems: [] },
+        {
+          attachCandidates: [
+            {
+              periodStart: '2026-10-12',
+              periodEnd: '2026-10-18',
+              items: [
+                {
+                  id: 31,
+                  text: 'High unparented',
+                  status: 'planned',
+                  projectScope: 'work',
+                  priority: 'high',
+                  isImportant: false,
+                  isUrgent: false,
+                },
+              ],
+            },
+            {
+              periodStart: '2026-10-26',
+              periodEnd: '2026-11-01',
+              items: [
+                {
+                  id: 33,
+                  text: 'Late unparented',
+                  status: 'in_progress',
+                  projectScope: 'personal',
+                  priority: 'low',
+                  isImportant: false,
+                  isUrgent: false,
+                },
+              ],
+            },
+          ],
+          onAttach,
+        },
+      )
+
+      // The top-level monthly row has no parent selector of its own.
+      expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Attach week item'))
+      const dialog = within(await screen.findByRole('dialog'))
+
+      const week3 = within(dialog.getByRole('group', { name: 'Week 2026-10-12 - 2026-10-18' }))
+      const week5 = within(dialog.getByRole('group', { name: 'Week 2026-10-26 - 2026-11-01' }))
+      expect(week3.getByRole('button', { name: 'High unparented' })).toBeInTheDocument()
+      expect(week5.getByRole('button', { name: 'Late unparented' })).toBeInTheDocument()
+
+      await user.click(week3.getByRole('button', { name: 'High unparented' }))
+
+      expect(onAttach).toHaveBeenCalledWith(31, 10)
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    })
+
+    it('shows an empty message when the month has no unparented candidates', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [] }, { attachCandidates: [], onAttach: vi.fn() })
+
+      await user.click(screen.getByLabelText('Attach week item'))
+
+      expect(
+        await screen.findByText('No unparented week items in this month.'),
+      ).toBeInTheDocument()
+    })
+
+    it('detaches and re-parents an attached week item in place', async () => {
+      const user = userEvent.setup()
+      const onUpdate = vi.fn()
+      renderMonthItem(
+        { childItems: [makeChild({ id: 21, text: 'Week child' })] },
+        {
+          onUpdate,
+          childParentOptions: [
+            { ...mockItem, id: 10, text: 'Month goal' },
+            { ...mockItem, id: 11, text: 'Other goal' },
+          ],
+        },
+      )
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+
+      // The current parent is selected, detach is the empty option, and only
+      // the month's own items are offered as re-parent targets.
+      expect(parentSelect.value).toBe('10')
+      expect(within(parentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'No month parent',
+        'Month goal',
+        'Other goal',
+      ])
+
+      await user.selectOptions(parentSelect, '11')
+      expect(onUpdate).toHaveBeenCalledWith(21, { parentItemId: 11 })
+
+      await user.selectOptions(parentSelect, '')
+      expect(onUpdate).toHaveBeenCalledWith(21, { parentItemId: null })
     })
   })
 })

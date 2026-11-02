@@ -65,6 +65,26 @@ function makeChild(overrides: Partial<ChildItem> = {}): ChildItem {
   }
 }
 
+type AttachCandidateItem = Omit<ChildItem, 'weekPeriodStart' | 'weekPeriodEnd' | 'fulfillmentCount' | 'commentCount'>
+type AttachCandidateWeek = {
+  periodStart: string
+  periodEnd: string
+  items: AttachCandidateItem[]
+}
+
+function makeCandidate(overrides: Partial<AttachCandidateItem> = {}): AttachCandidateItem {
+  return {
+    id: 31,
+    text: 'Unparented week item',
+    status: 'planned',
+    projectScope: 'work',
+    priority: 'normal',
+    isImportant: false,
+    isUrgent: false,
+    ...overrides,
+  }
+}
+
 /**
  * Route fetch calls by URL + method. GET /api/plans returns the given week
  * items; GET /api/plans?scope=month returns the month items (when the manager
@@ -81,13 +101,24 @@ function setupApi(options: {
     childItems?: ChildItem[]
   }>
   plan?: { id: number } | null
+  attachCandidates?: AttachCandidateWeek[]
 }) {
-  const { items = [], parentItems = [], monthItems = parentItems, plan = null } = options
+  const {
+    items = [],
+    parentItems = [],
+    monthItems = parentItems,
+    plan = null,
+    attachCandidates = [],
+  } = options
   mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
     const method = init?.method ?? 'GET'
     if (method === 'GET' && url.includes('scope=month')) {
-      return okJson({ plan: monthItems.length > 0 ? { id: 2 } : null, items: monthItems })
+      return okJson({
+        plan: monthItems.length > 0 ? { id: 2 } : null,
+        items: monthItems,
+        attachCandidates,
+      })
     }
     if (method === 'GET' && url.startsWith('/api/plan-items/')) {
       return okJson({ id: 5, referrers: [] })
@@ -818,5 +849,260 @@ describe('PeriodPlanManager', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(mockFetch.mock.calls.some((call) => call[1]?.method === 'PUT')).toBe(false)
+  })
+
+  it('offers attach candidates grouped by their week on monthly items', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        { ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }), childItems: [] },
+      ],
+      attachCandidates: [
+        {
+          periodStart: '2026-10-12',
+          periodEnd: '2026-10-18',
+          items: [
+            makeCandidate({ id: 31, text: 'High unparented', priority: 'high' }),
+            makeCandidate({ id: 32, text: 'Normal unparented', priority: 'normal' }),
+          ],
+        },
+        {
+          periodStart: '2026-10-26',
+          periodEnd: '2026-11-01',
+          items: [makeCandidate({ id: 33, text: 'Late unparented', priority: 'low' })],
+        },
+      ],
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Attach week item'))
+
+    const dialog = within(await screen.findByRole('dialog'))
+    const week3 = within(dialog.getByRole('group', { name: 'Week 2026-10-12 - 2026-10-18' }))
+    const week5 = within(dialog.getByRole('group', { name: 'Week 2026-10-26 - 2026-11-01' }))
+    expect(
+      week3.getAllByRole('button').map((button) => button.textContent),
+    ).toEqual(['High unparented', 'Normal unparented'])
+    expect(week5.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Late unparented',
+    ])
+    // Candidates outside the month payload are never offered.
+    expect(dialog.queryByText(/september/i)).not.toBeInTheDocument()
+  })
+
+  it('attaches a week item through the update endpoint and refreshes the tree in place', async () => {
+    const user = userEvent.setup()
+    let attached = false
+
+    setupApi({})
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (method === 'PUT' && url === '/api/plan-items/31') {
+        attached = true
+        return okJson(makeItem({ id: 31 }))
+      }
+      if (method === 'GET' && url.includes('scope=month')) {
+        return okJson({
+          plan: { id: 2 },
+          items: [
+            {
+              ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+              fulfillmentCount: attached ? 1 : 0,
+              directFulfillmentCount: 0,
+              indirectFulfillmentCount: attached ? 1 : 0,
+              childItems: attached
+                ? [makeChild({ id: 31, text: 'Unparented week item', fulfillmentCount: 1 })]
+                : [],
+            },
+          ],
+          attachCandidates: attached
+            ? []
+            : [
+                {
+                  periodStart: '2026-10-12',
+                  periodEnd: '2026-10-18',
+                  items: [makeCandidate({ id: 31, text: 'Unparented week item' })],
+                },
+              ],
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    expect(screen.getByText('0 fulfilled')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('Attach week item'))
+    const dialog = within(await screen.findByRole('dialog'))
+    await user.click(dialog.getByRole('button', { name: 'Unparented week item' }))
+
+    await waitFor(() => {
+      const put = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/31',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse(put![1].body as string)).toEqual({ parentItemId: 10 })
+    })
+
+    // The month payload is refetched; the candidate is now an attached child,
+    // and the composed badge reflects it. No separate write surface is used.
+    await waitFor(() => expect(screen.getByText('1 fulfilled')).toBeInTheDocument())
+    expect(screen.queryByText('Unparented week item')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+    expect(screen.getByText('Unparented week item')).toBeInTheDocument()
+    expect(mockFetch.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(false)
+
+    // No navigation: every plans list read stayed in month scope.
+    const planReads = mockFetch.mock.calls.filter(
+      (call) =>
+        (call[1]?.method ?? 'GET') === 'GET' &&
+        String(call[0]).startsWith('/api/plans'),
+    )
+    expect(planReads.length).toBeGreaterThan(1)
+    expect(planReads.every((call) => String(call[0]).includes('scope=month'))).toBe(true)
+  })
+
+  it('detaches an attached week item from its child row', async () => {
+    const user = userEvent.setup()
+    let detached = false
+
+    setupApi({})
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (method === 'PUT' && url === '/api/plan-items/21') {
+        detached = true
+        return okJson(makeItem({ id: 21 }))
+      }
+      if (method === 'GET' && url.includes('scope=month')) {
+        return okJson({
+          plan: { id: 2 },
+          items: [
+            {
+              ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+              fulfillmentCount: 0,
+              directFulfillmentCount: 0,
+              indirectFulfillmentCount: 0,
+              childItems: detached ? [] : [makeChild({ id: 21, text: 'Week child' })],
+            },
+          ],
+          attachCandidates: detached
+            ? [
+                {
+                  periodStart: '2026-10-12',
+                  periodEnd: '2026-10-18',
+                  items: [makeCandidate({ id: 21, text: 'Week child' })],
+                },
+              ]
+            : [],
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+    expect(parentSelect.value).toBe('10')
+
+    await user.selectOptions(parentSelect, '')
+
+    await waitFor(() => {
+      const put = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/21',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse(put![1].body as string)).toEqual({ parentItemId: null })
+    })
+
+    // The child left the tree and returned to the attach candidates.
+    await waitFor(() =>
+      expect(screen.queryByRole('group', { name: 'Week item Week child' })).not.toBeInTheDocument(),
+    )
+    await user.click(screen.getByLabelText('Attach week item'))
+    const dialog = within(await screen.findByRole('dialog'))
+    expect(dialog.getByRole('button', { name: 'Week child' })).toBeInTheDocument()
+  })
+
+  it('re-parents an attached week item to another monthly item', async () => {
+    const user = userEvent.setup()
+    let reParented = false
+
+    setupApi({})
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (method === 'PUT' && url === '/api/plan-items/21') {
+        reParented = true
+        return okJson(makeItem({ id: 21 }))
+      }
+      if (method === 'GET' && url.includes('scope=month')) {
+        return okJson({
+          plan: { id: 2 },
+          items: [
+            {
+              ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+              childItems: reParented ? [] : [makeChild({ id: 21, text: 'Week child' })],
+            },
+            {
+              ...makeItem({ id: 11, text: 'Other goal', periodPlanId: 2, position: 2 }),
+              childItems: reParented ? [makeChild({ id: 21, text: 'Week child' })] : [],
+            },
+          ],
+          attachCandidates: [],
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    const childTogglesBefore = screen.getAllByLabelText('Toggle attached week items')
+    // Month goal owns the only child.
+    expect(childTogglesBefore[0]).toHaveTextContent('Attached week items (1)')
+    expect(childTogglesBefore[1]).toHaveTextContent('Attached week items (0)')
+
+    await user.click(childTogglesBefore[0])
+    const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+    expect(parentSelect.value).toBe('10')
+    // Re-parent targets are the month's own items; cross-month links are never offered.
+    expect(within(parentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'No month parent',
+      'Month goal',
+      'Other goal',
+    ])
+
+    await user.selectOptions(parentSelect, '11')
+
+    await waitFor(() => {
+      const put = mockFetch.mock.calls.find(
+        (call) => call[1]?.method === 'PUT' && call[0] === '/api/plan-items/21',
+      )
+      expect(put).toBeDefined()
+      expect(JSON.parse(put![1].body as string)).toEqual({ parentItemId: 11 })
+    })
+
+    // The refreshed tree moves the child under the new monthly item.
+    await waitFor(() => {
+      const toggles = screen.getAllByLabelText('Toggle attached week items')
+      expect(toggles[0]).toHaveTextContent('Attached week items (0)')
+      expect(toggles[1]).toHaveTextContent('Attached week items (1)')
+    })
+    await user.click(screen.getAllByLabelText('Toggle attached week items')[1])
+    expect(screen.getByText('Week child')).toBeInTheDocument()
   })
 })
