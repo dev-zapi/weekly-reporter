@@ -13,6 +13,8 @@ describe('PeriodPlanItemRow', () => {
     text: 'Test item',
     status: 'planned' as const,
     priority: 'normal' as const,
+    isImportant: false,
+    isUrgent: false,
     projectScope: 'work' as const,
     parentItemId: null,
     deferredFromItemId: null,
@@ -86,6 +88,82 @@ describe('PeriodPlanItemRow', () => {
     await user.selectOptions(prioritySelect, 'high')
 
     expect(mockOnUpdate).toHaveBeenCalledWith(1, { priority: 'high' })
+  })
+
+  it('shows plan item important and urgent toggles reflecting stored flags', () => {
+    render(
+      <PeriodPlanItemRow
+        item={mockItem}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    const importantToggle = screen.getByRole('button', { name: 'Toggle plan item important flag' })
+    const urgentToggle = screen.getByRole('button', { name: 'Toggle plan item urgent flag' })
+
+    expect(importantToggle).toHaveAttribute('aria-pressed', 'false')
+    expect(urgentToggle).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('reports important and urgent flag changes', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PeriodPlanItemRow
+        item={mockItem}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
+    await user.click(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { isImportant: true })
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { isUrgent: true })
+  })
+
+  it('turns an active flag off with an explicit false update', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, isImportant: true, isUrgent: true }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    const importantToggle = screen.getByRole('button', { name: 'Toggle plan item important flag' })
+    expect(importantToggle).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(importantToggle)
+
+    expect(mockOnUpdate).toHaveBeenCalledWith(1, { isImportant: false })
+  })
+
+  it('shows badges for a low priority item that is both important and urgent without changing priority', () => {
+    render(
+      <PeriodPlanItemRow
+        item={{ ...mockItem, priority: 'low', isImportant: true, isUrgent: true }}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    // One occurrence in the toggle control, one in the badge.
+    expect(screen.getAllByText('Important')).toHaveLength(2)
+    expect(screen.getAllByText('Urgent')).toHaveLength(2)
+    expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('low')
+    expect(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+      .toHaveAttribute('aria-pressed', 'true')
   })
 
   it('calls onUpdate when project scope is changed', async () => {    const user = userEvent.setup()

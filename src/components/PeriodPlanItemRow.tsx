@@ -117,6 +117,14 @@ export function PeriodPlanItemRow({
     onUpdate(item.id, { priority })
   }
 
+  const handleImportantToggle = () => {
+    onUpdate(item.id, { isImportant: !item.isImportant })
+  }
+
+  const handleUrgentToggle = () => {
+    onUpdate(item.id, { isUrgent: !item.isUrgent })
+  }
+
   const handleProjectScopeChange = (projectScope: ProjectScope) => {
     onUpdate(item.id, { projectScope })
   }
@@ -132,6 +140,22 @@ export function PeriodPlanItemRow({
     <div className="flex items-start gap-3 rounded-lg border p-3">
       <div className="flex flex-col items-start gap-1">
         <Badge className={PLAN_ITEM_STATUS_COLORS[item.status]}>{PLAN_ITEM_STATUS_LABELS[item.status]}</Badge>
+        {item.isImportant && (
+          <Badge
+            variant="outline"
+            className="border-amber-300 bg-amber-50 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          >
+            Important
+          </Badge>
+        )}
+        {item.isUrgent && (
+          <Badge
+            variant="outline"
+            className="border-rose-300 bg-rose-50 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200"
+          >
+            Urgent
+          </Badge>
+        )}
         <Badge variant="outline" className="font-mono text-xs">%{item.id}</Badge>
         {typeof item.fulfillmentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{item.fulfillmentCount} fulfilled</Badge>
@@ -208,6 +232,30 @@ export function PeriodPlanItemRow({
               </option>
             ))}
           </select>
+
+          <Button
+            type="button"
+            variant={item.isImportant ? 'secondary' : 'outline'}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            aria-label="Toggle plan item important flag"
+            aria-pressed={item.isImportant}
+            onClick={handleImportantToggle}
+          >
+            Important
+          </Button>
+
+          <Button
+            type="button"
+            variant={item.isUrgent ? 'secondary' : 'outline'}
+            size="sm"
+            className="h-7 px-2 text-xs"
+            aria-label="Toggle plan item urgent flag"
+            aria-pressed={item.isUrgent}
+            onClick={handleUrgentToggle}
+          >
+            Urgent
+          </Button>
 
           <select
             value={item.projectScope}
