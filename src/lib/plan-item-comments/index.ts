@@ -7,9 +7,7 @@ export {
   findComment,
   findCommentReferrers,
   getChainCommentCount,
-  getCommentCount,
   listChainComments,
-  listComments,
 } from './db'
 export type {
   ChainComment,

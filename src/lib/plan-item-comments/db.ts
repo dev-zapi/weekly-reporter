@@ -80,28 +80,6 @@ function buildSourcePeriod(period: {
 }
 
 /**
- * List an item's own comments oldest-first. Deferral-chain aggregation is a
- * separate display concern (the comments stay pinned to the item they were
- * written on); `id` breaks ties when two comments share a timestamp.
- */
-export function listComments(db: DrizzleDb, planItemId: number): PlanItemComment[] {
-  return db
-    .select()
-    .from(planItemComments)
-    .where(eq(planItemComments.planItemId, planItemId))
-    .orderBy(asc(planItemComments.createdAt), asc(planItemComments.id))
-    .all()
-}
-
-export function getCommentCount(db: DrizzleDb, planItemId: number): number {
-  return db
-    .select({ id: planItemComments.id })
-    .from(planItemComments)
-    .where(eq(planItemComments.planItemId, planItemId))
-    .all().length
-}
-
-/**
  * List the comments displayed on an item: its own plus every deferral-chain
  * ancestor's. Comments stay pinned to the item they were written on; this is a
  * read-side aggregation only. Order is oldest-first across the whole chain so
