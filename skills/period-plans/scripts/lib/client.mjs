@@ -173,9 +173,9 @@ export function parseArgs(argv, spec, usage) {
   return { flags, positional }
 }
 
-export function requireId(raw, usage) {
+export function requireId(raw, usage, label = 'item') {
   const id = Number.parseInt(raw ?? '', 10)
-  if (!Number.isInteger(id)) fail(`Error: a numeric item ID is required, got '${raw ?? ''}'`, usage)
+  if (!Number.isInteger(id)) fail(`Error: a numeric ${label} ID is required, got '${raw ?? ''}'`, usage)
   return id
 }
 
