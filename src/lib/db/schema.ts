@@ -478,6 +478,42 @@ export const periodPlanItems = sqliteTable('period_plan_items', {
 export type PeriodPlanItem = typeof periodPlanItems.$inferSelect
 export type NewPeriodPlanItem = typeof periodPlanItems.$inferInsert
 
+// --- 计划项评论表（Plan Item Comments） ---
+// Append-only plan-side records: no updatedAt, deletable but never editable.
+// planItemId is not a declared FK (repo convention): cascades are manual and
+// run inside transactions where they are needed.
+
+export const planItemComments = sqliteTable('plan_item_comments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  planItemId: integer('plan_item_id').notNull(),
+  content: text('content').notNull(),
+  // Attribution only: null for browser (rendered as the user), agent identity
+  // for PAT callers. Not a security boundary.
+  author: text('author'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  planItemIdx: index('plan_item_comments_plan_item_id_idx').on(table.planItemId),
+}))
+
+export type PlanItemComment = typeof planItemComments.$inferSelect
+export type NewPlanItemComment = typeof planItemComments.$inferInsert
+
+// Citation index for @id event references written inside comments. Parsed once
+// at comment creation (comments are immutable); stays empty until the citation
+// ticket wires it. Shape mirrors event_references plus a surrogate id.
+export const commentReferences = sqliteTable('comment_references', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  commentId: integer('comment_id').notNull(),
+  referencedEventId: integer('referenced_event_id').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+}, (table) => ({
+  commentReferenceUnique: uniqueIndex('comment_references_comment_event_unique').on(table.commentId, table.referencedEventId),
+  referencedEventIdx: index('comment_references_referenced_event_idx').on(table.referencedEventId),
+}))
+
+export type CommentReference = typeof commentReferences.$inferSelect
+export type NewCommentReference = typeof commentReferences.$inferInsert
+
 // --- 认证表（PAT + 审计） ---
 
 export const apiTokens = sqliteTable('api_tokens', {

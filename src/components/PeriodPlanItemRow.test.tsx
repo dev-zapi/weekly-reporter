@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
@@ -584,5 +584,204 @@ describe('PeriodPlanItemRow', () => {
     await user.click(screen.getByLabelText('Toggle fulfillment events'))
 
     expect(await screen.findByText(/no fulfilling events/i)).toBeInTheDocument()
+  })
+
+  describe('comments', () => {
+    type CommentView = {
+      id: number
+      planItemId: number
+      content: string
+      author: string | null
+      createdAt: string
+    }
+
+    function mockCommentApi(comments: CommentView[]) {
+      mockFetch.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+        if (url.includes('/comments') && method === 'GET') {
+          return { ok: true, json: async () => ({ comments }) }
+        }
+        if (url.includes('/comments') && method === 'POST') {
+          const body = JSON.parse(String(init?.body))
+          return {
+            ok: true,
+            status: 201,
+            json: async () => ({
+              id: 999,
+              planItemId: 7,
+              content: body.content,
+              author: null,
+              createdAt: '2026-10-15T10:00:00.000Z',
+            }),
+          }
+        }
+        if (url.includes('/comments') && method === 'DELETE') {
+          return { ok: true, json: async () => ({ deleted: true }) }
+        }
+        throw new Error(`Unexpected fetch: ${method} ${url}`)
+      })
+    }
+
+    function renderRow(itemProps: Record<string, unknown> = {}) {
+      return render(
+        <PeriodPlanItemRow
+          item={{ ...mockItem, id: 7, ...itemProps }}
+          onUpdate={mockOnUpdate}
+          onDelete={mockOnDelete}
+          onDefer={mockOnDefer}
+        />
+      )
+    }
+
+    it('shows the comment count badge when the API provides one', () => {
+      renderRow({ commentCount: 2 })
+
+      expect(screen.getByText('2 comments')).toBeInTheDocument()
+    })
+
+    it('does not fetch comments until the section is expanded', () => {
+      renderRow({ commentCount: 1 })
+
+      expect(mockFetch).not.toHaveBeenCalled()
+      expect(screen.getByLabelText('Toggle comments')).toBeInTheDocument()
+    })
+
+    it('loads and renders comments with author and no edit affordance', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 7,
+          content: 'Earlier blocker',
+          author: 'period-plans/claude',
+          createdAt: '2026-10-14T09:00:00.000Z',
+        },
+        {
+          id: 202,
+          planItemId: 7,
+          content: 'User follow-up',
+          author: null,
+          createdAt: '2026-10-15T09:00:00.000Z',
+        },
+      ])
+
+      renderRow({ commentCount: 2 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+
+      expect(await screen.findByText('Earlier blocker')).toBeInTheDocument()
+      expect(screen.getByText('User follow-up')).toBeInTheDocument()
+      expect(screen.getByText('period-plans/claude')).toBeInTheDocument()
+      expect(screen.getByText('用户')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /edit comment/i })).not.toBeInTheDocument()
+    })
+
+    it('shows an empty message when an item has no comments', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([])
+
+      renderRow({ commentCount: 0 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+
+      expect(await screen.findByText(/no comments/i)).toBeInTheDocument()
+    })
+
+    it('submits a comment on Enter and renders it immediately as 用户', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([])
+
+      renderRow({ commentCount: 0 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      const textarea = await screen.findByLabelText('New comment')
+      await user.type(textarea, 'blocked on review{Enter}')
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/plan-items/7/comments'),
+          expect.objectContaining({ method: 'POST' }),
+        )
+      })
+      const postCall = mockFetch.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+      )
+      expect(JSON.parse(String((postCall![1] as RequestInit).body))).toEqual({
+        content: 'blocked on review',
+      })
+      expect(await screen.findByText('blocked on review')).toBeInTheDocument()
+      expect(screen.getByText('用户')).toBeInTheDocument()
+      expect((textarea as HTMLTextAreaElement).value).toBe('')
+    })
+
+    it('inserts a newline on Shift+Enter without submitting', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([])
+
+      renderRow({ commentCount: 0 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      const textarea = await screen.findByLabelText('New comment')
+      await user.type(textarea, 'line one{Shift>}{Enter}{/Shift}line two')
+
+      expect((textarea as HTMLTextAreaElement).value).toContain('\n')
+      expect(
+        mockFetch.mock.calls.some(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+        ),
+      ).toBe(false)
+    })
+
+    it('does not submit while an IME composition is active', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([])
+
+      renderRow({ commentCount: 0 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      const textarea = await screen.findByLabelText('New comment')
+      await user.type(textarea, 'composing')
+
+      fireEvent.keyDown(textarea, { key: 'Enter', keyCode: 229 })
+
+      expect(
+        mockFetch.mock.calls.some(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+        ),
+      ).toBe(false)
+    })
+
+    it('asks for confirmation before deleting a comment', async () => {
+      const user = userEvent.setup()
+      mockCommentApi([
+        {
+          id: 201,
+          planItemId: 7,
+          content: 'Old note',
+          author: null,
+          createdAt: '2026-10-14T09:00:00.000Z',
+        },
+      ])
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+      renderRow({ commentCount: 1 })
+      await user.click(screen.getByLabelText('Toggle comments'))
+      await screen.findByText('Old note')
+
+      await user.click(screen.getByLabelText('Delete comment 201'))
+      expect(confirmSpy).toHaveBeenCalled()
+      expect(
+        mockFetch.mock.calls.some(
+          ([, init]) => (init as RequestInit | undefined)?.method === 'DELETE',
+        ),
+      ).toBe(false)
+
+      confirmSpy.mockReturnValue(true)
+      await user.click(screen.getByLabelText('Delete comment 201'))
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/plan-items/7/comments/201'),
+          expect.objectContaining({ method: 'DELETE' }),
+        )
+      })
+      expect(screen.queryByText('Old note')).not.toBeInTheDocument()
+    })
   })
 })
