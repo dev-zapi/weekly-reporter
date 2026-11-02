@@ -328,6 +328,37 @@ describe('TimelinePlanPanel', () => {
     }
   })
 
+  it('renders important and urgent flags as icon-only indicators with accessible names', async () => {
+    await renderWith([
+      makeItem(1, 'Both flags low', 'planned', 'work', { priority: 'low', isImportant: true, isUrgent: true }),
+      makeItem(2, 'No flags', 'planned', 'work'),
+      makeItem(3, 'Important only', 'planned', 'work', { isImportant: true }),
+      makeItem(4, 'Urgent only', 'planned', 'work', { isUrgent: true }),
+    ])
+
+    const both = screen.getByText('Both flags low').closest('li')!
+    const important = within(both).getByRole('img', { name: 'Important' })
+    const urgent = within(both).getByRole('img', { name: 'Urgent' })
+    expect(important).toHaveTextContent('')
+    expect(urgent).toHaveTextContent('')
+    // Flags are orthogonal to priority: a low-priority item still shows both.
+    expect(within(both).getByRole('img', { name: 'Priority: 低' })).toBeInTheDocument()
+    // Icon-only: neither flag contributes a visible text label.
+    expect(within(both).queryByText(/important|urgent/i)).not.toBeInTheDocument()
+
+    const noFlags = screen.getByText('No flags').closest('li')!
+    expect(within(noFlags).queryByRole('img', { name: 'Important' })).not.toBeInTheDocument()
+    expect(within(noFlags).queryByRole('img', { name: 'Urgent' })).not.toBeInTheDocument()
+
+    const importantOnly = screen.getByText('Important only').closest('li')!
+    expect(within(importantOnly).getByRole('img', { name: 'Important' })).toBeInTheDocument()
+    expect(within(importantOnly).queryByRole('img', { name: 'Urgent' })).not.toBeInTheDocument()
+
+    const urgentOnly = screen.getByText('Urgent only').closest('li')!
+    expect(within(urgentOnly).getByRole('img', { name: 'Urgent' })).toBeInTheDocument()
+    expect(within(urgentOnly).queryByRole('img', { name: 'Important' })).not.toBeInTheDocument()
+  })
+
   it('provides link to /plans page', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

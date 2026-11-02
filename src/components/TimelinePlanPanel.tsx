@@ -3,7 +3,7 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { Briefcase, LoaderCircle, User } from 'lucide-react'
+import { Briefcase, LoaderCircle, Star, User, Zap } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
@@ -47,6 +47,27 @@ function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
         'inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle',
         PLAN_ITEM_PRIORITY_TINTS[priority],
       )}
+    />
+  )
+}
+
+/** Important/urgent are icon-only annotations; priority never changes them. */
+function ImportantBadge() {
+  return (
+    <IconBadge
+      Icon={Star}
+      label="Important"
+      className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+    />
+  )
+}
+
+function UrgentBadge() {
+  return (
+    <IconBadge
+      Icon={Zap}
+      label="Urgent"
+      className="bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200"
     />
   )
 }
@@ -241,6 +262,18 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                       <ProjectScopeBadge scope={item.projectScope} />
                       {' '}
                       <PriorityTint priority={item.priority} />
+                      {item.isImportant && (
+                        <>
+                          {' '}
+                          <ImportantBadge />
+                        </>
+                      )}
+                      {item.isUrgent && (
+                        <>
+                          {' '}
+                          <UrgentBadge />
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}
