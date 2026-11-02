@@ -14,6 +14,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import {
   PLAN_ITEM_PRIORITY_LABELS,
+  PLAN_ITEM_PRIORITY_ROW_TINTS,
+  PLAN_ITEM_PRIORITY_TINTS,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
   PLAN_ITEM_STATUS_LABELS,
@@ -25,24 +27,6 @@ import type {
   PeriodPlanItemPriority,
   PeriodPlanItemStatus,
 } from '@/lib/db/schema'
-
-/**
- * Priority is a scannable background tint rather than an icon or text label.
- * Each value gets a distinct tint so the panel can be read at a glance while
- * remaining orthogonal to the important/urgent flag icons.
- */
-const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
-  high: 'bg-rose-500 dark:bg-rose-400',
-  normal: 'bg-gray-400 dark:bg-gray-500',
-  low: 'bg-sky-500 dark:bg-sky-400',
-}
-
-/** A softer version of the same tint fills the whole row for at-a-glance scanning. */
-const PLAN_ITEM_PRIORITY_ROW_TINTS: Record<PeriodPlanItemPriority, string> = {
-  high: 'bg-rose-50 dark:bg-rose-950/40',
-  normal: 'bg-muted/40',
-  low: 'bg-sky-50 dark:bg-sky-950/40',
-}
 
 function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
   return (
