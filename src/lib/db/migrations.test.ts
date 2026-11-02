@@ -176,7 +176,8 @@ describe('applyDatabaseMigrations', () => {
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'event_plan_references'").get()).toBeTruthy()
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_tokens'").get()).toBeTruthy()
     expect(sqlite.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'api_audit_log'").get()).toBeTruthy()
-    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 39 })
+    expect(columnNames(sqlite, 'period_plan_items')).toEqual(expect.arrayContaining(['is_important', 'is_urgent']))
+    expect(sqlite.prepare('SELECT COUNT(*) AS count FROM __drizzle_migrations').get()).toEqual({ count: 40 })
 
     sqlite.close()
   })
