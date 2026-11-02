@@ -313,13 +313,14 @@ describe('TimelinePlanPanel', () => {
     ])
 
     const cases = [
-      { text: 'High item', label: 'Priority: 高', tint: 'bg-rose-500' },
-      { text: 'Normal item', label: 'Priority: 中', tint: 'bg-gray-400' },
-      { text: 'Low item', label: 'Priority: 低', tint: 'bg-sky-500' },
+      { text: 'High item', label: 'Priority: 高', tint: 'bg-rose-500', rowTint: 'bg-rose-50' },
+      { text: 'Normal item', label: 'Priority: 中', tint: 'bg-gray-400', rowTint: 'bg-muted/40' },
+      { text: 'Low item', label: 'Priority: 低', tint: 'bg-sky-500', rowTint: 'bg-sky-50' },
     ] as const
 
-    for (const { text, label, tint } of cases) {
+    for (const { text, label, tint, rowTint } of cases) {
       const row = screen.getByText(text).closest('li')!
+      expect(row).toHaveClass(rowTint)
       const priority = within(row).getByRole('img', { name: label })
       expect(priority).toHaveClass(tint)
       expect(priority).toHaveTextContent('')

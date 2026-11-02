@@ -37,6 +37,13 @@ const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
   low: 'bg-sky-500 dark:bg-sky-400',
 }
 
+/** A softer version of the same tint fills the whole row for at-a-glance scanning. */
+const PLAN_ITEM_PRIORITY_ROW_TINTS: Record<PeriodPlanItemPriority, string> = {
+  high: 'bg-rose-50 dark:bg-rose-950/40',
+  normal: 'bg-muted/40',
+  low: 'bg-sky-50 dark:bg-sky-950/40',
+}
+
 function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
   return (
     <span
@@ -253,7 +260,14 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
             ) : (
               <ul className="space-y-2">
                 {visibleItems.map((item) => (
-                  <li key={item.id} className="flex items-start gap-2 text-sm">
+                  <li
+                    key={item.id}
+                    data-priority={item.priority}
+                    className={cn(
+                      'flex items-start gap-2 rounded-md px-1 py-0.5 text-sm',
+                      PLAN_ITEM_PRIORITY_ROW_TINTS[item.priority],
+                    )}
+                  >
                     <Badge variant="outline" className="shrink-0 font-mono text-xs">%{item.id}</Badge>
                     <div className="flex-1 font-medium">
                       {item.text}{' '}
