@@ -142,7 +142,17 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null }
       })
       if (!response.ok) throw new Error('Failed to update item' + traceSuffix(response))
       const updated: PeriodPlanItem = await response.json()
-      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)))
+      // PUT returns the bare item row, so carry the listing-only counts over to
+      // keep the fulfillment and comment badges visible after an inline edit.
+      setItems((prev) => prev.map((item) => (
+        item.id === id
+          ? {
+              ...updated,
+              fulfillmentCount: (item as PlanItemRowData).fulfillmentCount,
+              commentCount: (item as PlanItemRowData).commentCount,
+            }
+          : item
+      )))
       // Priority drives the server-side grouping order, so refetch to let a
       // changed item move to its new group. Other edits keep their place.
       if (updates.priority !== undefined) {
