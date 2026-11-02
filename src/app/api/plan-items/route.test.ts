@@ -208,6 +208,152 @@ describe('/api/plan-items', () => {
       expect(data.error.toLowerCase()).toContain('priority')
     })
 
+    it('should default both quadrant flags to false when not provided', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Plain task'
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.isImportant).toBe(false)
+      expect(data.isUrgent).toBe(false)
+    })
+
+    it('should create an item with both quadrant flags enabled', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Quadrant one task',
+          isImportant: true,
+          isUrgent: true
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.isImportant).toBe(true)
+      expect(data.isUrgent).toBe(true)
+    })
+
+    it('should accept a low priority item that is both important and urgent', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Deferred but important',
+          priority: 'low',
+          isImportant: true,
+          isUrgent: true
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(201)
+      expect(data.priority).toBe('low')
+      expect(data.isImportant).toBe(true)
+      expect(data.isUrgent).toBe(true)
+    })
+
+    it('should reject a non-boolean isImportant', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Task',
+          isImportant: 'yes'
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('isimportant')
+    })
+
+    it('should reject a non-boolean isUrgent', async () => {
+      const now = new Date()
+
+      const plan = testDb.insert(schema.periodPlans).values({
+        scope: 'week',
+        periodStart: '2026-10-12',
+        periodEnd: '2026-10-18',
+        monthKey: null,
+        createdAt: now,
+        updatedAt: now,
+      }).returning().all()
+
+      const request = new Request('http://localhost/api/plan-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periodPlanId: plan[0].id,
+          text: 'Task',
+          isUrgent: 1
+        }),
+      })
+      const response = await POST(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(400)
+      expect(data.error.toLowerCase()).toContain('isurgent')
+    })
+
     it('should default projectScope to work when not provided', async () => {      const now = new Date()
 
       const plan = testDb.insert(schema.periodPlans).values({
