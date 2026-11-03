@@ -324,8 +324,8 @@ async function composeMonthReview(planRow: PeriodPlan, monthItems: PeriodPlanIte
             weekPeriodStart: weekPlan.periodStart,
             weekPeriodEnd: weekPlan.periodEnd,
             fulfillmentCount,
-            // Exposed for the week-item comment sections tracked in #80; the
-            // month tree does not render comments on week children yet.
+            // Chain-aggregated like the month item's own count, so the
+            // child's badge equals what its expanded comment section shows.
             commentCount: childCommentCount
           }
         })

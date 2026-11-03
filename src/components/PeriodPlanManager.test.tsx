@@ -666,6 +666,119 @@ describe('PeriodPlanManager', () => {
     )
   })
 
+  it('shows and expands comment sections on attached week items inside the month tab', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          childItems: [makeChild({ id: 21, text: 'Week child', commentCount: 2 })],
+        },
+      ],
+    })
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/plan-items/21/comments')) {
+        return okJson({
+          comments: [
+            {
+              id: 401,
+              planItemId: 3,
+              content: 'Ancestor week blocker',
+              author: null,
+              createdAt: '2026-10-06T09:00:00.000Z',
+              sourcePeriod: {
+                scope: 'week',
+                periodStart: '2026-10-05',
+                periodEnd: '2026-10-11',
+                monthKey: null,
+                label: 'Week 2026-10-05 - 2026-10-11',
+              },
+            },
+            {
+              id: 402,
+              planItemId: 21,
+              content: 'Own week note',
+              author: null,
+              createdAt: '2026-10-13T09:00:00.000Z',
+            },
+          ],
+        })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    // The composed count badges the child before anything loads.
+    const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    expect(childRow.getByText('2 comments')).toBeInTheDocument()
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      '/api/plan-items/21/comments',
+      expect.anything(),
+    )
+
+    await user.click(childRow.getByLabelText('Toggle comments'))
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/plan-items/21/comments', expect.anything())
+    expect(await childRow.findByText('Ancestor week blocker')).toBeInTheDocument()
+    expect(childRow.getByText('Own week note')).toBeInTheDocument()
+    expect(childRow.getByText('Week 2026-10-05 - 2026-10-11')).toBeInTheDocument()
+  })
+
+  it('keeps a week child’s badge fresh after commenting and collapsing its group', async () => {
+    const user = userEvent.setup()
+    setupApi({
+      monthItems: [
+        {
+          ...makeItem({ id: 10, text: 'Month goal', periodPlanId: 2 }),
+          childItems: [makeChild({ id: 21, text: 'Week child', commentCount: 0 })],
+        },
+      ],
+    })
+    const createdComment = {
+      id: 501,
+      planItemId: 21,
+      content: 'Fresh note',
+      author: null,
+      createdAt: '2026-10-14T09:00:00.000Z',
+    }
+    const baseImplementation = mockFetch.getMockImplementation()!
+    mockFetch.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).startsWith('/api/plan-items/21/comments')) {
+        if (init?.method === 'POST') {
+          return Promise.resolve({ ok: true, status: 201, json: async () => createdComment })
+        }
+        // The section opens empty; only the POST brings the comment in.
+        return okJson({ comments: [] })
+      }
+      return baseImplementation(input, init)
+    })
+
+    render(<PeriodPlanManager initialScope="month" initialStart="2026-10-01" />)
+
+    expect(await screen.findByText('Month goal')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    await user.click(childRow.getByLabelText('Toggle comments'))
+    await user.type(await childRow.findByLabelText('New comment'), 'Fresh note{Enter}')
+
+    expect(await childRow.findByText('Fresh note')).toBeInTheDocument()
+    expect(childRow.getByText('1 comments')).toBeInTheDocument()
+
+    // Collapsing the group unmounts the child row; the remounted row must not
+    // fall back to the stale composed count from the original payload.
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+    await user.click(screen.getByLabelText('Toggle attached week items'))
+
+    const remountedRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+    expect(remountedRow.getByText('1 comments')).toBeInTheDocument()
+  })
+
   it('deep-links an attached week item to its week view', async () => {
     const user = userEvent.setup()
     setupApi({

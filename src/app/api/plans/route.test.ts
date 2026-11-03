@@ -760,6 +760,44 @@ describe('/api/plans', () => {
       expect(item.inheritedChildGroups).toEqual([])
     })
 
+    it('composes a child week item’s comment count across its deferral chain', async () => {
+      const monthPlan = createMonthPlan(testDb)
+      const goal = createItem(testDb, monthPlan.id, { text: 'Goal' })
+      const week2 = createWeekPlan(testDb, '2026-10-05', '2026-10-11')
+      const week3 = createWeekPlan(testDb, '2026-10-12', '2026-10-18')
+
+      const original = createItem(testDb, week2.id, { text: 'Deferred child', status: 'deferred' })
+      const successor = createItem(testDb, week3.id, {
+        text: 'Deferred child',
+        parentItemId: goal.id,
+        deferredFromItemId: original.id,
+      })
+      const unrelated = createItem(testDb, week3.id, {
+        text: 'Unrelated child',
+        parentItemId: goal.id,
+        position: 2,
+      })
+
+      testDb.insert(schema.planItemComments).values([
+        { planItemId: original.id, content: 'ancestor note', author: null, createdAt: now },
+        { planItemId: successor.id, content: 'successor note', author: null, createdAt: now },
+      ]).run()
+
+      const request = new Request('http://localhost/api/plans?scope=month&month=2026-10')
+      const response = await GET(request)
+      const data = await response.json()
+
+      expect(response.status).toBe(200)
+      const [item] = data.items
+      const byId = new Map<number, Record<string, unknown>>(
+        item.childItems.map((child: Record<string, unknown>) => [child.id as number, child])
+      )
+      // The composed badge equals what the child's expanded comment section
+      // shows: its own comments plus the deferral chain's ancestors.
+      expect(byId.get(successor.id)).toMatchObject({ commentCount: 2 })
+      expect(byId.get(unrelated.id)).toMatchObject({ commentCount: 0 })
+    })
+
     it('separates direct evidence from indirect evidence in the composed count', async () => {
       const monthPlan = createMonthPlan(testDb)
       const goal = createItem(testDb, monthPlan.id, { text: 'Goal' })

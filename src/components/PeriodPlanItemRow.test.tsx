@@ -1222,16 +1222,78 @@ describe('PeriodPlanItemRow', () => {
       )
     })
 
-    it('keeps child week item rows free of comment and edit controls', async () => {
+    it('offers the comment toggle on child week item rows while keeping text read-only', async () => {
       const user = userEvent.setup()
       renderMonthItem({ childItems: [makeChild({ id: 21 })] })
 
       await user.click(screen.getByLabelText('Toggle attached week items'))
 
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-      expect(childRow.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
+      expect(childRow.getByLabelText('Toggle comments')).toBeInTheDocument()
       // The text stays read-only inside the monthly review tree.
       expect(childRow.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    it('shows a child week item’s comment badge from the composed count without loading', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [makeChild({ id: 21, commentCount: 2 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      expect(childRow.getByText('2 comments')).toBeInTheDocument()
+      // Composed counts are eager in the payload; comments stay lazy.
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('expands a child week item’s comments with ancestor aggregation and source-period label', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          comments: [
+            {
+              id: 401,
+              planItemId: 3,
+              content: 'Ancestor week blocker',
+              author: null,
+              createdAt: '2026-10-06T09:00:00.000Z',
+              sourcePeriod: {
+                scope: 'week',
+                periodStart: '2026-10-05',
+                periodEnd: '2026-10-11',
+                monthKey: null,
+                label: 'Week 2026-10-05 - 2026-10-11',
+              },
+            },
+            {
+              id: 402,
+              planItemId: 21,
+              content: 'Own week note',
+              author: null,
+              createdAt: '2026-10-13T09:00:00.000Z',
+            },
+          ],
+        }),
+      })
+      renderMonthItem({ childItems: [makeChild({ id: 21, commentCount: 2 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Toggle comments'))
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/plan-items/21/comments', expect.anything())
+      expect(await childRow.findByText('Ancestor week blocker')).toBeInTheDocument()
+      expect(childRow.getByText('Own week note')).toBeInTheDocument()
+      // The ancestor comment keeps its source-period label and cannot be
+      // deleted from the successor week item.
+      expect(childRow.getByText('Week 2026-10-05 - 2026-10-11')).toBeInTheDocument()
+      expect(childRow.queryByLabelText('Delete comment 401')).not.toBeInTheDocument()
+      expect(childRow.getByLabelText('Delete comment 402')).toBeInTheDocument()
+      // The badge equals what expansion shows.
+      const list = childRow.getByRole('list')
+      expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+      expect(childRow.getByText('2 comments')).toBeInTheDocument()
     })
 
     it('offers status, priority and flag operations on attached week items', async () => {

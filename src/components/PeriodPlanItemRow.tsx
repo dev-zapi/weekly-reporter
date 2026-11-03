@@ -165,6 +165,13 @@ type Props = {
    * when a deep link targets this item (event-side cited-by locate).
    */
   autoExpandComments?: boolean
+  /**
+   * Report a locally loaded or mutated comment count upward. The listing
+   * payload owns the badge fallback a row shows before its section expands —
+   * and a week child row unmounts with its group, losing local state — so the
+   * payload must not go stale after an in-row append or delete.
+   */
+  onCommentCountChange?: (id: number, count: number) => void
 }
 
 export function PeriodPlanItemRow({
@@ -181,6 +188,7 @@ export function PeriodPlanItemRow({
   onAttach,
   childParentOptions = [],
   autoExpandComments = false,
+  onCommentCountChange,
   readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
@@ -280,6 +288,12 @@ export function PeriodPlanItemRow({
   // The badge must match what expansion shows, so a locally loaded list wins
   // over the server-provided count after an append or delete.
   const displayCommentCount = comments !== null ? comments.length : item.commentCount
+
+  // Sync loaded/mutated counts into the listing payload (see the prop doc):
+  // the manager owns the fallback a remounted row renders.
+  useEffect(() => {
+    if (comments !== null) onCommentCountChange?.(item.id, comments.length)
+  }, [comments, item.id, onCommentCountChange])
 
   const handleSubmitComment = async () => {
     const content = commentDraft.trim()
@@ -412,7 +426,7 @@ export function PeriodPlanItemRow({
               {item.directFulfillmentCount} direct · {item.indirectFulfillmentCount} indirect
             </span>
           )}
-        {!isWeekChild && typeof displayCommentCount === 'number' && (
+        {typeof displayCommentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{displayCommentCount} comments</Badge>
         )}
       </div>
@@ -465,8 +479,9 @@ export function PeriodPlanItemRow({
           </Button>
 
           {/* Attached week items are labelled by week and deep-link into that
-              week's tab. They share the monthly item's operation controls
-              below; only comments and structural controls stay month-side. */}
+              week's tab. They share the monthly item's operation and comment
+              controls below; only the attach picker and list-position moves
+              stay month-side. */}
           {isWeekChild && item.weekPeriodStart && item.weekPeriodEnd && (
             <Link
               href={buildPlansDeepLink('week', item.weekPeriodStart)}
@@ -498,17 +513,15 @@ export function PeriodPlanItemRow({
                 </select>
               )}
 
-              {!isWeekChild && (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={handleToggleComments}
-                  aria-label="Toggle comments"
-                  aria-expanded={commentsExpanded}
-                >
-                  <MessageSquare className="h-3 w-3" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={handleToggleComments}
+                aria-label="Toggle comments"
+                aria-expanded={commentsExpanded}
+              >
+                <MessageSquare className="h-3 w-3" />
+              </Button>
 
               {/* Operation parity (status, priority, flags, scope, defer, delete):
                   both monthly items and attached week items write through the same
@@ -671,6 +684,7 @@ export function PeriodPlanItemRow({
                         onUpdate={onUpdate}
                         onDelete={onDelete}
                         onDefer={onDefer}
+                        onCommentCountChange={onCommentCountChange}
                       />
                     </div>
                   ))}
@@ -753,7 +767,7 @@ export function PeriodPlanItemRow({
           </div>
         )}
 
-        {!isWeekChild && commentsExpanded && (
+        {commentsExpanded && (
           <div
             ref={commentsSectionRef}
             className={`space-y-2 rounded-md border bg-muted/40 p-2 ${

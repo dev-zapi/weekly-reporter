@@ -272,6 +272,27 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     void handleUpdateItem(childId, { parentItemId })
   }
 
+  // Comment writes happen inside rows, outside the item endpoints this
+  // component manages. Write the fresh count back into the listing payload so
+  // a week child row that remounts (its group collapses) does not fall back to
+  // a stale composed badge.
+  const handleCommentCountChange = useCallback((id: number, count: number) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id === id) return { ...item, commentCount: count }
+        if (item.childItems?.some((child) => child.id === id)) {
+          return {
+            ...item,
+            childItems: item.childItems.map((child) =>
+              child.id === id ? { ...child, commentCount: count } : child
+            ),
+          }
+        }
+        return item
+      })
+    )
+  }, [])
+
   const handleDeleteItem = async (id: number) => {
     try {
       const response = await apiFetch(`/api/plan-items/${id}`, { method: 'DELETE' })
@@ -411,6 +432,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               onDelete={handleDeleteItem}
               onDefer={handleDeferItem}
               onMove={handleMoveItem}
+              onCommentCountChange={handleCommentCountChange}
             />
           ))}
         </div>
