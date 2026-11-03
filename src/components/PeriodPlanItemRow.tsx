@@ -2,11 +2,20 @@
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Trash2, Forward } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, MessageSquare, Paperclip, Trash2, Forward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { formatSystemDateTime } from '@/lib/time-format'
+import { buildPlansDeepLink } from '@/lib/plan-links'
 import { PlanItemDeleteDialog } from './PlanItemDeleteDialog'
 import { ReferencePreviewDialog } from './ReferencePreviewDialog'
 import { ContentWithReferences } from './ContentWithReferences'
@@ -24,11 +33,76 @@ import type {
   ProjectScope,
 } from '@/lib/db/schema'
 
-/** A plan item enriched by GET /api/plans with its chain-aggregated fulfillment count. */
-export type PlanItemRowData = PeriodPlanItem & {
+/** An attached week item as composed by the month-scope plans response. */
+export type PlanChildItemData = {
+  id: number
+  text: string
+  status: PeriodPlanItemStatus
+  projectScope: ProjectScope
+  priority: PeriodPlanItemPriority
+  isImportant: boolean
+  isUrgent: boolean
+  weekPeriodStart: string
+  weekPeriodEnd: string
+  fulfillmentCount: number
+  commentCount: number
+}
+
+/**
+ * A week item attached to a deferral-chain ancestor's month item. The
+ * successor renders it as a read-only group so the ancestor month's evidence
+ * is inspectable in place; the item stays owned by that earlier month.
+ */
+export type PlanInheritedChildItem = Omit<PlanChildItemData, 'commentCount'>
+
+/** One ancestor month's inherited week items. */
+export type PlanInheritedChildGroup = {
+  ancestorItemId: number
+  ancestorMonth: string
+  items: PlanInheritedChildItem[]
+}
+
+/** An unparented week item offered by the month-scope attach candidates. */
+export type AttachCandidateItem = {
+  id: number
+  text: string
+  status: PeriodPlanItemStatus
+  projectScope: ProjectScope
+  priority: PeriodPlanItemPriority
+  isImportant: boolean
+  isUrgent: boolean
+}
+
+/** One week's unparented items, as grouped by the month-scope response. */
+export type AttachCandidateWeek = {
+  periodStart: string
+  periodEnd: string
+  items: AttachCandidateItem[]
+}
+
+/**
+ * The fields a row renders. Month-scope items carry composed counts and their
+ * attached week items; attached week items carry their week attribution.
+ */
+export type PlanRowItem = Pick<
+  PeriodPlanItem,
+  'id' | 'text' | 'status' | 'priority' | 'isImportant' | 'isUrgent' | 'projectScope'
+> & {
+  parentItemId?: number | null
+  periodPlanId?: number
+  position?: number
   fulfillmentCount?: number
   commentCount?: number
+  directFulfillmentCount?: number
+  indirectFulfillmentCount?: number
+  childItems?: PlanChildItemData[]
+  inheritedChildGroups?: PlanInheritedChildGroup[]
+  weekPeriodStart?: string
+  weekPeriodEnd?: string
 }
+
+/** A plan item enriched by GET /api/plans with its chain-aggregated counts. */
+export type PlanItemRowData = PlanRowItem
 
 /** One plan-side comment as returned by the comments collection endpoint. */
 export type PlanCommentView = {
@@ -60,8 +134,8 @@ type FulfillingEventView = {
 }
 
 type Props = {
-  item: PlanItemRowData
-  parentOptions?: PeriodPlanItem[]
+  item: PlanRowItem
+  parentOptions?: PlanRowItem[]
   showParentSelector?: boolean
   canMoveUp?: boolean
   canMoveDown?: boolean
@@ -69,6 +143,23 @@ type Props = {
   onDelete: (id: number) => void
   onDefer: (id: number) => void
   onMove?: (id: number, direction: 'up' | 'down') => void
+  /**
+   * Month scope: the month's unparented week items grouped by week. The picker
+   * on each monthly item attaches one of them via the existing update endpoint.
+   */
+  attachCandidates?: AttachCandidateWeek[]
+  onAttach?: (childId: number, parentItemId: number) => void
+  /**
+   * Month scope: the month's items, offered to an attached week item so it can
+   * be detached or re-parented in place.
+   */
+  childParentOptions?: PlanRowItem[]
+  /**
+   * Render the row for review only: fulfillment expansion and the week deep
+   * link stay available, but operation controls are hidden. Used for week
+   * items inherited from a deferred ancestor's month.
+   */
+  readOnly?: boolean
   /**
    * Expand and highlight the comment section on mount. Set by the plans page
    * when a deep link targets this item (event-side cited-by locate).
@@ -86,7 +177,11 @@ export function PeriodPlanItemRow({
   onDelete,
   onDefer,
   onMove,
+  attachCandidates = [],
+  onAttach,
+  childParentOptions = [],
   autoExpandComments = false,
+  readOnly = false,
 }: Props) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState(item.text)
@@ -107,6 +202,16 @@ export function PeriodPlanItemRow({
   // Comment citations open a read-only event preview; there is no timeline
   // filter to locate into from the plans page.
   const [previewEventId, setPreviewEventId] = useState<number | null>(null)
+  // Attached week items are eager in the month-scope payload, so revealing
+  // them is a local toggle; only their fulfilling events load lazily.
+  const [childrenExpanded, setChildrenExpanded] = useState(false)
+  const [inheritedExpanded, setInheritedExpanded] = useState(false)
+  const [attachOpen, setAttachOpen] = useState(false)
+
+  // Attached week items render through this same component in a read-only
+  // shape: they carry their week attribution instead of month-item controls.
+  const isWeekChild =
+    typeof item.weekPeriodStart === 'string' && typeof item.weekPeriodEnd === 'string'
 
   // Lazily load fulfilling events on first expansion so the plans list stays
   // cheap for the common collapsed case.
@@ -299,13 +404,23 @@ export function PeriodPlanItemRow({
         {typeof item.fulfillmentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{item.fulfillmentCount} fulfilled</Badge>
         )}
-        {typeof displayCommentCount === 'number' && (
+        {/* Composed month badge: evidence citing the item itself (its deferral
+            chain) versus evidence routed through attached week items. */}
+        {typeof item.directFulfillmentCount === 'number' &&
+          typeof item.indirectFulfillmentCount === 'number' && (
+            <span className="text-xs text-muted-foreground">
+              {item.directFulfillmentCount} direct · {item.indirectFulfillmentCount} indirect
+            </span>
+          )}
+        {!isWeekChild && typeof displayCommentCount === 'number' && (
           <Badge variant="secondary" className="text-xs">{displayCommentCount} comments</Badge>
         )}
       </div>
 
       <div className="flex-1 space-y-2">
-        {editing ? (
+        {isWeekChild ? (
+          <div className="text-sm">{item.text}</div>
+        ) : editing ? (
           <div className="flex gap-2">
             <Input
               value={editText}
@@ -349,129 +464,266 @@ export function PeriodPlanItemRow({
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           </Button>
 
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleToggleComments}
-            aria-label="Toggle comments"
-            aria-expanded={commentsExpanded}
-          >
-            <MessageSquare className="h-3 w-3" />
-          </Button>
-
-          <select
-            value={item.status}
-            onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Status"
-          >
-            {PLAN_ITEM_STATUS_ORDER.map((status) => (
-              <option key={status} value={status}>
-                {PLAN_ITEM_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={item.priority}
-            onChange={(event) => handlePriorityChange(event.target.value as PeriodPlanItemPriority)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Priority"
-          >
-            {PLAN_ITEM_PRIORITY_ORDER.map((priority) => (
-              <option key={priority} value={priority}>
-                {PLAN_ITEM_PRIORITY_LABELS[priority]}
-              </option>
-            ))}
-          </select>
-
-          <Button
-            type="button"
-            variant={item.isImportant ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7 px-2 text-xs"
-            aria-label="Toggle plan item important flag"
-            aria-pressed={item.isImportant}
-            onClick={handleImportantToggle}
-          >
-            Important
-          </Button>
-
-          <Button
-            type="button"
-            variant={item.isUrgent ? 'secondary' : 'outline'}
-            size="sm"
-            className="h-7 px-2 text-xs"
-            aria-label="Toggle plan item urgent flag"
-            aria-pressed={item.isUrgent}
-            onClick={handleUrgentToggle}
-          >
-            Urgent
-          </Button>
-
-          <select
-            value={item.projectScope}
-            onChange={(event) => handleProjectScopeChange(event.target.value as ProjectScope)}
-            className="h-7 rounded border bg-transparent px-2 text-xs"
-            aria-label="Project scope"
-          >
-            <option value="work">Work</option>
-            <option value="personal">Personal</option>
-          </select>
-
-          {(showParentSelector || parentOptions.length > 0) && (
-            <select
-              value={item.parentItemId ?? ''}
-              onChange={(event) => handleParentChange(event.target.value)}
-              className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
-              aria-label="Parent month item"
+          {/* Attached week items are labelled by week and deep-link into that
+              week's tab. They share the monthly item's operation controls
+              below; only comments and structural controls stay month-side. */}
+          {isWeekChild && item.weekPeriodStart && item.weekPeriodEnd && (
+            <Link
+              href={buildPlansDeepLink('week', item.weekPeriodStart)}
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
             >
-              <option value="">No month parent</option>
-              {parentOptions.map((parent) => (
-                <option key={parent.id} value={parent.id}>
-                  {parent.text}
-                </option>
-              ))}
-            </select>
+              Week {item.weekPeriodStart} - {item.weekPeriodEnd}
+            </Link>
           )}
 
-          {onMove && (
+          {/* Inherited rows are review-only: expansion and the week deep link
+              stay, while every write control is hidden. */}
+          {!readOnly && (
             <>
+              {/* Attached week items detach or re-parent in place through the same
+                  parent-link update the week tab uses. */}
+              {isWeekChild && parentOptions.length > 0 && (
+                <select
+                  value={item.parentItemId ?? ''}
+                  onChange={(event) => handleParentChange(event.target.value)}
+                  className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
+                  aria-label="Parent month item"
+                >
+                  <option value="">No month parent</option>
+                  {parentOptions.map((parent) => (
+                    <option key={parent.id} value={parent.id}>
+                      {parent.text}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {!isWeekChild && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleToggleComments}
+                  aria-label="Toggle comments"
+                  aria-expanded={commentsExpanded}
+                >
+                  <MessageSquare className="h-3 w-3" />
+                </Button>
+              )}
+
+              {/* Operation parity (status, priority, flags, scope, defer, delete):
+                  both monthly items and attached week items write through the same
+                  plan-item endpoints. */}
+              <select
+                value={item.status}
+                onChange={(event) => handleStatusChange(event.target.value as PeriodPlanItemStatus)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Status"
+              >
+                {PLAN_ITEM_STATUS_ORDER.map((status) => (
+                  <option key={status} value={status}>
+                    {PLAN_ITEM_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={item.priority}
+                onChange={(event) => handlePriorityChange(event.target.value as PeriodPlanItemPriority)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Priority"
+              >
+                {PLAN_ITEM_PRIORITY_ORDER.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {PLAN_ITEM_PRIORITY_LABELS[priority]}
+                  </option>
+                ))}
+              </select>
+
+              <Button
+                type="button"
+                variant={item.isImportant ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                aria-label="Toggle plan item important flag"
+                aria-pressed={item.isImportant}
+                onClick={handleImportantToggle}
+              >
+                Important
+              </Button>
+
+              <Button
+                type="button"
+                variant={item.isUrgent ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                aria-label="Toggle plan item urgent flag"
+                aria-pressed={item.isUrgent}
+                onClick={handleUrgentToggle}
+              >
+                Urgent
+              </Button>
+
+              <select
+                value={item.projectScope}
+                onChange={(event) => handleProjectScopeChange(event.target.value as ProjectScope)}
+                className="h-7 rounded border bg-transparent px-2 text-xs"
+                aria-label="Project scope"
+              >
+                <option value="work">Work</option>
+                <option value="personal">Personal</option>
+              </select>
+
+              {!isWeekChild && (showParentSelector || parentOptions.length > 0) && (
+                <select
+                  value={item.parentItemId ?? ''}
+                  onChange={(event) => handleParentChange(event.target.value)}
+                  className="h-7 max-w-[12rem] rounded border bg-transparent px-2 text-xs"
+                  aria-label="Parent month item"
+                >
+                  <option value="">No month parent</option>
+                  {parentOptions.map((parent) => (
+                    <option key={parent.id} value={parent.id}>
+                      {parent.text}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {!isWeekChild && onMove && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onMove(item.id, 'up')}
+                    disabled={!canMoveUp}
+                    aria-label="Move up"
+                  >
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onMove(item.id, 'down')}
+                    disabled={!canMoveDown}
+                    aria-label="Move down"
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+
               <Button
                 variant="ghost"
                 size="icon-xs"
-                onClick={() => onMove(item.id, 'up')}
-                disabled={!canMoveUp}
-                aria-label="Move up"
+                onClick={handleDefer}
+                disabled={!canDefer}
+                title={canDefer ? 'Defer to next period' : 'Only incomplete items can be deferred'}
+                aria-label="Defer to next period"
               >
-                <ArrowUp className="h-3 w-3" />
+                <Forward className="h-3 w-3" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onMove(item.id, 'down')}
-                disabled={!canMoveDown}
-                aria-label="Move down"
-              >
-                <ArrowDown className="h-3 w-3" />
+              <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
+                <Trash2 className="h-3 w-3" />
               </Button>
+
+              {/* Attaching a week item is month-side only; attached week items keep
+                  the shared operation controls above. */}
+              {!isWeekChild && onAttach && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  aria-label="Attach week item"
+                  onClick={() => setAttachOpen(true)}
+                >
+                  <Paperclip className="h-3 w-3" />
+                  Attach
+                </Button>
+              )}
             </>
           )}
-
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleDefer}
-            disabled={!canDefer}
-            title={canDefer ? 'Defer to next period' : 'Only incomplete items can be deferred'}
-            aria-label="Defer to next period"
-          >
-            <Forward className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon-xs" onClick={handleDelete} aria-label="Delete item">
-            <Trash2 className="h-3 w-3" />
-          </Button>
         </div>
+
+        {!isWeekChild && Array.isArray(item.childItems) && (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setChildrenExpanded((prev) => !prev)}
+              aria-label="Toggle attached week items"
+              aria-expanded={childrenExpanded}
+            >
+              {childrenExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Attached week items ({item.childItems.length})
+            </Button>
+
+            {childrenExpanded && (
+              item.childItems.length === 0 ? (
+                <div className="text-xs text-muted-foreground">No attached week items</div>
+              ) : (
+                <div className="space-y-2 pl-3">
+                  {item.childItems.map((child) => (
+                    <div key={child.id} role="group" aria-label={`Week item ${child.text}`}>
+                      <PeriodPlanItemRow
+                        item={{ ...child, parentItemId: item.id }}
+                        parentOptions={childParentOptions}
+                        onUpdate={onUpdate}
+                        onDelete={onDelete}
+                        onDefer={onDefer}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
+
+        {!isWeekChild && Array.isArray(item.inheritedChildGroups) && item.inheritedChildGroups.length > 0 && (
+          <div className="space-y-2 rounded-md border bg-muted/40 p-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={() => setInheritedExpanded((prev) => !prev)}
+              aria-label="Toggle inherited week items"
+              aria-expanded={inheritedExpanded}
+            >
+              {inheritedExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              Inherited week items (
+              {item.inheritedChildGroups.reduce((total, group) => total + group.items.length, 0)})
+            </Button>
+
+            {inheritedExpanded && (
+              <div className="space-y-2 pl-3">
+                {item.inheritedChildGroups.map((group) => (
+                  <div
+                    key={group.ancestorItemId}
+                    role="group"
+                    aria-label={`Inherited from ${group.ancestorMonth}`}
+                    className="space-y-2"
+                  >
+                    <div className="text-xs font-medium text-muted-foreground">
+                      From {group.ancestorMonth}
+                    </div>
+                    {group.items.map((child) => (
+                      <div key={child.id} role="group" aria-label={`Inherited week item ${child.text}`}>
+                        <PeriodPlanItemRow
+                          item={child}
+                          onUpdate={onUpdate}
+                          onDelete={onDelete}
+                          onDefer={onDefer}
+                          readOnly
+                        />
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {expanded && (
           <div className="space-y-2 rounded-md border bg-muted/40 p-2">
@@ -491,7 +743,9 @@ export function PeriodPlanItemRow({
                         {event.isManual ? 'Manual' : 'Collected'}
                       </Badge>
                     </div>
-                    <div className="text-sm line-clamp-2">{event.content}</div>
+                    <div className={isWeekChild ? 'whitespace-pre-wrap text-sm' : 'text-sm line-clamp-2'}>
+                      {event.content}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -499,7 +753,7 @@ export function PeriodPlanItemRow({
           </div>
         )}
 
-        {commentsExpanded && (
+        {!isWeekChild && commentsExpanded && (
           <div
             ref={commentsSectionRef}
             className={`space-y-2 rounded-md border bg-muted/40 p-2 ${
@@ -573,6 +827,54 @@ export function PeriodPlanItemRow({
           </div>
         )}
       </div>
+
+      {!isWeekChild && onAttach && (
+        <Dialog open={attachOpen} onOpenChange={setAttachOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Attach week item</DialogTitle>
+              <DialogDescription>
+                Only unparented week items from the weeks of this month are listed.
+              </DialogDescription>
+            </DialogHeader>
+
+            {attachCandidates.length === 0 ? (
+              <div className="text-sm text-muted-foreground">
+                No unparented week items in this month.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {attachCandidates.map((week) => (
+                  <div
+                    key={week.periodStart}
+                    role="group"
+                    aria-label={`Week ${week.periodStart} - ${week.periodEnd}`}
+                    className="space-y-1"
+                  >
+                    <div className="text-xs font-medium text-muted-foreground">
+                      Week {week.periodStart} - {week.periodEnd}
+                    </div>
+                    {week.items.map((candidate) => (
+                      <Button
+                        key={candidate.id}
+                        variant="ghost"
+                        size="sm"
+                        className="flex h-auto w-full justify-start px-2 py-1 text-left text-sm"
+                        onClick={() => {
+                          onAttach(candidate.id, item.id)
+                          setAttachOpen(false)
+                        }}
+                      >
+                        {candidate.text}
+                      </Button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ReferencePreviewDialog
         eventId={previewEventId}

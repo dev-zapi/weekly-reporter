@@ -2,6 +2,7 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { PeriodPlanItemRow } from './PeriodPlanItemRow'
+import type { AttachCandidateWeek, PlanRowItem } from './PeriodPlanItemRow'
 
 const mockFetch = vi.fn()
 global.fetch = mockFetch as unknown as typeof fetch
@@ -998,6 +999,397 @@ describe('PeriodPlanItemRow', () => {
 
       expect(await screen.findByText('Event Not Found')).toBeInTheDocument()
       expect(screen.getByText(/does not exist or has been deleted/i)).toBeInTheDocument()
+    })
+  })
+
+  describe('monthly review tree', () => {
+    type ChildItem = {
+      id: number
+      text: string
+      status: 'planned' | 'in_progress' | 'done' | 'cancelled' | 'deferred'
+      projectScope: 'work' | 'personal'
+      priority: 'high' | 'normal' | 'low'
+      isImportant: boolean
+      isUrgent: boolean
+      weekPeriodStart: string
+      weekPeriodEnd: string
+      fulfillmentCount: number
+      commentCount: number
+    }
+
+    function makeChild(overrides: Partial<ChildItem> = {}): ChildItem {
+      return {
+        id: 21,
+        text: 'Week child',
+        status: 'planned',
+        projectScope: 'work',
+        priority: 'normal',
+        isImportant: false,
+        isUrgent: false,
+        weekPeriodStart: '2026-10-12',
+        weekPeriodEnd: '2026-10-18',
+        fulfillmentCount: 0,
+        commentCount: 0,
+        ...overrides,
+      }
+    }
+
+    function renderMonthItem(
+      overrides: Record<string, unknown> = {},
+      props: Partial<{
+        onUpdate: typeof mockOnUpdate
+        onDelete: typeof mockOnDelete
+        onDefer: typeof mockOnDefer
+        attachCandidates: AttachCandidateWeek[]
+        onAttach: (childId: number, parentItemId: number) => void
+        childParentOptions: PlanRowItem[]
+      }> = {},
+    ) {
+      return render(
+        <PeriodPlanItemRow
+          item={{
+            ...mockItem,
+            id: 10,
+            text: 'Month goal',
+            periodPlanId: 2,
+            ...overrides,
+          }}
+          onUpdate={props.onUpdate ?? mockOnUpdate}
+          onDelete={props.onDelete ?? mockOnDelete}
+          onDefer={props.onDefer ?? mockOnDefer}
+          attachCandidates={props.attachCandidates}
+          onAttach={props.onAttach}
+          childParentOptions={props.childParentOptions}
+        />
+      )
+    }
+
+    it('shows the composed fulfillment badge with its direct and indirect breakdown', () => {
+      renderMonthItem({
+        fulfillmentCount: 5,
+        directFulfillmentCount: 2,
+        indirectFulfillmentCount: 3,
+        childItems: [],
+      })
+
+      expect(screen.getByText('5 fulfilled')).toBeInTheDocument()
+      expect(screen.getByText('2 direct · 3 indirect')).toBeInTheDocument()
+    })
+
+    it('reveals attached week items labeled with their week when expanded', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({
+        fulfillmentCount: 2,
+        directFulfillmentCount: 1,
+        indirectFulfillmentCount: 1,
+        childItems: [
+          makeChild({ id: 21, text: 'High child', priority: 'high', weekPeriodStart: '2026-10-12', weekPeriodEnd: '2026-10-18' }),
+          makeChild({ id: 22, text: 'Normal child', priority: 'normal', weekPeriodStart: '2026-10-26', weekPeriodEnd: '2026-11-01' }),
+        ],
+      })
+
+      expect(screen.queryByText('High child')).not.toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      expect(screen.getByText('High child')).toBeInTheDocument()
+      expect(screen.getByText('Normal child')).toBeInTheDocument()
+      // The API already orders children; the row must not reorder them.
+      const childTexts = screen
+        .getAllByText(/^(High|Normal) child$/)
+        .map((element) => element.textContent)
+      expect(childTexts).toEqual(['High child', 'Normal child'])
+      expect(screen.getByText('Week 2026-10-12 - 2026-10-18')).toBeInTheDocument()
+      expect(screen.getByText('Week 2026-10-26 - 2026-11-01')).toBeInTheDocument()
+    })
+
+    it('lazily loads a child week item’s fulfilling events with full text', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          events: [
+            {
+              id: 31,
+              content: 'A very long fulfilling event that used to be clamped to two lines',
+              eventTime: '2026-10-14T09:00:00.000Z',
+              isManual: true,
+            },
+          ],
+        }),
+      })
+      renderMonthItem({
+        fulfillmentCount: 1,
+        directFulfillmentCount: 0,
+        indirectFulfillmentCount: 1,
+        childItems: [makeChild({ id: 21, text: 'Week child' })],
+      })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      expect(mockFetch).not.toHaveBeenCalled()
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Toggle fulfillment events'))
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/plan-items/21/fulfillment'),
+          expect.anything(),
+        )
+      })
+      const event = await screen.findByText(
+        'A very long fulfilling event that used to be clamped to two lines',
+      )
+      // Full text in the monthly review, not a truncated preview.
+      expect(event).not.toHaveClass('line-clamp-2')
+    })
+
+    it('links a child week item to its week view', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      const link = screen.getByRole('link', { name: 'Week 2026-10-12 - 2026-10-18' })
+      expect(link).toHaveAttribute('href', '/plans?scope=week&start=2026-10-12')
+    })
+
+    it('renders inherited week items from ancestor months as a read-only, expandable group', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          events: [
+            {
+              id: 51,
+              content: 'Inherited evidence',
+              eventTime: '2026-09-09T09:00:00.000Z',
+              isManual: true,
+            },
+          ],
+        }),
+      })
+      renderMonthItem({
+        fulfillmentCount: 1,
+        directFulfillmentCount: 0,
+        indirectFulfillmentCount: 1,
+        childItems: [],
+        inheritedChildGroups: [
+          {
+            ancestorItemId: 99,
+            ancestorMonth: '2026-09',
+            items: [
+              {
+                id: 41,
+                text: 'Inherited child',
+                status: 'planned',
+                projectScope: 'work',
+                priority: 'normal',
+                isImportant: false,
+                isUrgent: false,
+                weekPeriodStart: '2026-09-07',
+                weekPeriodEnd: '2026-09-13',
+                fulfillmentCount: 1,
+              },
+            ],
+          },
+        ],
+      })
+
+      expect(screen.queryByText('Inherited child')).not.toBeInTheDocument()
+      await user.click(screen.getByLabelText('Toggle inherited week items'))
+
+      expect(screen.getByText('From 2026-09')).toBeInTheDocument()
+      const row = within(
+        screen.getByRole('group', { name: 'Inherited week item Inherited child' }),
+      )
+      expect(row.getByText('Inherited child')).toBeInTheDocument()
+      expect(row.getByText('Week 2026-09-07 - 2026-09-13')).toBeInTheDocument()
+      // Review-only: no write or comment controls.
+      expect(row.queryByLabelText('Status')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Priority')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Defer to next period')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Delete item')).not.toBeInTheDocument()
+      expect(row.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
+
+      // Its fulfilling events expand in place, so the indirect badge is
+      // inspectable without navigating to the ancestor month.
+      await user.click(row.getByLabelText('Toggle fulfillment events'))
+      expect(await screen.findByText('Inherited evidence')).toBeInTheDocument()
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/plan-items/41/fulfillment'),
+        expect.anything(),
+      )
+    })
+
+    it('keeps child week item rows free of comment and edit controls', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      expect(childRow.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
+      // The text stays read-only inside the monthly review tree.
+      expect(childRow.queryByRole('textbox')).not.toBeInTheDocument()
+    })
+
+    it('offers status, priority and flag operations on attached week items', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.selectOptions(childRow.getByLabelText('Status'), 'done')
+      await user.selectOptions(childRow.getByLabelText('Priority'), 'high')
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item important flag' }))
+      await user.click(childRow.getByRole('button', { name: 'Toggle plan item urgent flag' }))
+
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { status: 'done' })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { priority: 'high' })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { isImportant: true })
+      expect(mockOnUpdate).toHaveBeenCalledWith(21, { isUrgent: true })
+    })
+
+    it('defers an attached week item after confirmation', async () => {
+      const user = userEvent.setup()
+      vi.spyOn(window, 'confirm').mockReturnValue(true)
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Defer to next period'))
+
+      expect(mockOnDefer).toHaveBeenCalledWith(21)
+    })
+
+    it('warns about referring events before deleting an attached week item', async () => {
+      const user = userEvent.setup()
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          referrers: [
+            { id: 11, content: 'Worked on %21', eventTime: '2026-10-14T09:00:00.000Z' },
+          ],
+        }),
+      })
+      renderMonthItem({ childItems: [makeChild({ id: 21 })] })
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      await user.click(childRow.getByLabelText('Delete item'))
+
+      expect(await screen.findByText('Worked on %21')).toBeInTheDocument()
+      expect(screen.getByText(/referenced by 1 event/i)).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /^delete$/i }))
+
+      expect(mockOnDelete).toHaveBeenCalledWith(21)
+    })
+
+    it('offers only the provided attach candidates, grouped by week, and reports the pick', async () => {
+      const user = userEvent.setup()
+      const onAttach = vi.fn()
+      renderMonthItem(
+        { childItems: [] },
+        {
+          attachCandidates: [
+            {
+              periodStart: '2026-10-12',
+              periodEnd: '2026-10-18',
+              items: [
+                {
+                  id: 31,
+                  text: 'High unparented',
+                  status: 'planned',
+                  projectScope: 'work',
+                  priority: 'high',
+                  isImportant: false,
+                  isUrgent: false,
+                },
+              ],
+            },
+            {
+              periodStart: '2026-10-26',
+              periodEnd: '2026-11-01',
+              items: [
+                {
+                  id: 33,
+                  text: 'Late unparented',
+                  status: 'in_progress',
+                  projectScope: 'personal',
+                  priority: 'low',
+                  isImportant: false,
+                  isUrgent: false,
+                },
+              ],
+            },
+          ],
+          onAttach,
+        },
+      )
+
+      // The top-level monthly row has no parent selector of its own.
+      expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+
+      await user.click(screen.getByLabelText('Attach week item'))
+      const dialog = within(await screen.findByRole('dialog'))
+
+      const week3 = within(dialog.getByRole('group', { name: 'Week 2026-10-12 - 2026-10-18' }))
+      const week5 = within(dialog.getByRole('group', { name: 'Week 2026-10-26 - 2026-11-01' }))
+      expect(week3.getByRole('button', { name: 'High unparented' })).toBeInTheDocument()
+      expect(week5.getByRole('button', { name: 'Late unparented' })).toBeInTheDocument()
+
+      await user.click(week3.getByRole('button', { name: 'High unparented' }))
+
+      expect(onAttach).toHaveBeenCalledWith(31, 10)
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    })
+
+    it('shows an empty message when the month has no unparented candidates', async () => {
+      const user = userEvent.setup()
+      renderMonthItem({ childItems: [] }, { attachCandidates: [], onAttach: vi.fn() })
+
+      await user.click(screen.getByLabelText('Attach week item'))
+
+      expect(
+        await screen.findByText('No unparented week items in this month.'),
+      ).toBeInTheDocument()
+    })
+
+    it('detaches and re-parents an attached week item in place', async () => {
+      const user = userEvent.setup()
+      const onUpdate = vi.fn()
+      renderMonthItem(
+        { childItems: [makeChild({ id: 21, text: 'Week child' })] },
+        {
+          onUpdate,
+          childParentOptions: [
+            { ...mockItem, id: 10, text: 'Month goal' },
+            { ...mockItem, id: 11, text: 'Other goal' },
+          ],
+        },
+      )
+
+      await user.click(screen.getByLabelText('Toggle attached week items'))
+      const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
+      const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+
+      // The current parent is selected, detach is the empty option, and only
+      // the month's own items are offered as re-parent targets.
+      expect(parentSelect.value).toBe('10')
+      expect(within(parentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'No month parent',
+        'Month goal',
+        'Other goal',
+      ])
+
+      await user.selectOptions(parentSelect, '11')
+      expect(onUpdate).toHaveBeenCalledWith(21, { parentItemId: 11 })
+
+      await user.selectOptions(parentSelect, '')
+      expect(onUpdate).toHaveBeenCalledWith(21, { parentItemId: null })
     })
   })
 })

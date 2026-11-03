@@ -34,25 +34,35 @@ export async function getFulfillmentChain(itemId: number): Promise<number[]> {
 }
 
 /**
+ * Distinct event ids referencing any of the given plan items.
+ *
+ * Callers that combine several items' evidence (for example a month item plus
+ * the deferral chains of every attached week item) pass the union of their
+ * chain ids here so overlapping evidence is counted once. Unlike
+ * getFulfillmentCount this does not walk chains itself.
+ */
+export async function getFulfillmentEventIds(itemIds: number[]): Promise<Set<number>> {
+  if (itemIds.length === 0) return new Set()
+
+  const db = getDb()
+  const distinctEvents = await db
+    .selectDistinct({ eventId: eventPlanReferences.eventId })
+    .from(eventPlanReferences)
+    .where(inArray(eventPlanReferences.planItemId, itemIds))
+    .all()
+
+  return new Set(distinctEvents.map((row) => row.eventId))
+}
+
+/**
  * Count fulfilling events for an item and its deferral chain ancestors.
  * Counts distinct events: an event that references two items in the same
  * deferral chain is a single piece of work and must count once.
  */
 export async function getFulfillmentCount(itemId: number): Promise<number> {
-  const db = getDb()
   const chain = await getFulfillmentChain(itemId)
-
-  if (chain.length === 0) {
-    return 0
-  }
-
-  const distinctEvents = await db
-    .selectDistinct({ eventId: eventPlanReferences.eventId })
-    .from(eventPlanReferences)
-    .where(inArray(eventPlanReferences.planItemId, chain))
-    .all()
-
-  return distinctEvents.length
+  const eventIds = await getFulfillmentEventIds(chain)
+  return eventIds.size
 }
 
 export interface FulfillingEvent {
