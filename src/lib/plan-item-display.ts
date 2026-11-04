@@ -15,12 +15,17 @@ export const PLAN_ITEM_STATUS_LABELS: Record<PeriodPlanItemStatus, string> = {
   deferred: 'Deferred',
 }
 
+/**
+ * Fixed-light status tones from DESIGN.md. These badges render inside the
+ * Numbered Evidence surfaces, which keep their palette in both themes; no
+ * `dark:` variants belong here.
+ */
 export const PLAN_ITEM_STATUS_COLORS: Record<PeriodPlanItemStatus, string> = {
-  planned: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  in_progress: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  done: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  cancelled: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  deferred: 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200',
+  planned: 'rounded-[3px] border-[#c3d0dd] bg-[#eef2f6] text-[#42546a]',
+  in_progress: 'rounded-[3px] border-[#b9cdf0] bg-[#eaf1fd] text-[#214fae]',
+  done: 'rounded-[3px] border-[#b9dcc8] bg-[#e9f5ee] text-[#18794e]',
+  cancelled: 'rounded-[3px] border-[#e4bcbc] bg-[#fff1f1] text-[#a43b3b]',
+  deferred: 'rounded-[3px] border-[#eccf9c] bg-[#fff3dd] text-[#8a4d05]',
 }
 
 export const PLAN_ITEM_STATUS_ORDER = Object.keys(
@@ -55,19 +60,11 @@ export const PLAN_ITEM_PRIORITY_ORDER = Object.keys(
 ) as PeriodPlanItemPriority[]
 
 /**
- * Priority is a scannable background tint rather than an icon or text label.
- * Each value gets a distinct tint so the timeline panel can be read at a
- * glance while remaining orthogonal to the important/urgent flag icons.
+ * Priority dot tones from the fixed-light palette. The visible priority label
+ * carries the meaning; the dot is a secondary cue, never the only signal.
  */
 export const PLAN_ITEM_PRIORITY_TINTS: Record<PeriodPlanItemPriority, string> = {
-  high: 'bg-rose-500 dark:bg-rose-400',
-  normal: 'bg-gray-400 dark:bg-gray-500',
-  low: 'bg-sky-500 dark:bg-sky-400',
-}
-
-/** A softer version of the same tint fills the whole row for at-a-glance scanning. */
-export const PLAN_ITEM_PRIORITY_ROW_TINTS: Record<PeriodPlanItemPriority, string> = {
-  high: 'bg-rose-50 dark:bg-rose-950/40',
-  normal: 'bg-muted/40',
-  low: 'bg-sky-50 dark:bg-sky-950/40',
+  high: 'bg-[#214fae]',
+  normal: 'bg-[#8fa5bd]',
+  low: 'bg-[#cbd6e2]',
 }

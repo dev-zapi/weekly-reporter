@@ -9,18 +9,26 @@ import {
   subMonths,
   startOfWeek,
 } from 'date-fns'
-import { ChevronLeft, ChevronRight, Plus, LoaderCircle } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Activity,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from 'lucide-react'
 import {
   PeriodPlanItemRow,
   type AttachCandidateWeek,
   type PlanChildItemData,
   type PlanItemRowData,
 } from './PeriodPlanItemRow'
+import { PlanContextPanel } from './PlanContextPanel'
 import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
+import {
+  PLAN_ITEM_STATUS_LABELS,
+  PLAN_ITEM_STATUS_ORDER,
+} from '@/lib/plan-item-display'
+import styles from './plan-surface.module.css'
 import type { PeriodPlan, PeriodPlanItem, PeriodPlanScope } from '@/lib/db/schema'
 
 type PlanResponse = {
@@ -91,6 +99,20 @@ function sameGroupNeighbour(
   return items[neighbour].priority === items[index].priority ? neighbour : null
 }
 
+/** Resolve a top-level, attached, or inherited row for the context inspector. */
+function findPlanItem(items: PlanItemRowData[], id: number): PlanItemRowData | null {
+  for (const item of items) {
+    if (item.id === id) return item
+    const child = item.childItems?.find((candidate) => candidate.id === id)
+    if (child) return child
+    for (const group of item.inheritedChildGroups ?? []) {
+      const inherited = group.items.find((candidate) => candidate.id === id)
+      if (inherited) return inherited
+    }
+  }
+  return null
+}
+
 export function PeriodPlanManager({ initialScope = 'week', initialStart = null, initialItemId = null }: Props = {}) {
   const [scope, setScope] = useState<PeriodPlanScope>(initialScope)
   const [currentDate, setCurrentDate] = useState<Date>(() => parsePeriodStart(initialStart) ?? new Date())
@@ -106,6 +128,9 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
   // the chosen week's plan without leaving the view.
   const [newWeekItemText, setNewWeekItemText] = useState('')
   const [targetWeekStart, setTargetWeekStart] = useState('')
+  // The persistent context/inspector follows this selection. Without one, the
+  // first item (or the deep-linked item) is the effective selection.
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(initialItemId)
 
   // Derive the period parameters used by both the read and write endpoints.
   const getPeriodParams = useCallback((): PeriodParams => {
@@ -312,6 +337,7 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               : item
           )
       )
+      setSelectedItemId((current) => (current === id ? null : current))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete item')
     }
@@ -360,8 +386,56 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     setCurrentDate((date) => (scope === 'week' ? addWeeks(date, 1) : addMonths(date, 1)))
   }
 
+  // Keep the two-scope tab list keyboard operable, as the previous Tabs
+  // component was: arrow keys switch scope and move focus.
+  const handleScopeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const next: PeriodPlanScope = scope === 'week' ? 'month' : 'week'
+    setScope(next)
+    event.currentTarget
+      .querySelector<HTMLButtonElement>(`[data-scope="${next}"]`)
+      ?.focus()
+  }
+
   const completedCount = items.filter((item) => item.status === 'done').length
   const totalCount = items.length
+  const openCount = items.filter(
+    (item) => item.status === 'planned' || item.status === 'in_progress'
+  ).length
+  const fulfillmentTotal = items.reduce(
+    (total, item) => total + (item.fulfillmentCount ?? 0),
+    0
+  )
+  const commentTotal = items.reduce((total, item) => total + (item.commentCount ?? 0), 0)
+  const workCount = items.filter((item) => item.projectScope === 'work').length
+  const personalCount = items.filter((item) => item.projectScope === 'personal').length
+
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      PLAN_ITEM_STATUS_ORDER.map((status) => [status, 0])
+    ) as Record<(typeof PLAN_ITEM_STATUS_ORDER)[number], number>
+    for (const item of items) counts[item.status] += 1
+    return counts
+  }, [items])
+
+  // Resolve the visible selection; a deleted or refetched-away selection falls
+  // back to the deep-linked item, then the first row.
+  const selectedItem = useMemo(() => {
+    if (selectedItemId !== null) {
+      const requested = findPlanItem(items, selectedItemId)
+      if (requested) return requested
+    }
+    if (initialItemId !== null) {
+      const deepLinked = findPlanItem(items, initialItemId)
+      if (deepLinked) return deepLinked
+    }
+    return items[0] ?? null
+  }, [items, selectedItemId, initialItemId])
+
+  const selectedParentText = selectedItem?.parentItemId
+    ? items.find((item) => item.id === selectedItem.parentItemId)?.text ?? null
+    : null
 
   const getPeriodDisplay = () => {
     if (scope === 'week') {
@@ -371,126 +445,280 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     return getMonthPeriodRange(currentDate).monthKey
   }
 
+  const periodDisplay = getPeriodDisplay()
+  const followThroughReady = totalCount > 0 && completedCount === totalCount
+
   return (
-    <div className="space-y-6">
-      <Tabs value={scope} onValueChange={(value) => setScope(value as PeriodPlanScope)}>
-        <TabsList className="w-full">
-          <TabsTrigger value="week">Week</TabsTrigger>
-          <TabsTrigger value="month">Month</TabsTrigger>
-        </TabsList>
-      </Tabs>
+    <div className={styles.surface}>
+      <div className={styles.split}>
+        <section className={styles.primary} aria-label="Plan workspace">
+          <header className={styles.pageHeading}>
+            <div>
+              <h1>Plan items</h1>
+              <p className={styles.description}>
+                One working list, one persistent inspector. Execution state,
+                fulfillment evidence, and planning context stay distinct.
+              </p>
+            </div>
+            <div className={styles.periodControls}>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={handlePrevPeriod}
+                aria-label="Previous period"
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+              </button>
+              <div className={styles.periodStamp}>
+                <span>{scope === 'week' ? 'Week' : 'Month'}</span>
+                <strong>{periodDisplay}</strong>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={handleNextPeriod}
+                aria-label="Next period"
+              >
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </header>
 
-      <div className="flex items-center justify-between gap-4">
-        <Button variant="outline" size="icon" onClick={handlePrevPeriod} aria-label="Previous period">
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <div className="text-center text-lg font-medium">{getPeriodDisplay()}</div>
-        <Button variant="outline" size="icon" onClick={handleNextPeriod} aria-label="Next period">
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {totalCount > 0 && (
-        <div className="text-sm text-muted-foreground">
-          {completedCount} of {totalCount} completed
-        </div>
-      )}
-
-      {loading ? (
-        <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-          <LoaderCircle className="h-4 w-4 animate-spin" />
-          Loading...
-        </div>
-      ) : error ? (
-        <div role="alert" className="py-3 text-sm text-destructive">
-          {error}
-        </div>
-      ) : items.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-sm text-muted-foreground">No plans yet</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Add your first {scope === 'week' ? 'weekly' : 'monthly'} plan item below.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item, index) => (
-            <PeriodPlanItemRow
-              key={item.id}
-              item={item}
-              autoExpandComments={item.id === initialItemId}
-              parentOptions={scope === 'week' ? parentOptions : []}
-              showParentSelector={scope === 'week'}
-              attachCandidates={scope === 'month' ? attachCandidates : []}
-              onAttach={scope === 'month' ? handleAttachItem : undefined}
-              childParentOptions={scope === 'month' ? items : []}
-              canMoveUp={sameGroupNeighbour(items, index, 'up') !== null}
-              canMoveDown={sameGroupNeighbour(items, index, 'down') !== null}
-              onUpdate={handleUpdateItem}
-              onDelete={handleDeleteItem}
-              onDefer={handleDeferItem}
-              onMove={handleMoveItem}
-              onCommentCountChange={handleCommentCountChange}
-            />
-          ))}
-        </div>
-      )}
-
-      {scope === 'month' && weekOptions.length > 0 && (
-        <div className="space-y-2 rounded-lg border p-3">
-          <div className="text-sm font-medium">Add a week item</div>
-          <p className="text-xs text-muted-foreground">
-            Pick one of this month&apos;s weeks; the item lands in that week&apos;s plan.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <select
-              aria-label="Target week"
-              value={targetWeek?.start ?? ''}
-              onChange={(event) => setTargetWeekStart(event.target.value)}
-              className="h-9 rounded border bg-transparent px-2 text-sm"
+          <div className={styles.periodBar}>
+            <div
+              className={styles.scopeTabs}
+              role="tablist"
+              aria-label="Plan scope"
+              onKeyDown={handleScopeKeyDown}
             >
-              {weekOptions.map((week) => (
-                <option key={week.start} value={week.start}>
-                  Week {week.start} - {week.end}
-                </option>
-              ))}
-            </select>
-            <Input
-              aria-label="New week item text"
-              value={newWeekItemText}
-              onChange={(event) => setNewWeekItemText(event.target.value)}
-              placeholder="Add a week item..."
-              className="flex-1"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') void handleAddWeekItem()
-              }}
-            />
-            <Button
-              onClick={() => void handleAddWeekItem()}
-              disabled={!newWeekItemText.trim() || !targetWeek}
-            >
-              <Plus className="h-4 w-4" />
-              Add week item
-            </Button>
+              <button
+                type="button"
+                role="tab"
+                data-scope="week"
+                tabIndex={scope === 'week' ? 0 : -1}
+                aria-selected={scope === 'week'}
+                className={styles.scopeTab}
+                onClick={() => setScope('week')}
+              >
+                Week
+              </button>
+              <button
+                type="button"
+                role="tab"
+                data-scope="month"
+                tabIndex={scope === 'month' ? 0 : -1}
+                aria-selected={scope === 'month'}
+                className={styles.scopeTab}
+                onClick={() => setScope('month')}
+              >
+                Month
+              </button>
+            </div>
+            {totalCount > 0 && (
+              <span className={styles.progressText}>
+                {completedCount} of {totalCount} completed
+              </span>
+            )}
           </div>
-        </div>
-      )}
 
-      <div className="flex gap-2">
-        <Input
-          value={newItemText}
-          onChange={(event) => setNewItemText(event.target.value)}
-          placeholder="Add a new plan item..."
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') void handleAddItem()
-          }}
-        />
-        <Button onClick={() => void handleAddItem()} disabled={!newItemText.trim()}>
-          <Plus className="h-4 w-4" />
-          Add
-        </Button>
+          <section className={`${styles.panel} ${styles.composer}`} aria-label="Plan composition">
+            <div className={styles.sectionHeading}>
+              <div>
+                <h2>Plan composition</h2>
+                <p>
+                  Add to the {scope === 'week' ? 'weekly' : 'monthly'} plan. Priority
+                  groups and manual order organize the list.
+                </p>
+              </div>
+              <Plus size={18} aria-hidden="true" />
+            </div>
+            <div className={styles.composerRow}>
+              <input
+                className={styles.textInput}
+                value={newItemText}
+                onChange={(event) => setNewItemText(event.target.value)}
+                placeholder="Add a new plan item..."
+                aria-label="New plan item"
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void handleAddItem()
+                }}
+              />
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => void handleAddItem()}
+                disabled={!newItemText.trim()}
+              >
+                <Plus size={15} aria-hidden="true" />
+                Add
+              </button>
+            </div>
+          </section>
+
+          {loading ? (
+            <div role="status" className={styles.loadingState}>
+              <span className={styles.loadingLine} />
+              <strong>Loading plan items…</strong>
+            </div>
+          ) : error ? (
+            <div role="alert" className={styles.errorState}>
+              {error}
+            </div>
+          ) : items.length === 0 ? (
+            <div className={styles.emptyState}>
+              <CalendarDays size={24} aria-hidden="true" />
+              <strong>No plans yet</strong>
+              <span>
+                Add your first {scope === 'week' ? 'weekly' : 'monthly'} plan item above.
+              </span>
+            </div>
+          ) : (
+            <div className={styles.list}>
+              <div className={styles.listHeader} aria-hidden="true">
+                <span>Item</span>
+                <span>Evidence / status</span>
+              </div>
+              {items.map((item, index) => (
+                <PeriodPlanItemRow
+                  key={item.id}
+                  item={item}
+                  ordinal={index + 1}
+                  selectedItemId={selectedItem?.id ?? null}
+                  onSelect={setSelectedItemId}
+                  autoExpandComments={item.id === initialItemId}
+                  parentOptions={scope === 'week' ? parentOptions : []}
+                  showParentSelector={scope === 'week'}
+                  attachCandidates={scope === 'month' ? attachCandidates : []}
+                  onAttach={scope === 'month' ? handleAttachItem : undefined}
+                  childParentOptions={scope === 'month' ? items : []}
+                  canMoveUp={sameGroupNeighbour(items, index, 'up') !== null}
+                  canMoveDown={sameGroupNeighbour(items, index, 'down') !== null}
+                  onUpdate={handleUpdateItem}
+                  onDelete={handleDeleteItem}
+                  onDefer={handleDeferItem}
+                  onMove={handleMoveItem}
+                  onCommentCountChange={handleCommentCountChange}
+                />
+              ))}
+            </div>
+          )}
+
+          {scope === 'month' && weekOptions.length > 0 && (
+            <section className={`${styles.panel} ${styles.weekComposer}`} aria-label="Add a week item">
+              <div className={styles.sectionHeading}>
+                <div>
+                  <h2>Add a week item</h2>
+                  <p>
+                    Pick one of this month&apos;s weeks; the item lands in that week&apos;s plan.
+                  </p>
+                </div>
+              </div>
+              <div className={styles.weekComposerRow}>
+                <select
+                  aria-label="Target week"
+                  value={targetWeek?.start ?? ''}
+                  onChange={(event) => setTargetWeekStart(event.target.value)}
+                  className={styles.selectField}
+                >
+                  {weekOptions.map((week) => (
+                    <option key={week.start} value={week.start}>
+                      Week {week.start} - {week.end}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className={styles.textInput}
+                  aria-label="New week item text"
+                  value={newWeekItemText}
+                  onChange={(event) => setNewWeekItemText(event.target.value)}
+                  placeholder="Add a week item..."
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') void handleAddWeekItem()
+                  }}
+                />
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => void handleAddWeekItem()}
+                  disabled={!newWeekItemText.trim() || !targetWeek}
+                >
+                  <Plus size={15} aria-hidden="true" />
+                  Add week item
+                </button>
+              </div>
+            </section>
+          )}
+        </section>
+
+        <aside className={styles.context} aria-label="Plan inspector">
+          <PlanContextPanel
+            item={selectedItem}
+            periodLabel={periodDisplay}
+            scope={scope}
+            parentText={selectedParentText}
+          />
+
+          <section className={styles.summaryPanel} aria-label="Plan period summary">
+            <div className={styles.sectionHeading}>
+              <div>
+                <h2>Period readiness</h2>
+                <p>
+                  Follow-through, evidence, and planning context for this {scope}.
+                </p>
+              </div>
+              <Activity size={18} aria-hidden="true" />
+            </div>
+
+            <div className={styles.summaryCells}>
+              <div
+                className={styles.summaryCell}
+                data-state={totalCount === 0 ? 'idle' : followThroughReady ? 'ready' : 'pending'}
+              >
+                <span>Follow-through</span>
+                <strong>{completedCount}/{totalCount} done</strong>
+                <small>Current {scope}</small>
+              </div>
+              <div
+                className={styles.summaryCell}
+                data-state={totalCount > 0 && openCount === 0 ? 'ready' : openCount > 0 ? 'pending' : 'idle'}
+              >
+                <span>Open items</span>
+                <strong>{openCount} open</strong>
+                <small>Planned + in progress</small>
+              </div>
+              <div
+                className={styles.summaryCell}
+                data-state={fulfillmentTotal > 0 ? 'ready' : 'idle'}
+              >
+                <span>Evidence</span>
+                <strong>{fulfillmentTotal} linked</strong>
+                <small>Fulfilling events</small>
+              </div>
+              <div className={styles.summaryCell} data-state="idle">
+                <span>Planning context</span>
+                <strong>{commentTotal} notes</strong>
+                <small>Plan-item comments</small>
+              </div>
+            </div>
+
+            <div className={styles.statusBreakdown} role="group" aria-label="Status breakdown">
+              {PLAN_ITEM_STATUS_ORDER.map((status) => (
+                <div className={styles.statusBreakdownRow} key={status}>
+                  <span>
+                    <i className={styles.statusDot} data-status={status} aria-hidden="true" />
+                    {PLAN_ITEM_STATUS_LABELS[status]}
+                  </span>
+                  <strong>{statusCounts[status]}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className={styles.scopeSplit}>
+              <span>Work {workCount}</span>
+              <span>Personal {personalCount}</span>
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   )

@@ -3,7 +3,6 @@ import { PERIOD_PLAN_ITEM_PRIORITIES, PERIOD_PLAN_ITEM_STATUSES } from '@/lib/db
 import {
   PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_PRIORITY_ORDER,
-  PLAN_ITEM_PRIORITY_ROW_TINTS,
   PLAN_ITEM_PRIORITY_TINTS,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
@@ -37,10 +36,17 @@ describe('plan item display maps', () => {
     expect(PLAN_ITEM_PRIORITY_ORDER).toEqual(['high', 'normal', 'low'])
   })
 
-  it('tints every priority', () => {
+  it('tints every priority with fixed-light tokens', () => {
     for (const priority of PERIOD_PLAN_ITEM_PRIORITIES) {
       expect(PLAN_ITEM_PRIORITY_TINTS[priority]).toBeTruthy()
-      expect(PLAN_ITEM_PRIORITY_ROW_TINTS[priority]).toBeTruthy()
+      expect(PLAN_ITEM_PRIORITY_TINTS[priority]).not.toContain('dark:')
+    }
+  })
+
+  it('keeps every status on the fixed-light palette', () => {
+    for (const status of PERIOD_PLAN_ITEM_STATUSES) {
+      expect(PLAN_ITEM_STATUS_COLORS[status]).not.toContain('dark:')
+      expect(PLAN_ITEM_STATUS_COLORS[status]).not.toMatch(/\b(rose|sky|amber|blue|red|gray|green)-[0-9]/)
     }
   })
 })
