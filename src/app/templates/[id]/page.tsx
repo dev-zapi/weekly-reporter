@@ -1,14 +1,24 @@
 'use client'
-import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useState, useEffect } from 'react'
-import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { TemplateForm } from '@/components/TemplateForm'
-import { StyleSelector } from '@/components/StyleSelector'
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Template, AIStyle } from '@/lib/db/schema'
+import { StyleSelector } from '@/components/StyleSelector'
+import { TemplateForm } from '@/components/TemplateForm'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
+import type { AIStyle, Template } from '@/lib/db/schema'
+import styles from '@/components/library-configuration.module.css'
+
+async function templateError(response: Response, fallback: string) {
+  try {
+    const data = await response.json()
+    return `${data.error || fallback}${traceSuffix(response)}`
+  } catch {
+    return `${fallback}${traceSuffix(response)}`
+  }
+}
 
 export default function EditTemplatePage() {
   const router = useRouter()
@@ -17,34 +27,42 @@ export default function EditTemplatePage() {
 
   const [template, setTemplate] = useState<Template | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [aiStyle, setAiStyle] = useState<AIStyle>('formal')
+  const [reloadToken, setReloadToken] = useState(0)
 
   useEffect(() => {
-    fetchTemplate()
-  }, [id])
+    let cancelled = false
 
-  async function fetchTemplate() {
-    try {
-      const response = await apiFetch(`/api/templates/${id}`)
-      if (response.ok) {
+    void (async () => {
+      try {
+        const response = await apiFetch(`/api/templates/${id}`)
+        if (!response.ok) {
+          throw new Error(await templateError(response, 'Template not found'))
+        }
         const data = await response.json()
+        if (cancelled) return
         setTemplate(data.template)
         setAiStyle(data.template.aiStyle || 'formal')
-      } else {
-        toast.error('Template not found' + traceSuffix(response))
-        router.push('/templates')
+      } catch (error) {
+        if (cancelled) return
+        const message = error instanceof Error ? error.message : 'Failed to load template'
+        setLoadError(message)
+        toast.error(message)
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-    } catch (error) {
-      toast.error('Failed to load template')
-      router.push('/templates')
-    } finally {
-      setLoading(false)
+    })()
+
+    return () => {
+      cancelled = true
     }
-  }
+  }, [id, reloadToken])
 
   async function handleStyleChange(style: AIStyle) {
+    const previousStyle = aiStyle
     setAiStyle(style)
-    
+
     try {
       const response = await apiFetch(`/api/templates/${id}`, {
         method: 'PUT',
@@ -57,21 +75,15 @@ export default function EditTemplatePage() {
       } else {
         const error = await response.json()
         toast.error((error.error || 'Update failed') + traceSuffix(response))
-        // Revert to previous style
-        if (template) {
-          setAiStyle(template.aiStyle || 'formal')
-        }
+        setAiStyle(previousStyle)
       }
-    } catch (error) {
+    } catch {
       toast.error('Update failed')
-      // Revert to previous style
-      if (template) {
-        setAiStyle(template.aiStyle || 'formal')
-      }
+      setAiStyle(previousStyle)
     }
   }
 
-  async function handleSave(data: { 
+  async function handleSave(data: {
     name: string
     content: string
     description?: string
@@ -92,43 +104,66 @@ export default function EditTemplatePage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="container mx-auto py-8 px-4 max-w-3xl">
-        <div className="text-center py-8">Loading...</div>
-      </div>
-    )
-  }
-
-  if (!template) {
-    return null
-  }
-
   return (
-    <div className="container mx-auto py-8 px-4 max-w-3xl">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/templates">
-          <Button variant="ghost" size="icon">←</Button>
-        </Link>
-        <h1 className="text-2xl font-bold">Edit Template</h1>
-      </div>
-
-      <div className="space-y-6">
-        {/* AI Style Selector */}
-        <div className="bg-card border rounded-lg p-4">
-          <StyleSelector
-            value={aiStyle}
-            onChange={handleStyleChange}
-          />
+    <section className={styles.surface} aria-labelledby="edit-template-title">
+      <Link href="/templates" className={styles.backLink}>
+        <ArrowLeft size={14} aria-hidden="true" />
+        Back to templates
+      </Link>
+      <header className={styles.pageHeading}>
+        <div className={styles.headingText}>
+          <div className={styles.titleRow}>
+            <h1 id="edit-template-title">Edit Template</h1>
+            <span className={styles.recordRef}>T{id}</span>
+          </div>
+          <p className={styles.description}>
+            {template ? template.name : 'Update the template record and its report-writing style.'}
+          </p>
         </div>
+      </header>
 
-        {/* Template Form */}
-        <TemplateForm 
-          template={template} 
-          onSave={handleSave} 
-          onCancel={() => router.push('/templates')} 
-        />
-      </div>
-    </div>
+      {loading ? (
+        <div className={styles.loadingState} role="status">
+          <span className={styles.loadingLine} aria-hidden="true" />
+          <strong>Loading template…</strong>
+        </div>
+      ) : loadError ? (
+        <div className={styles.errorState} role="alert">
+          <strong>Template could not be loaded</strong>
+          <p>{loadError}</p>
+          <button
+            type="button"
+            className={styles.stateAction}
+            onClick={() => {
+              setLoading(true)
+              setLoadError(null)
+              setReloadToken((token) => token + 1)
+            }}
+          >
+            Retry loading template
+          </button>
+        </div>
+      ) : !template ? (
+        <div className={styles.emptyState}>
+          <strong>Template not found</strong>
+          <p>Return to the template index and choose an available personal template.</p>
+        </div>
+      ) : (
+        <div className={styles.editLayout}>
+          <div className={styles.editMain}>
+            <TemplateForm
+              template={template}
+              onSave={handleSave}
+              onCancel={() => router.push('/templates')}
+            />
+          </div>
+          <aside className={styles.contextRail} aria-labelledby="template-style-title">
+            <h2 id="template-style-title">Generation style</h2>
+            <p>Select the AI style applied when this template is used for final generation.</p>
+            <StyleSelector value={aiStyle} onChange={handleStyleChange} />
+          </aside>
+        </div>
+      )}
+    </section>
   )
 }

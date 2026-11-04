@@ -1,16 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { MilkdownEditor } from '@/components/editor/MilkdownEditor'
 import { toast } from 'sonner'
+import { Label } from '@/components/ui/label'
+import { TemplateContentEditor } from '@/components/TemplateContentEditor'
 import type { Template } from '@/lib/db/schema'
+import styles from './library-configuration.module.css'
 
 interface TemplateFormProps {
   template?: Template
-  onSave: (data: { 
+  onSave: (data: {
     name: string
     content: string
     description?: string
@@ -26,8 +25,8 @@ export function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) 
   const [tags, setTags] = useState(template?.tags || '')
   const [saving, setSaving] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
 
     if (!name.trim() || !content.trim()) {
       toast.error('Please enter a template name and content')
@@ -37,14 +36,14 @@ export function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) 
     setSaving(true)
 
     try {
-      await onSave({ 
-        name, 
-        content, 
+      await onSave({
+        name,
+        content,
         description: description.trim() || undefined,
         tags: tags.trim() || undefined,
       })
       toast.success('Template saved')
-    } catch (error) {
+    } catch {
       toast.error('Save failed')
     } finally {
       setSaving(false)
@@ -52,49 +51,54 @@ export function TemplateForm({ template, onSave, onCancel }: TemplateFormProps) 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="space-y-2">
-        <Label htmlFor="name">Template name</Label>
-        <Input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Development weekly report"
-        />
+    <form onSubmit={handleSubmit} className={styles.form}>
+      <div className={styles.fieldGrid}>
+        <div className={styles.field}>
+          <Label htmlFor="name" className={styles.fieldLabel}>Template name</Label>
+          <input
+            id="name"
+            className={styles.input}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="e.g. Development weekly report"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <Label htmlFor="tags" className={styles.fieldLabel}>Tags</Label>
+          <input
+            id="tags"
+            className={styles.input}
+            value={tags}
+            onChange={(event) => setTags(event.target.value)}
+            placeholder="e.g. development, engineering"
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Input
+      <div className={styles.field}>
+        <Label htmlFor="description" className={styles.fieldLabel}>Description</Label>
+        <input
           id="description"
+          className={styles.input}
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(event) => setDescription(event.target.value)}
           placeholder="e.g. For engineering teams"
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="tags">Tags</Label>
-        <Input
-          id="tags"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-          placeholder="e.g. development, engineering"
-        />
+      <div className={styles.field}>
+        <Label className={styles.fieldLabel}>Template content</Label>
+        <TemplateContentEditor value={content} onChange={setContent} />
       </div>
 
-      <div className="space-y-2">
-        <Label>Template content</Label>
-        <MilkdownEditor value={content} onChange={setContent} />
-      </div>
-
-      <div className="flex justify-end gap-4">
-        <Button type="button" variant="outline" onClick={onCancel}>
+      <div className={styles.formActions}>
+        <button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={saving}>
           Cancel
-        </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving...' : 'Save'}
-        </Button>
+        </button>
+        <button type="submit" className={styles.primaryButton} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
       </div>
     </form>
   )

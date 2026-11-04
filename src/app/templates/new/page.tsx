@@ -1,16 +1,17 @@
 'use client'
-import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { TemplateForm } from '@/components/TemplateForm'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
+import { TemplateForm } from '@/components/TemplateForm'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
+import styles from '@/components/library-configuration.module.css'
 
 export default function NewTemplatePage() {
   const router = useRouter()
 
-  async function handleSave(data: { 
+  async function handleSave(data: {
     name: string
     content: string
     description?: string
@@ -32,15 +33,22 @@ export default function NewTemplatePage() {
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-3xl">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/templates">
-          <Button variant="ghost" size="icon">←</Button>
-        </Link>
-        <h1 className="text-2xl font-bold">New Template</h1>
+    <section className={styles.surface} aria-labelledby="new-template-title">
+      <Link href="/templates" className={styles.backLink}>
+        <ArrowLeft size={14} aria-hidden="true" />
+        Back to templates
+      </Link>
+      <header className={styles.pageHeading}>
+        <div className={styles.headingText}>
+          <h1 id="new-template-title">New Template</h1>
+          <p className={styles.description}>
+            Create a personal report template with reusable sections and instructions.
+          </p>
+        </div>
+      </header>
+      <div className={styles.formPanel}>
+        <TemplateForm onSave={handleSave} onCancel={() => router.push('/templates')} />
       </div>
-
-      <TemplateForm onSave={handleSave} onCancel={() => router.push('/templates')} />
-    </div>
+    </section>
   )
 }

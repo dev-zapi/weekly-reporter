@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { useState } from 'react'
+import { toast } from 'sonner'
 import { Label } from '@/components/ui/label'
+import { TemplateContentEditor } from '@/components/TemplateContentEditor'
 import {
   Dialog,
   DialogContent,
@@ -12,15 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import dynamic from 'next/dynamic'
-
-const MilkdownEditor = dynamic(
-  () => import('@/components/editor/MilkdownEditor').then(m => ({ default: m.MilkdownEditor })),
-  { ssr: false }
-)
-import { toast } from 'sonner'
 import type { OfficialTemplate } from '@/lib/official-templates'
 import type { Template } from '@/lib/db/schema'
+import styles from './library-configuration.module.css'
 
 interface CloneTemplateDialogProps {
   template: OfficialTemplate | Template | null
@@ -29,89 +23,87 @@ interface CloneTemplateDialogProps {
   onClone: (data: { sourceId: string; name: string; content: string }) => Promise<void>
 }
 
-export function CloneTemplateDialog({ 
-  template, 
-  open, 
-  onClose, 
-  onClone 
-}: CloneTemplateDialogProps) {
+interface CloneTemplateDialogContentProps extends Omit<CloneTemplateDialogProps, 'template'> {
+  template: OfficialTemplate | Template
+}
+
+export function CloneTemplateDialog(props: CloneTemplateDialogProps) {
+  if (!props.template) return null
+  return (
+    <CloneTemplateDialogContent
+      key={`${props.template.id}-${props.open}`}
+      {...props}
+      template={props.template}
+    />
+  )
+}
+
+function CloneTemplateDialogContent({ template, open, onClose, onClone }: CloneTemplateDialogContentProps) {
   const [name, setName] = useState('')
-  const [content, setContent] = useState('')
+  const [content, setContent] = useState(template.content)
   const [saving, setSaving] = useState(false)
-  
-  // 当对话框打开时，初始化内容
-  useEffect(() => {
-    if (template && open) {
-      setName('')
-      setContent(template.content)
-    }
-  }, [template, open])
-  
-  async function handleSave() {
+
+  async function handleSave(event: React.FormEvent) {
+    event.preventDefault()
     if (!name.trim()) {
       toast.error('Please enter a template name')
       return
     }
-    
+
     if (!content.trim()) {
       toast.error('Please enter template content')
       return
     }
-    
+
     setSaving(true)
-    
+
     try {
-      const sourceId = typeof template!.id === 'string' 
-        ? template!.id 
-        : `user-${template!.id}`
-      
+      const sourceId = typeof template.id === 'string' ? template.id : `user-${template.id}`
       await onClone({ sourceId, name, content })
-      toast.success('Template saved')
       onClose()
     } catch (error) {
-      toast.error('Save failed')
+      toast.error(error instanceof Error ? error.message : 'Save failed')
     } finally {
       setSaving(false)
     }
   }
-  
-  if (!template) return null
-  
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className={styles.dialogContent}>
         <DialogHeader>
-          <DialogTitle>Save as personal template</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className={styles.dialogTitle}>Save as personal template</DialogTitle>
+          <DialogDescription className={styles.dialogDescription}>
             Save “{template.name}” as a new personal template and customize it.
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Template name</Label>
-            <Input
-              id="name"
+
+        <form onSubmit={handleSave} className={styles.dialogBody}>
+          <div className={styles.field}>
+            <Label htmlFor="clone-name" className={styles.fieldLabel}>Template name</Label>
+            <input
+              id="clone-name"
+              className={styles.input}
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(event) => setName(event.target.value)}
               placeholder="e.g. My development report"
             />
           </div>
-          
-          <div className="space-y-2">
-            <Label>Template content</Label>
-            <MilkdownEditor value={content} onChange={setContent} />
+
+          <div className={styles.field}>
+            <Label className={styles.fieldLabel}>Template content</Label>
+            <TemplateContentEditor value={content} onChange={setContent} />
           </div>
-        </div>
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
-        </DialogFooter>
+
+          <DialogFooter className={styles.dialogFooter}>
+            <button type="button" className={styles.secondaryButton} onClick={onClose} disabled={saving}>
+              Cancel
+            </button>
+            <button type="submit" className={styles.primaryButton} disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
