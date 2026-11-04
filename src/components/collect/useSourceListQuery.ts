@@ -37,6 +37,7 @@ export function useSourceListQuery(): {
   setSources: (updater: CollectSource[] | ((prev: CollectSource[]) => CollectSource[])) => void
   total: number
   loading: boolean
+  error: string | null
   page: number
   setPage: (p: number | ((prev: number) => number)) => void
   filters: Filters
@@ -44,6 +45,7 @@ export function useSourceListQuery(): {
 } {
   const [sources, setSources] = useState<CollectSource[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
 
@@ -123,6 +125,7 @@ export function useSourceListQuery(): {
     const p = targetPage ?? page
     try {
       setLoading(true)
+      setError(null)
       const params = new URLSearchParams({ page: String(p), pageSize: String(PAGE_SIZE) })
       if (searchTerm) params.set('name', searchTerm)
       if (typeFilter) params.set('type', typeFilter)
@@ -144,15 +147,18 @@ export function useSourceListQuery(): {
       setSources(data.sources || [])
       setTotal(data.total || 0)
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load sources'
       console.error('Failed to fetch sources:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to load sources')
+      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
   }, [page, searchTerm, syncStatusFilter, sourceStatusFilter, typeFilter, scopeFilter, sortBy, sortOrder])
 
   useEffect(() => {
-    fetchSources()
+    const timer = setTimeout(() => void fetchSources(), 0)
+    return () => clearTimeout(timer)
   }, [fetchSources])
 
   const filters: Filters = {
@@ -180,6 +186,7 @@ export function useSourceListQuery(): {
     setSources,
     total,
     loading,
+    error,
     page,
     setPage,
     filters,

@@ -34,7 +34,7 @@ const mockLocalSource = {
   },
 }
 
-describe('CollectSourceList search focus', () => {
+describe('CollectSourceList', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation((url: string | URL | Request) => {
@@ -116,5 +116,27 @@ describe('CollectSourceList search focus', () => {
 
     expect(await screen.findByTitle('Manual fetch')).toBeInTheDocument()
     expect(screen.getAllByTitle('Manual fetch')).toHaveLength(1)
+  })
+
+  it('shows stable source references and named record actions', async () => {
+    render(<CollectSourceList />)
+
+    expect(await screen.findByText('#1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Edit source-1' })).toHaveAttribute('href', '/collect/1')
+    expect(screen.getByRole('button', { name: 'Sync source-1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resync source-1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete source-1' })).toBeInTheDocument()
+  })
+
+  it('shows an explicit error with a retry action when loading fails', async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ error: 'Source index unavailable' }),
+    } as Response)
+
+    render(<CollectSourceList />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Source index unavailable')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 })
