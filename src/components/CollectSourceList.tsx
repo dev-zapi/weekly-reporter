@@ -473,7 +473,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
                     <th scope="col">Branches</th>
                     <th scope="col">Aliases</th>
                     <th scope="col">Emails</th>
-                    <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="projectScope" label="Project scope" /></th>
+                    <th className={styles.scopeCell} scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="projectScope" label="Project scope" /></th>
                     <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="status" label="Status" /></th>
                     <th scope="col">Sync result</th>
                     <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="lastSyncAt" label="Last sync" /></th>
@@ -527,10 +527,10 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
                         <td data-label="Branches"><span className={styles.cellText} title={branchesTrunc.full}>{branchesTrunc.text}</span></td>
                         <td data-label="Aliases"><span className={styles.cellText} title={aliasesTrunc.full}>{aliasesTrunc.text}</span></td>
                         <td data-label="Emails"><span className={styles.cellText} title={emailsTrunc.full}>{emailsTrunc.text}</span></td>
-                        <td data-label="Project scope">
+                        <td className={styles.scopeCell} data-label="Project scope">
                           <span className={styles.scopeBadge} data-scope={source.projectScope}>
                             {source.projectScope === 'work' ? <Briefcase size={12} aria-hidden="true" /> : <User size={12} aria-hidden="true" />}
-                            {source.projectScope === 'work' ? 'Work project' : 'Personal project'}
+                            {source.projectScope === 'work' ? 'Work' : 'Personal'}
                           </span>
                         </td>
                         <td data-label="Status">

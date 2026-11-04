@@ -490,6 +490,10 @@
   border-right: 1px solid var(--cs-line) !important;
 }
 
+.scopeCell {
+  min-width: 120px;
+}
+
 .actionsCell {
   position: sticky;
   right: 0;
@@ -578,6 +582,10 @@
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
+}
+
+.scopeBadge {
+  padding-inline: 3px;
 }
 
 .scopeBadge[data-scope="work"] {
