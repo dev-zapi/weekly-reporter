@@ -28,7 +28,8 @@ describe('LoginPage', () => {
   it('renders login form', () => {
     render(<LoginPage />)
 
-    expect(screen.getByText('Weekly Reporter')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Weekly Reporter' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Startup password')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Startup password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
   })
@@ -90,8 +91,9 @@ describe('LoginPage', () => {
     await user.click(submitButton)
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid password')).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('Invalid password')
     })
+    expect(screen.getByLabelText('Startup password')).toHaveAttribute('aria-invalid', 'true')
 
     expect(localStorage.getItem('weekly-reporter.auth')).toBeNull()
     expect(mockReplace).not.toHaveBeenCalled()

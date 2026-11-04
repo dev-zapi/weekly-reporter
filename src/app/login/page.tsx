@@ -3,7 +3,8 @@
 import { Suspense, useState, FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { setStoredPassword, verifyPassword } from '@/lib/api-client'
-import { Lock, AlertCircle } from 'lucide-react'
+import { Lock, AlertCircle, BookOpen } from 'lucide-react'
+import styles from './login.module.css'
 
 /**
  * Login form — reads the `redirect` query param and verifies the password.
@@ -43,46 +44,64 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted/20">
-      <div className="w-full max-w-md space-y-6 p-8">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10">
-            <Lock className="w-8 h-8 text-primary" />
+    <main className={styles.screen}>
+      <section className={styles.panel} aria-labelledby="login-heading">
+        <header className={styles.heading}>
+          <div className={styles.productMark}>
+            <span className={styles.markIcon}>
+              <BookOpen size={19} aria-hidden="true" />
+            </span>
+            <span>Personal evidence workbench</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Weekly Reporter</h1>
-          <p className="text-sm text-muted-foreground">Enter your startup password to continue</p>
-        </div>
+          <h1 id="login-heading">Weekly Reporter</h1>
+          <p>Enter your startup password to continue</p>
+        </header>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Startup password"
-              autoFocus
-              disabled={loading}
-              className="w-full px-4 py-3 rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
-            />
+        <form onSubmit={handleSubmit} className={styles.form}>
+          <div className={styles.field}>
+            <label htmlFor="startup-password">Startup password</label>
+            <div className={styles.passwordField}>
+              <Lock size={16} aria-hidden="true" />
+              <input
+                id="startup-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Startup password"
+                autoComplete="current-password"
+                autoFocus
+                disabled={loading}
+                required
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? 'password-help password-error' : 'password-help'}
+              />
+            </div>
+            <p id="password-help">Use the password generated for this weekly-reporter instance.</p>
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <div id="password-error" className={styles.errorState} role="alert">
+              <AlertCircle size={17} aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
 
           <button
             type="submit"
+            className={styles.submitButton}
             disabled={loading || !password}
-            className="w-full py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-busy={loading}
           >
             {loading ? 'Verifying...' : 'Sign in'}
           </button>
         </form>
-      </div>
-    </div>
+
+        <footer className={styles.footer}>
+          <span className={styles.statusDot} aria-hidden="true" />
+          Single-user workspace
+        </footer>
+      </section>
+    </main>
   )
 }
 
@@ -95,7 +114,16 @@ function LoginForm() {
  */
 export default function LoginPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <main className={styles.screen}>
+          <div className={styles.loadingState} role="status">
+            <span className={styles.loadingLine} aria-hidden="true" />
+            Loading sign in…
+          </div>
+        </main>
+      }
+    >
       <LoginForm />
     </Suspense>
   )

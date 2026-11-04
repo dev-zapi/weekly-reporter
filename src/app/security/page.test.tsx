@@ -113,12 +113,31 @@ describe('SecurityPage — PAT section', () => {
     expect(await screen.findByText('Active')).toBeInTheDocument()
     expect(await screen.findByText('Expired')).toBeInTheDocument()
     expect(await screen.findByText('Revoked')).toBeInTheDocument()
+
+    // Stable numbered record references
+    expect(screen.getByText('#1')).toBeInTheDocument()
+    expect(screen.getByText('#2')).toBeInTheDocument()
+    expect(screen.getByText('#3')).toBeInTheDocument()
   })
 
   it('shows loading state before PATs are fetched', () => {
     mockFetch.mockReturnValueOnce(new Promise(() => {})) // never resolves
     render(<SecurityPage />)
     expect(screen.getByText(/loading/i)).toBeInTheDocument()
+  })
+
+  it('shows an inline load error and retries the PAT request', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockFetch
+      .mockRejectedValueOnce(new Error('Failed to load PATs'))
+      .mockResolvedValueOnce(mockJsonResponse({ pats: [SAMPLE_PATS[0]] }))
+
+    render(<SecurityPage />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load PATs')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByText('ci-bot')).toBeInTheDocument()
   })
 
   it('creates a PAT and shows the one-time plaintext token with warning', async () => {
@@ -181,44 +200,38 @@ describe('SecurityPage — PAT section', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 })) // revoke
       .mockResolvedValueOnce(mockJsonResponse({ pats: [{ ...SAMPLE_PATS[0], revokedAt: Date.now() }] })) // refreshed list
 
-    // Mock window.confirm
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-
     render(<SecurityPage />)
     await screen.findByText('ci-bot')
 
-    const revokeButton = screen.getByRole('button', { name: /revoke/i })
-    await user.click(revokeButton)
+    await user.click(screen.getByRole('button', { name: 'Revoke ci-bot' }))
 
-    expect(confirmSpy).toHaveBeenCalled()
+    // Explicit dangerous-action confirmation replaces window.confirm.
+    const confirmButton = await screen.findByRole('button', { name: 'Revoke PAT' })
+    await user.click(confirmButton)
+
     await waitFor(() => {
       const revokeCall = mockFetch.mock.calls.find(
         ([url, init]) => url === '/api/auth/pats/1' && init?.method === 'DELETE',
       )
       expect(revokeCall).toBeDefined()
     })
-
-    confirmSpy.mockRestore()
   })
 
   it('does not revoke when user cancels confirmation', async () => {
     const user = userEvent.setup()
     mockFetch.mockResolvedValueOnce(mockJsonResponse({ pats: [SAMPLE_PATS[0]] }))
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     render(<SecurityPage />)
     await screen.findByText('ci-bot')
 
-    const revokeButton = screen.getByRole('button', { name: /revoke/i })
-    await user.click(revokeButton)
+    await user.click(screen.getByRole('button', { name: 'Revoke ci-bot' }))
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }))
 
     // DELETE should NOT be called
     const deleteCalls = mockFetch.mock.calls.filter(
       ([, init]) => init?.method === 'DELETE',
     )
     expect(deleteCalls).toHaveLength(0)
-
-    confirmSpy.mockRestore()
   })
 })
 
