@@ -1,12 +1,20 @@
 'use client'
 
 import { PromptManager } from '@/components/PromptManager'
+import styles from '@/components/library-configuration.module.css'
 
 export default function PromptsPage() {
   return (
-    <div className="container mx-auto py-8 px-4 max-w-3xl">
-      <h1 className="text-2xl font-bold mb-6">Prompt Management</h1>
+    <section className={styles.surface} aria-labelledby="prompt-library-title">
+      <header className={styles.pageHeading}>
+        <div className={styles.headingText}>
+          <h1 id="prompt-library-title">Prompt Management</h1>
+          <p className={styles.description}>
+            Maintain reusable AI writing styles and the system prompts used for writing suggestions and report scoring.
+          </p>
+        </div>
+      </header>
       <PromptManager />
-    </div>
+    </section>
   )
 }

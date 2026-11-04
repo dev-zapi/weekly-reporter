@@ -27,13 +27,17 @@ async function tryGetError(res: Response): Promise<string> {
 export function useAIStyles() {
   const [styles, setStyles] = useState<AIStyleRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     try {
       const res = await apiFetch('/api/prompts/styles')
+      if (!res.ok) throw new Error('Failed to load styles')
       const data = await res.json()
       setStyles(data.styles || [])
+      setError(null)
     } catch {
+      setError('AI styles could not be loaded. Retry to refresh the style index.')
       toast.error('Failed to load styles')
     } finally {
       setLoading(false)
@@ -41,7 +45,32 @@ export function useAIStyles() {
   }, [])
 
   useEffect(() => {
-    refresh()
+    let cancelled = false
+
+    void (async () => {
+      try {
+        const res = await apiFetch('/api/prompts/styles')
+        if (!res.ok) throw new Error('Failed to load styles')
+        const data = await res.json()
+        if (!cancelled) setStyles(data.styles || [])
+      } catch {
+        if (cancelled) return
+        setError('AI styles could not be loaded. Retry to refresh the style index.')
+        toast.error('Failed to load styles')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const retry = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    await refresh()
   }, [refresh])
 
   const create = useCallback(async (payload: StyleFormData): Promise<boolean> => {
@@ -121,7 +150,9 @@ export function useAIStyles() {
   return {
     styles,
     loading,
+    error,
     refresh,
+    retry,
     create,
     update,
     remove,

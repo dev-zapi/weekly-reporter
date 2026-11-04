@@ -1,6 +1,5 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -9,13 +8,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import dynamic from 'next/dynamic'
-
-const MilkdownEditor = dynamic(
-  () => import('@/components/editor/MilkdownEditor').then(m => ({ default: m.MilkdownEditor })),
-  { ssr: false }
-)
 import type { OfficialTemplate } from '@/lib/official-templates'
+import { TemplateContentEditor } from '@/components/TemplateContentEditor'
+import styles from './library-configuration.module.css'
 
 interface ViewTemplateDialogProps {
   template: OfficialTemplate | null
@@ -23,42 +18,37 @@ interface ViewTemplateDialogProps {
   onClose: () => void
 }
 
-export function ViewTemplateDialog({
-  template,
-  open,
-  onClose,
-}: ViewTemplateDialogProps) {
+export function ViewTemplateDialog({ template, open, onClose }: ViewTemplateDialogProps) {
   if (!template) return null
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className={styles.dialogContent}>
         <DialogHeader>
-          <DialogTitle>{template.name}</DialogTitle>
-          <DialogDescription>
+          <div className={styles.dialogTitleRow}>
+            <DialogTitle className={styles.dialogTitle}>{template.name}</DialogTitle>
+            <span className={styles.recordRef}>{template.id}</span>
+          </div>
+          <DialogDescription className={styles.dialogDescription}>
             {template.description}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className={styles.dialogBody}>
           {template.tags.length > 0 && (
-            <div className="text-sm text-muted-foreground">
-              Tags: {template.tags.join(', ')}
-            </div>
+            <div className={styles.recordMeta}>Tags: {template.tags.join(', ')}</div>
           )}
 
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Template content</div>
-            <div className="max-h-[60vh] overflow-y-auto">
-              <MilkdownEditor value={template.content} onChange={() => {}} readOnly />
-            </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Template content</span>
+            <TemplateContentEditor value={template.content} onChange={() => {}} readOnly />
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className={styles.dialogFooter}>
+          <button type="button" className={styles.secondaryButton} onClick={onClose}>
             Close
-          </Button>
+          </button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
