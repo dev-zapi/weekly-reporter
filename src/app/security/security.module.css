@@ -714,14 +714,6 @@
   .loadingLine {
     animation: none;
   }
-
-  .dialogBackdrop {
-    animation-duration: 0.01ms;
-  }
-
-  .dialogPopup {
-    animation-duration: 0.01ms;
-  }
 }
 
 /* ── AlertDialog overlay ───────────────────────────────── */
@@ -794,5 +786,13 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+/* Declared after the base animation shorthands so the 0.01ms collapse wins. */
+@media (prefers-reduced-motion: reduce) {
+  .dialogBackdrop,
+  .dialogPopup {
+    animation-duration: 0.01ms;
   }
 }
