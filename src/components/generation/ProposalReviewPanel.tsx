@@ -5,15 +5,17 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   Check,
+  Circle,
   Code2,
   Eye,
   FileDiff,
   LoaderCircle,
+  ShieldCheck,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import type { PublicGenerationSummary } from '@/lib/generation/public-summary'
 import type { ReviewableProposal } from '@/lib/generation/stream'
 import { lineDiff } from '@/lib/generation/diff'
+import styles from './generation.module.css'
 
 type ReviewTab = 'preview' | 'source' | 'diff'
 
@@ -32,50 +34,135 @@ export function ProposalReviewPanel({
   const diff = useMemo(() => proposal && proposal.baselineContent != null ? lineDiff(proposal.baselineContent, proposal.content) : [], [proposal])
   if (!proposal) {
     return (
-      <aside className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
-        The proposed final version appears here after AI calls <code>propose_final_report</code>. Regular chat messages do not write directly to the report.
+      <aside aria-label="Read-only proposal review" className={styles.proposalEmpty}>
+        The proposed final version appears here after AI calls <code>propose_final_report</code>. Regular chat messages
+        do not write directly to the report.
       </aside>
     )
   }
 
+  const statusLabel = proposal.referenceChanged
+    ? '参考已变化'
+    : proposal.status === 'accepted'
+      ? 'Accepted'
+      : proposal.status === 'superseded'
+        ? 'Superseded'
+        : 'Pending review'
+  const adoptionLabel = proposal.status === 'accepted'
+    ? 'Adopted by the user'
+    : proposal.status === 'superseded'
+      ? 'Replaced by a later proposal'
+      : editable
+        ? 'Awaiting the user decision'
+        : 'Read-only review'
+
   return (
-    <aside aria-label="Read-only proposal review" className="space-y-4 rounded-xl border border-border bg-background p-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-      <div>
-        <div className="flex items-center justify-between gap-3">
-          <div><h3 className="font-semibold">Proposed final version</h3><p className="mt-0.5 text-xs text-muted-foreground">Read-only proposal review</p></div>
-          <span className={`rounded-full px-2 py-1 text-xs ${proposal.status === 'accepted' ? 'bg-emerald-500/10 text-emerald-500' : proposal.status === 'superseded' ? 'bg-muted text-muted-foreground' : 'bg-amber-500/10 text-amber-500'}`}>{proposal.referenceChanged ? '参考已变化' : proposal.status === 'accepted' ? 'Accepted' : proposal.status === 'superseded' ? 'Superseded' : 'Pending review'}</span>
+    <aside
+      aria-label="Read-only proposal review"
+      className={`${styles.proposalPanel} ${styles.proposalSticky}`}
+    >
+      <div className={styles.proposalHeader}>
+        <div>
+          <h3 className={styles.proposalTitle}>Proposed final version</h3>
+          <p className={styles.proposalSubtitle}>Read-only proposal review</p>
         </div>
-        {!proposal.publicSummary && proposal.summary.length > 0 && <ul className="mt-3 space-y-1 text-xs text-muted-foreground">{proposal.summary.map((item, index) => <li key={`${index}-${item}`}>• {item}</li>)}</ul>}
-        {proposal.publicSummary && <PublicGenerationSummaryCard summary={proposal.publicSummary} />}
+        <span
+          className={`${styles.statusPill} ${
+            proposal.status === 'accepted'
+              ? styles.statusAccepted
+              : proposal.status === 'superseded'
+                ? styles.statusSuperseded
+                : styles.statusPending
+          }`}
+        >
+          {statusLabel}
+        </span>
       </div>
-      <div role="tablist" aria-label="Proposal views" className="flex rounded-lg bg-muted p-1">
+
+      {!proposal.publicSummary && proposal.summary.length > 0 && (
+        <ul className={styles.proposalSummary}>
+          {proposal.summary.map((item, index) => <li key={`${index}-${item}`}>• {item}</li>)}
+        </ul>
+      )}
+      {proposal.publicSummary && <PublicGenerationSummaryCard summary={proposal.publicSummary} />}
+
+      <ul className={styles.reviewChecklist} aria-label="Proposal review state">
+        <li><ShieldCheck size={13} aria-hidden="true" />Source revision r{proposal.sourceRevision}</li>
+        <li>
+          {proposal.baselineContent != null ? <Check size={13} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}
+          {proposal.baselineContent != null ? 'Baseline comparison available' : 'No baseline captured for this proposal'}
+        </li>
+        <li>
+          {proposal.status === 'accepted' ? <Check size={13} aria-hidden="true" /> : <Circle size={13} aria-hidden="true" />}
+          {adoptionLabel}
+        </li>
+      </ul>
+
+      <div role="tablist" aria-label="Proposal views" className={styles.proposalTabs}>
         {([
           ['preview', Eye, 'Rendered preview'],
           ['source', Code2, 'Markdown source'],
           ['diff', FileDiff, 'Difference'],
         ] as const).map(([value, Icon, label]) => (
-          <button key={value} role="tab" aria-selected={tab === value} type="button" onClick={() => setTab(value)} disabled={value === 'diff' && proposal.baselineContent == null} className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs ${tab === value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'} disabled:opacity-40`}>
-            <Icon className="h-3.5 w-3.5" />{label}
+          <button
+            key={value}
+            role="tab"
+            aria-selected={tab === value}
+            type="button"
+            onClick={() => setTab(value)}
+            disabled={value === 'diff' && proposal.baselineContent == null}
+            className={`${styles.proposalTab} ${tab === value ? styles.proposalTabActive : ''}`}
+          >
+            <Icon className={styles.tabIcon} size={14} aria-hidden="true" />
+            {label}
           </button>
         ))}
       </div>
-      {tab === 'preview' && <div role="tabpanel" className="rounded-lg border border-border bg-[#141414] p-4 prose prose-sm prose-invert prose-report max-w-none"><ReactMarkdown remarkPlugins={[remarkGfm]}>{proposal.content}</ReactMarkdown></div>}
-      {tab === 'source' && <pre role="tabpanel" data-testid="proposal-markdown-source" className="max-h-[62vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/20 p-3 text-xs leading-5">{proposal.content}</pre>}
-      {tab === 'diff' && proposal.baselineContent != null && (
-        <div role="tabpanel" className="max-h-[62vh] overflow-auto rounded-lg border border-border bg-muted/20 p-3 font-mono text-xs leading-5">
-          {diff.map((line, index) => <div key={index} data-diff-type={line.type} className={line.type === 'add' ? 'bg-emerald-500/10 text-emerald-500' : line.type === 'remove' ? 'bg-red-500/10 text-red-400' : 'text-muted-foreground'}>{line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '} {line.value || ' '}</div>)}
+
+      {tab === 'preview' && (
+        <div role="tabpanel" className={styles.proposalPreview}>
+          <div className={styles.proposalDocument}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{proposal.content}</ReactMarkdown>
+          </div>
         </div>
       )}
-      {editable && proposal.status === 'pending' && <Button className="w-full" onClick={onAccept} disabled={accepting}>{accepting ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <Check className="mr-1.5 h-4 w-4" />}Accept and save final version</Button>}
-      <p className="text-xs text-muted-foreground">The current final version is unchanged until you accept. You can continue improving it in this session after saving.</p>
+      {tab === 'source' && (
+        <pre role="tabpanel" data-testid="proposal-markdown-source" className={styles.proposalSource}>{proposal.content}</pre>
+      )}
+      {tab === 'diff' && proposal.baselineContent != null && (
+        <div role="tabpanel" className={styles.diffBox}>
+          {diff.map((line, index) => (
+            <div
+              key={index}
+              data-diff-type={line.type}
+              className={`${styles.diffLine} ${line.type === 'add' ? styles.diffAdd : line.type === 'remove' ? styles.diffRemove : styles.diffContext}`}
+            >
+              {line.type === 'add' ? '+' : line.type === 'remove' ? '-' : ' '} {line.value || ' '}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editable && proposal.status === 'pending' && (
+        <button type="button" className={styles.acceptButton} onClick={onAccept} disabled={accepting}>
+          {accepting
+            ? <LoaderCircle className={styles.tabIcon} size={16} aria-hidden="true" />
+            : <Check className={styles.tabIcon} size={16} aria-hidden="true" />}
+          Accept and save final version
+        </button>
+      )}
+      <p className={styles.proposalNote}>
+        The current final version is unchanged until you accept. You can continue improving it in this session after
+        saving.
+      </p>
     </aside>
   )
 }
 
 function SummarySection({ title, children }: { title: string; children?: React.ReactNode }) {
   return (
-    <div>
-      <p className="font-medium text-foreground">{title}</p>
+    <div className={styles.summarySection}>
+      <p>{title}</p>
       {children ?? <p>none</p>}
     </div>
   )
@@ -83,11 +170,13 @@ function SummarySection({ title, children }: { title: string; children?: React.R
 
 function PublicGenerationSummaryCard({ summary }: { summary: PublicGenerationSummary }) {
   return (
-    <section className="mt-3 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-xs text-muted-foreground">
-      <h4 className="font-semibold text-foreground">Public generation summary</h4>
-      <p className="mt-2 leading-5">{summary.factBoundary.statement}</p>
-      <p className="mt-1">This records model-explicit handling only; hidden reasoning: {summary.factBoundary.hiddenReasoning}.</p>
-      <div className="mt-3 grid gap-3">
+    <section className={styles.publicSummaryCard}>
+      <h4 className={styles.publicSummaryHeading}>Public generation summary</h4>
+      <p className={styles.publicSummaryCopy}>{summary.factBoundary.statement}</p>
+      <p className={styles.publicSummaryHint}>
+        This records model-explicit handling only; hidden reasoning: {summary.factBoundary.hiddenReasoning}.
+      </p>
+      <div className={styles.summaryGrid}>
         <SummarySection title="Model-explicit handling">{summary.modelHandling.length > 0 ? <ul className="list-disc space-y-1 pl-4">{summary.modelHandling.map((item) => <li key={item}>{item}</li>)}</ul> : undefined}</SummarySection>
         <SummarySection title="Historical references">{summary.historicalReferences.length > 0 ? <ul className="space-y-1">{summary.historicalReferences.map((item) => <li key={`${item.kind}-${item.reportId}`}>{item.title} · {item.weekStart} – {item.weekEnd} · {item.audience} · {item.isLegacy ? 'legacy' : item.finalStatus} · 历史参考·不可信{item.warning ? <span role="alert" className="ml-1 text-amber-600 dark:text-amber-400">· {item.warning}</span> : null}</li>)}</ul> : undefined}</SummarySection>
         <SummarySection title="Tool status">{summary.toolStatuses.length > 0 ? <ul className="space-y-1">{summary.toolStatuses.map((item) => <li key={`${item.toolName}-${item.status}`}>{item.toolName} · {item.status}{item.detail !== 'none' ? ` · ${item.detail}` : ''}</li>)}</ul> : undefined}</SummarySection>

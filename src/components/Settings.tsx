@@ -9,8 +9,11 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Settings as SettingsIcon, X, RefreshCw, TestTube } from 'lucide-react'
 
-const DEFAULT_UI_FONT = 'system-ui, sans-serif'
-const DEFAULT_EDITOR_FONT = 'Geist, sans-serif'
+// Defaults mirror the Next self-hosted Geist stack in globals.css. A system-ui
+// default would silently replace the approved One-Family typography as soon as
+// the Settings dialog mounts (it applies the value even before the user saves).
+const DEFAULT_UI_FONT = 'var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif'
+const DEFAULT_EDITOR_FONT = 'var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif'
 
 interface SettingsProps {
   isOpen: boolean
