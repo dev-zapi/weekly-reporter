@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Input } from '@/components/ui/input'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Input } from '@/components/ui/input'
+import styles from './timeline.module.css'
 
 interface QuickInputBarProps {
   onSubmit: (data: { content: string }) => Promise<void> | void
@@ -55,17 +57,35 @@ export function QuickInputBar({
   }
 
   return (
-    <div className="relative">
-      <Input
-        ref={inputRef}
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={loading}
-        className="w-full"
-      />
-    </div>
+    <section className={styles.capturePanel} aria-label="Quick capture">
+      <div className={styles.sectionHeading}>
+        <div>
+          <h2>Capture work</h2>
+          <p>Use @id to cite events and %id to cite plan items. Manual entries stay editable.</p>
+        </div>
+        <Plus size={18} aria-hidden="true" />
+      </div>
+      <div className={styles.captureControls}>
+        <Input
+          ref={inputRef}
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={loading}
+          className={styles.captureInput}
+          aria-label={placeholder}
+        />
+        <button
+          type="button"
+          className={styles.primaryButton}
+          onClick={handleSubmit}
+          disabled={loading || !value.trim()}
+        >
+          Add to timeline
+        </button>
+      </div>
+    </section>
   )
 }

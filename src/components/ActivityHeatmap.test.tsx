@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, fireEvent, waitFor } from '@testing-library/react'
+import { render, fireEvent, waitFor, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ActivityHeatmap, type HeatmapData } from './ActivityHeatmap'
 
 vi.mock('next/navigation', () => ({
@@ -120,6 +121,55 @@ describe('ActivityHeatmap', () => {
 
     const cell = container.querySelector('[data-count="5"]')
     expect(cell?.getAttribute('data-selected')).toBe('true')
+    expect(cell).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('renders day cells as buttons with an accessible date label', () => {
+    const data = makeData([['2026-07-14', 5]])
+
+    render(<ActivityHeatmap data={data} selectedDate={null} onDateSelect={vi.fn()} />)
+
+    const cell = screen.getByRole('button', { name: '5 events on 2026-07-14' })
+    expect(cell.tagName).toBe('BUTTON')
+    expect(cell).toHaveAttribute('type', 'button')
+    expect(cell).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('selects and clears a date from the keyboard', async () => {
+    const user = userEvent.setup()
+    const onDateSelect = vi.fn()
+    const data = makeData([['2026-07-14', 5]])
+
+    const { rerender } = render(
+      <ActivityHeatmap data={data} selectedDate={null} onDateSelect={onDateSelect} />
+    )
+
+    const cell = screen.getByRole('button', { name: '5 events on 2026-07-14' })
+    cell.focus()
+    expect(cell).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+    expect(onDateSelect).toHaveBeenLastCalledWith('2026-07-14')
+
+    rerender(
+      <ActivityHeatmap data={data} selectedDate="2026-07-14" onDateSelect={onDateSelect} />
+    )
+    const selectedCell = screen.getByRole('button', { name: '5 events on 2026-07-14' })
+    selectedCell.focus()
+    await user.keyboard(' ')
+    expect(onDateSelect).toHaveBeenLastCalledWith(null)
+  })
+
+  it('keeps a visible keyboard focus treatment on day cells', () => {
+    const data = makeData([['2026-07-14', 5]])
+
+    render(<ActivityHeatmap data={data} selectedDate={null} onDateSelect={vi.fn()} />)
+
+    const cell = screen.getByRole('button', { name: '5 events on 2026-07-14' })
+    cell.focus()
+    // jsdom cannot resolve :focus-visible, so this asserts the shared focus
+    // class is attached; the module rule supplies the 3px outline.
+    expect(cell.className).toContain('heatmapDay')
   })
 
   it('should assign correct color level based on count', () => {

@@ -6,15 +6,11 @@ import { format } from 'date-fns'
 import { Briefcase, LoaderCircle, Star, User, Zap } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import Link from 'next/link'
-import { Badge } from '@/components/ui/badge'
-import { buttonVariants } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import {
   PLAN_ITEM_PRIORITY_LABELS,
-  PLAN_ITEM_PRIORITY_ROW_TINTS,
   PLAN_ITEM_PRIORITY_TINTS,
   PLAN_ITEM_STATUS_COLORS,
   PLAN_ITEM_STATUS_ICONS,
@@ -27,18 +23,21 @@ import type {
   PeriodPlanItemPriority,
   PeriodPlanItemStatus,
 } from '@/lib/db/schema'
+import styles from './timeline.module.css'
 
-function PriorityTint({ priority }: { priority: PeriodPlanItemPriority }) {
+/**
+ * Priority is always stated in words. The dot repeats the level for scanning;
+ * neither cue borrows a warning hue or the theme's error tokens.
+ */
+function PriorityLabel({ priority }: { priority: PeriodPlanItemPriority }) {
   return (
-    <span
-      role="img"
-      aria-label={`Priority: ${PLAN_ITEM_PRIORITY_LABELS[priority]}`}
-      data-priority={priority}
-      className={cn(
-        'inline-block h-2.5 w-2.5 shrink-0 rounded-full align-middle',
-        PLAN_ITEM_PRIORITY_TINTS[priority],
-      )}
-    />
+    <span className={styles.planPriority} data-priority={priority}>
+      <span
+        aria-hidden="true"
+        className={cn('inline-block h-2 w-2 shrink-0 rounded-full', PLAN_ITEM_PRIORITY_TINTS[priority])}
+      />
+      {PLAN_ITEM_PRIORITY_LABELS[priority]} priority
+    </span>
   )
 }
 
@@ -48,7 +47,7 @@ function ImportantBadge() {
     <IconBadge
       Icon={Star}
       label="Important"
-      className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+      className="rounded-[3px] border-[#eccf9c] bg-[#fff3dd] text-[#8a4d05]"
     />
   )
 }
@@ -58,7 +57,7 @@ function UrgentBadge() {
     <IconBadge
       Icon={Zap}
       label="Urgent"
-      className="bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200"
+      className="rounded-[3px] border-[#e4bcbc] bg-[#fff1f1] text-[#a43b3b]"
     />
   )
 }
@@ -74,23 +73,22 @@ type IconBadgeProps = {
   Icon: LucideIcon
   label: string
   className?: string
-  /** Constrained to the two variants this helper actually renders. */
-  variant?: 'default' | 'outline'
 }
 
 /**
  * A focusable, icon-only tooltip trigger. role="img" makes aria-label naming
  * valid on this non-interactive display element; tabIndex gives native
  * keyboard focus and lets the Tooltip primitive handle hover/focus uniformly.
+ * A plain span avoids the shared Badge's theme tokens on this fixed-light
+ * surface.
  */
-function IconBadge({ Icon, label, className, variant }: IconBadgeProps) {
+function IconBadge({ Icon, label, className }: IconBadgeProps) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Badge
-            variant={variant}
-            className={cn('gap-1 align-middle', className)}
+          <span
+            className={cn(styles.iconBadge, className)}
             role="img"
             tabIndex={0}
             aria-label={label}
@@ -110,7 +108,6 @@ function ProjectScopeBadge({ scope }: { scope: PeriodPlanItem['projectScope'] })
     <IconBadge
       Icon={Icon}
       label={`Project scope: ${scope === 'personal' ? 'Personal' : 'Work'}`}
-      variant="outline"
     />
   )
 }
@@ -133,11 +130,11 @@ function StatusFilter({
   onToggle: (status: PeriodPlanItemStatus) => void
 }) {
   return (
-    <div role="group" aria-label="Filter plan items by status" className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b pb-3">
+    <div role="group" aria-label="Filter plan items by status" className={styles.planStatusFilter}>
       {PLAN_ITEM_STATUS_ORDER.map((status) => {
         const Icon = PLAN_ITEM_STATUS_ICONS[status]
         return (
-          <label key={status} className="flex cursor-pointer items-center gap-1.5 text-xs">
+          <label key={status} className={styles.planStatusOption}>
             <Checkbox
               checked={selected.includes(status)}
               onCheckedChange={() => onToggle(status)}
@@ -200,66 +197,57 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
   const hasItemsButNoFilterMatches = !!data && data.items.length > 0 && visibleItems.length === 0
 
   return (
-    <Card role="region" aria-label="Timeline plan table">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>This Week&apos;s Plan</span>
-          <Link
-            href="/plans"
-            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
-          >
+    <section className={`${styles.panel} ${styles.planPanel}`} role="region" aria-label="Timeline plan table">
+      <header className={styles.planPanelHeader}>
+        <div className={styles.planPanelTitleRow}>
+          <h2 className={styles.panelTitle}>This Week&apos;s Plan</h2>
+          <Link href="/plans" className={styles.textButton}>
             Manage Plans
           </Link>
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">
+        </div>
+        <p className={styles.panelCopy}>
           Read-only projection of current week&apos;s period plan
         </p>
-      </CardHeader>
-      <CardContent>
+      </header>
+      <div className={styles.planPanelBody}>
         {loading ? (
-          <div role="status" className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+          <div role="status" className={styles.planLoading}>
             <LoaderCircle className="h-4 w-4 animate-spin" /> Loading...
           </div>
         ) : error ? (
-          <div role="alert" className="py-3 text-sm text-destructive">{error}</div>
+          <div role="alert" className={styles.planError}>{error}</div>
         ) : !data || data.items.length === 0 ? (
-          <div className="space-y-3 py-3">
-            <div className="text-sm text-muted-foreground">
+          <div className={styles.planEmpty}>
+            <div className={styles.planMuted}>
               No plan yet for this week.
             </div>
-            <Link
-              href="/plans"
-              className={cn(buttonVariants({ size: 'sm' }))}
-            >
+            <Link href="/plans" className={styles.primaryButton}>
               Create Plan
             </Link>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className={styles.planListSection}>
             <StatusFilter selected={selectedStatuses} onToggle={toggleStatus} />
             {hasItemsButNoFilterMatches ? (
-              <div className="py-3 text-sm text-muted-foreground">
+              <div className={styles.planMuted}>
                 No plan items match this filter.
               </div>
             ) : (
-              <ul className="space-y-2">
+              <ul className={styles.planList}>
                 {visibleItems.map((item) => (
                   <li
                     key={item.id}
                     data-priority={item.priority}
-                    className={cn(
-                      'flex items-start gap-2 rounded-md px-1 py-0.5 text-sm',
-                      PLAN_ITEM_PRIORITY_ROW_TINTS[item.priority],
-                    )}
+                    className={styles.planRow}
                   >
-                    <Badge variant="outline" className="shrink-0 font-mono text-xs">%{item.id}</Badge>
-                    <div className="flex-1 font-medium">
+                    <span className={styles.planId}>%{item.id}</span>
+                    <div className={styles.planItemMain}>
                       {item.text}{' '}
                       <StatusBadge status={item.status} />
                       {' '}
                       <ProjectScopeBadge scope={item.projectScope} />
                       {' '}
-                      <PriorityTint priority={item.priority} />
+                      <PriorityLabel priority={item.priority} />
                       {item.isImportant && (
                         <>
                           {' '}
@@ -277,17 +265,17 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
                 ))}
               </ul>
             )}
-            <div className="pt-2">
+            <div className={styles.planFooter}>
               <Link
                 href="/plans"
-                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'w-full')}
+                className={`${styles.secondaryButton} ${styles.planFooterButton}`}
               >
                 View All Plans
               </Link>
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }

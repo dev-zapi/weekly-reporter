@@ -3,6 +3,7 @@
 import { EventCard } from './EventCard'
 import type { TimelineEvent } from '@/lib/event-view'
 import type { RawEvent } from '@/lib/db/schema'
+import styles from './timeline.module.css'
 
 interface TimelineGroupProps {
   title: string
@@ -13,13 +14,31 @@ interface TimelineGroupProps {
   onPlanReferenceClick?: (planItemId: number) => void
   highlightKey?: number | null
   highlightEventId?: number | null
+  selectedEventId?: number | null
+  onEventSelect?: (eventId: number) => void
 }
 
-export function TimelineGroup({ title, events, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightKey, highlightEventId }: TimelineGroupProps) {
+export function TimelineGroup({
+  title,
+  events,
+  onEdit,
+  onDelete,
+  onReferenceClick,
+  onPlanReferenceClick,
+  highlightKey,
+  highlightEventId,
+  selectedEventId,
+  onEventSelect,
+}: TimelineGroupProps) {
   return (
-    <div className="space-y-3">
-      <h3 className="font-semibold text-sm" suppressHydrationWarning>{title}</h3>
-      <div className="space-y-2">
+    <section className={styles.group} aria-label={title}>
+      <header className={styles.groupHeader}>
+        <h3 className={styles.groupTitle} suppressHydrationWarning>{title}</h3>
+        <span className={styles.groupCount}>
+          {events.length} {events.length === 1 ? 'record' : 'records'}
+        </span>
+      </header>
+      <div className={styles.eventList}>
         {events.map((event) => (
           <EventCard
             key={event.id}
@@ -30,9 +49,11 @@ export function TimelineGroup({ title, events, onEdit, onDelete, onReferenceClic
             onReferenceClick={onReferenceClick}
             onPlanReferenceClick={onPlanReferenceClick}
             highlightKey={highlightEventId === event.id ? highlightKey : null}
+            selected={selectedEventId === event.id}
+            onSelect={onEventSelect}
           />
         ))}
       </div>
-    </div>
+    </section>
   )
 }

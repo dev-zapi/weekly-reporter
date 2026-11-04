@@ -238,6 +238,28 @@ describe('EventCard', () => {
     })
   })
 
+  describe('numbered evidence row', () => {
+    it('renders the stable @id beside the record', () => {
+      const event = makeEvent(new Date('2026-07-13T13:00:00'), { id: 7 })
+      render(<EventCard event={event} />)
+      expect(screen.getByText('@7')).toBeInTheDocument()
+    })
+
+    it('selects the record for the evidence trace', () => {
+      const onSelect = vi.fn()
+      const event = makeEvent(new Date('2026-07-13T13:00:00'), { id: 7 })
+      render(<EventCard event={event} onSelect={onSelect} />)
+
+      const inspect = screen.getByRole('button', { name: 'Inspect event 7' })
+      expect(inspect).toHaveAttribute('aria-pressed', 'false')
+      fireEvent.click(inspect)
+      expect(onSelect).toHaveBeenCalledWith(7)
+
+      render(<EventCard event={event} selected onSelect={onSelect} />)
+      expect(screen.getByRole('button', { name: 'Tracing event 7' })).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
   describe('删除警告包含评论引用', () => {
     it('warns about citing plan item comments before deleting', async () => {
       vi.useRealTimers()
