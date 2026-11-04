@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-03T14:57:47Z",
+  "generatedAt": "2026-11-04T00:00:00Z",
   "title": "Design System: weekly-reporter — Numbered Evidence",
   "extensions": {
     "colorMeta": {
@@ -308,7 +308,63 @@
         "name": "mobile",
         "value": "780px"
       }
-    ]
+    ],
+    "surfaceCoverage": {
+      "primary": [
+        {
+          "name": "Shell",
+          "routes": ["/"],
+          "summary": "Navy 248px period rail on shared frame ground, no body-level top bar, cobalt keyline."
+        },
+        {
+          "name": "Timeline",
+          "routes": ["/"],
+          "summary": "Evidence capture band, numbered event records, selected-row rules, and the persistent evidence trace."
+        },
+        {
+          "name": "Plans",
+          "routes": ["/plans"],
+          "summary": "Period plan workspace with readiness, plan items, and monthly review composition."
+        },
+        {
+          "name": "Reports and report workspace",
+          "routes": ["/reports", "/reports/[id]"],
+          "summary": "Report library plus the source-draft, preview, and review workspace with audience separation."
+        }
+      ],
+      "secondary": [
+        {
+          "name": "Library and configuration — Templates",
+          "routes": ["/templates", "/templates/new", "/templates/[id]"],
+          "summary": "Paper canvas, title-first heading, dense white template records with cobalt record references (official id, T<id> personal, S<id> AI style) and worded official/personal badges, official/personal tabs with counts, white editing panels, and shared white dialogs for view, clone, and save-as."
+        },
+        {
+          "name": "Library and configuration — Prompts",
+          "routes": ["/prompts"],
+          "summary": "Paper canvas with the shared system-prompt tabs for the live check and generate keys, white prompt and AI-style panels, scrollable prompt previews, and variable blocks rendered only when variables exist."
+        },
+        {
+          "name": "Collection sources",
+          "routes": ["/collect", "/collect/new", "/collect/[id]"],
+          "summary": "Frame-ground outer surface with a paper primary column, title-first heading, dense white source rows led by a cobalt numbered reference, worded status and short Work/Personal scope badges with reserved width, sticky desktop Actions column, labeled mobile card records, white form panels, scan and author-picker dialogs, and inline sync-result states."
+        },
+        {
+          "name": "Security",
+          "routes": ["/security"],
+          "summary": "Frame-ground workspace with white PAT and audit records, cobalt #id references, worded status badges, tabular metadata, tabs with counts, pagination, and a reduced-motion-safe AlertDialog for PAT revocation."
+        },
+        {
+          "name": "Sign-in",
+          "routes": ["/login"],
+          "summary": "Standalone fixed-light gate outside the shell: frame ground, one centered white 440px panel with a 2px navy top rule, title-first Geist body, cobalt caret, visible focus, and an explicit inline error alert."
+        },
+        {
+          "name": "Report creation entry",
+          "routes": ["/new", "/edit/[id]"],
+          "summary": "Paper primary column plus a persistent 350px frame-ground settings rail, title-first composition, Leadership/Personal audience tabs, read-only source-draft preview with explicit loading/empty/error states, and responsive stacking down to 320px; /edit/[id] wraps the migrated report workspace."
+        }
+      ]
+    }
   },
   "components": [
     {
@@ -374,7 +430,7 @@
   ],
   "narrative": {
     "northStar": "Numbered Evidence",
-    "overview": "Numbered Evidence is a compact personal workbench, not a decorative report editor. Navy frames the workspace, ice blue separates work areas from near-white records, and cobalt makes references and selected paths visible. Dense rows, stable IDs, fixed readiness cells, and one aligned evidence trace make the path from captured work to reviewed reporting inspectable.\n\nThis document records the shared visual world of the shipped Numbered Evidence production UI: the shared shell plus the Timeline, Plans, Reports, and report workspace surfaces, with the remaining Library and configuration pages inheriting that shell. They implement the user-directed C hybrid composition: B’s 248px period sidebar combined with C’s split body, persistent context, and report-first review. The approved hybrid is now the production system; A and B survive only as historical prototype alternates, and the development-only `/prototype` switcher is not part of production.",
+    "overview": "Numbered Evidence is a compact personal workbench, not a decorative report editor. Navy frames the workspace, ice blue separates work areas from near-white records, and cobalt makes references and selected paths visible. Dense rows, stable IDs, fixed readiness cells, and one aligned evidence trace make the path from captured work to reviewed reporting inspectable.\n\nThis document records the shared visual world of the shipped Numbered Evidence production UI: the shared shell, the primary Timeline, Plans, Reports, and report workspace surfaces, and the migrated secondary surfaces — Library and configuration (Templates and Prompts), Collection sources, Security and sign-in, and the report creation entry. The primary surfaces implement the user-directed C hybrid composition: B’s 248px period sidebar combined with C’s split body, persistent context, and report-first review. The approved hybrid is now the production system; A and B survive only as historical prototype alternates, and the development-only `/prototype` switcher is not part of production.",
     "keyCharacteristics": [
       "Stable `@id`, `%id`, and `Rid` references remain visible beside content.",
       "Explicit labels and values accompany green, amber, neutral, and error states.",
