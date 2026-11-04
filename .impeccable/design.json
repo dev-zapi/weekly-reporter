@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-03T14:57:47Z",
+  "title": "Design System: weekly-reporter — Numbered Evidence",
+  "extensions": {
+    "colorMeta": {
+      "navy": {
+        "role": "primary",
+        "displayName": "Workbench Navy",
+        "canonical": "#14273d",
+        "tonalRamp": [
+          "#09121d",
+          "#0d1b2c",
+          "#14273d",
+          "#203b58",
+          "#52647a",
+          "#91a5ba",
+          "#dfe9f2",
+          "#f4f8fc"
+        ]
+      },
+      "navy-deep": {
+        "role": "primary",
+        "displayName": "Deep Navy",
+        "canonical": "#0d1b2c",
+        "tonalRamp": [
+          "#050b12",
+          "#08131f",
+          "#0d1b2c",
+          "#14273d",
+          "#203b58",
+          "#4d6885",
+          "#b7c9dc",
+          "#eaf1f8"
+        ]
+      },
+      "cobalt": {
+        "role": "primary",
+        "displayName": "Citation Cobalt",
+        "canonical": "#2f66d0",
+        "tonalRamp": [
+          "#10244f",
+          "#17366f",
+          "#214fae",
+          "#2f66d0",
+          "#6e99e8",
+          "#a9c7fa",
+          "#dfe9fd",
+          "#f2f6ff"
+        ]
+      },
+      "cobalt-dark": {
+        "role": "primary",
+        "displayName": "Cobalt Ink",
+        "canonical": "#214fae",
+        "tonalRamp": [
+          "#0d1d42",
+          "#142d67",
+          "#214fae",
+          "#2f66d0",
+          "#74a2fa",
+          "#bcd3fa",
+          "#e9f0fd",
+          "#f5f8ff"
+        ]
+      },
+      "ice": {
+        "role": "neutral",
+        "displayName": "Ice Work Area",
+        "canonical": "#edf3f8",
+        "tonalRamp": [
+          "#14273d",
+          "#35506f",
+          "#66798f",
+          "#91a5ba",
+          "#cbd6e2",
+          "#e2ebf4",
+          "#edf3f8",
+          "#fafcfe"
+        ]
+      },
+      "frame-ground": {
+        "role": "neutral",
+        "displayName": "Shared Frame Ground",
+        "canonical": "#e2ebf4",
+        "tonalRamp": [
+          "#14273d",
+          "#35506f",
+          "#66798f",
+          "#91a5ba",
+          "#b6c5d5",
+          "#cbd6e2",
+          "#e2ebf4",
+          "#f5f8fb"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Near-White Paper",
+        "canonical": "#fafcfe",
+        "tonalRamp": [
+          "#172537",
+          "#52647a",
+          "#91a5ba",
+          "#cbd6e2",
+          "#e2e9f0",
+          "#edf3f8",
+          "#f5f8fb",
+          "#fafcfe"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "Record White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#172537",
+          "#52647a",
+          "#91a5ba",
+          "#cbd6e2",
+          "#e2e9f0",
+          "#edf3f8",
+          "#fafcfe",
+          "#ffffff"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Evidence Ink",
+        "canonical": "#172537",
+        "tonalRamp": [
+          "#0d1b2c",
+          "#172537",
+          "#26384d",
+          "#42546a",
+          "#66798f",
+          "#b7c9dc",
+          "#e2ebf4",
+          "#f5f8fb"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Slate",
+        "canonical": "#52647a",
+        "tonalRamp": [
+          "#172537",
+          "#26384d",
+          "#42546a",
+          "#52647a",
+          "#7a8796",
+          "#aebed0",
+          "#dfe9f2",
+          "#f5f8fb"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline Blue-Gray",
+        "canonical": "#cbd6e2",
+        "tonalRamp": [
+          "#26384d",
+          "#52647a",
+          "#8ba1b7",
+          "#aebed0",
+          "#cbd6e2",
+          "#e2e9f0",
+          "#edf3f8",
+          "#fafcfe"
+        ]
+      },
+      "green": {
+        "role": "secondary",
+        "displayName": "Ready Green",
+        "canonical": "#18794e",
+        "tonalRamp": [
+          "#0b3825",
+          "#0e5e3a",
+          "#18794e",
+          "#2f9667",
+          "#63ce91",
+          "#a9d4ba",
+          "#e9f5ee",
+          "#f5fbf7"
+        ]
+      },
+      "green-bg": {
+        "role": "secondary",
+        "displayName": "Ready Wash",
+        "canonical": "#e9f5ee",
+        "tonalRamp": [
+          "#0e5e3a",
+          "#18794e",
+          "#315f48",
+          "#63a781",
+          "#a9d4ba",
+          "#d5ecde",
+          "#e9f5ee",
+          "#f8fcfa"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Blocker Amber",
+        "canonical": "#8a4d05",
+        "tonalRamp": [
+          "#3f2508",
+          "#653908",
+          "#8a4d05",
+          "#a96b20",
+          "#c8954e",
+          "#e6c892",
+          "#fff3dd",
+          "#fffbf4"
+        ]
+      },
+      "amber-bg": {
+        "role": "secondary",
+        "displayName": "Blocker Wash",
+        "canonical": "#fff3dd",
+        "tonalRamp": [
+          "#653908",
+          "#8a4d05",
+          "#735329",
+          "#b18445",
+          "#e6c892",
+          "#f4dfb8",
+          "#fff3dd",
+          "#fffdf9"
+        ]
+      },
+      "red": {
+        "role": "tertiary",
+        "displayName": "Error Red",
+        "canonical": "#a43b3b",
+        "tonalRamp": [
+          "#481919",
+          "#702727",
+          "#a43b3b",
+          "#bd5b5b",
+          "#dca6a6",
+          "#f0d0d0",
+          "#fff1f1",
+          "#fffafa"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page-level workspace names."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Panel and section titles."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Evidence and record titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Controls, explanations, and interface copy."
+      },
+      "document": {
+        "displayName": "Document",
+        "purpose": "Markdown source and final prose."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Stable references and trace nodes with tabular numerals."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Dates, source, scope, and supporting state."
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "0 10px 28px rgb(13 27 44 / 18%)",
+        "purpose": "Library menu only."
+      },
+      {
+        "name": "active-pane",
+        "value": "0 1px 4px rgb(20 39 61 / 12%)",
+        "purpose": "Selected report pane tab."
+      },
+      {
+        "name": "notice",
+        "value": "0 8px 24px rgb(13 27 44 / 20%)",
+        "purpose": "Fixed confirmation message."
+      }
+    ],
+    "motion": [
+      {
+        "name": "loading-pulse",
+        "value": "1s ease-in-out infinite alternate",
+        "purpose": "Loading line only; reduced-motion preference limits duration to 0.01ms and one iteration."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "1100px"
+      },
+      {
+        "name": "mobile",
+        "value": "780px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Cobalt action for capture and review operations.",
+      "html": "<button class=\"ds-button-primary\">Add to timeline</button>",
+      "css": ".ds-button-primary { display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:8px 13px; color:#fff; background:#2f66d0; border:1px solid #2f66d0; border-radius:4px; font:600 14px/1.5 sans-serif; white-space:nowrap; cursor:pointer; } .ds-button-primary:hover:not(:disabled) { background:#214fae; border-color:#214fae; } .ds-button-primary:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-button-primary:disabled { color:#42546a; background:#d4deea; border-color:#b6c5d5; cursor:not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "White bordered action for secondary workflow moves.",
+      "html": "<button class=\"ds-button-secondary\">Review reports</button>",
+      "css": ".ds-button-secondary { display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:8px 13px; color:#14273d; background:#fff; border:1px solid #aebed0; border-radius:4px; font:600 14px/1.5 sans-serif; white-space:nowrap; cursor:pointer; } .ds-button-secondary:hover:not(:disabled) { background:#eaf1fb; border-color:#2f66d0; } .ds-button-secondary:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-button-secondary:disabled { color:#42546a; background:#d4deea; border-color:#b6c5d5; cursor:not-allowed; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "Compact white field used for capture and planning.",
+      "html": "<input class=\"ds-input\" aria-label=\"New work item\" placeholder=\"What moved forward?\" />",
+      "css": ".ds-input { min-width:0; min-height:42px; padding:10px 13px; color:#172537; caret-color:#2f66d0; background:#fff; border:1px solid #aebed0; border-radius:4px; font:400 14px/1.5 sans-serif; } .ds-input::placeholder { color:#66798f; opacity:1; } .ds-input:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; }"
+    },
+    {
+      "name": "Evidence Row",
+      "kind": "custom",
+      "description": "Selectable record with a stable leading event reference and explicit trace action.",
+      "html": "<button class=\"ds-evidence-row\" aria-pressed=\"true\"><span class=\"ds-evidence-id\">@8540</span><span class=\"ds-evidence-body\"><strong>Evidence record title</strong><span>Nov 3, 2:54 PM · Manual entry</span></span><span class=\"ds-evidence-action\">Tracing</span></button>",
+      "css": ".ds-evidence-row { position:relative; display:grid; grid-template-columns:62px minmax(0,1fr) 72px; gap:13px; align-items:start; width:100%; padding:15px 13px; text-align:left; color:#172537; background:#e9f0fd; border:0; border-bottom:1px solid #cbd6e2; font:400 14px/1.5 sans-serif; cursor:pointer; } .ds-evidence-row::after { content:\"\"; position:absolute; left:0; bottom:-1px; width:100%; height:2px; background:#2f66d0; } .ds-evidence-row:hover { background:#f2f6fb; } .ds-evidence-row:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-evidence-id { color:#214fae; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; } .ds-evidence-body { display:grid; gap:8px; min-width:0; } .ds-evidence-body strong { font-size:14px; font-weight:550; line-height:1.55; overflow-wrap:anywhere; } .ds-evidence-body span { color:#52647a; font-size:11px; } .ds-evidence-action { color:#214fae; font-size:11px; text-align:right; } @media(max-width:780px) { .ds-evidence-row { grid-template-columns:48px minmax(0,1fr); padding:13px 10px; } .ds-evidence-action { display:none; } }"
+    },
+    {
+      "name": "Readiness Cells",
+      "kind": "custom",
+      "description": "Fixed evidence, plan, source, and final-review cells with labeled ready and pending states.",
+      "html": "<section class=\"ds-readiness\" aria-label=\"Report readiness\"><h2>Workflow readiness</h2><div class=\"ds-readiness-grid\"><div class=\"ds-cell ds-ready\"><span>Work evidence</span><strong>12 loaded</strong><small>Live timeline</small></div><div class=\"ds-cell ds-pending\"><span>Plan follow-through</span><strong>0/5 done</strong><small>Current week</small></div><div class=\"ds-cell ds-ready\"><span>Source draft</span><strong>Revision 1</strong><small>Frozen facts</small></div><div class=\"ds-cell ds-pending\"><span>Final review</span><strong>Needed</strong><small>Leadership</small></div></div></section>",
+      "css": ".ds-readiness { padding:16px; color:#172537; background:#fff; border:1px solid #cbd6e2; border-radius:4px; font:400 14px/1.5 sans-serif; } .ds-readiness h2 { margin:0 0 13px; font-size:15px; font-weight:400; } .ds-readiness-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); border-top:1px solid #cbd6e2; border-left:1px solid #cbd6e2; } .ds-cell { display:grid; gap:3px; min-width:0; padding:11px; border-right:1px solid #cbd6e2; border-bottom:1px solid #cbd6e2; } .ds-cell span { color:#52647a; font-size:11px; } .ds-cell strong { font-size:13px; font-variant-numeric:tabular-nums; } .ds-cell small { color:#52647a; font-size:10px; } .ds-ready { background:#e9f5ee; } .ds-ready strong { color:#18794e; } .ds-pending { background:#fff3dd; } .ds-pending strong { color:#8a4d05; }"
+    },
+    {
+      "name": "Evidence Trace",
+      "kind": "custom",
+      "description": "Persistent C-context inspector with expanded spacing and one aligned path from live event to next snapshot and human review.",
+      "html": "<aside class=\"ds-trace\"><h2>Evidence trace</h2><div class=\"ds-chain\" aria-label=\"Evidence trace for event 8540\"><span>@8540<small>Live event</small></span><i></i><span>Next snapshot<small>Not yet frozen</small></span><i></i><span>Review<small>Human decision</small></span></div><p>Report inclusion is fixed only when an audience snapshot is created.</p></aside>",
+      "css": ".ds-trace { padding:22px; color:#172537; background:#fff; border:1px solid #cbd6e2; border-radius:4px; font:400 13px/1.5 sans-serif; } .ds-trace h2 { margin:0; font-size:15px; font-weight:400; } .ds-chain { display:grid; grid-template-columns:auto minmax(16px,1fr) auto minmax(16px,1fr) auto; align-items:center; margin:26px 0; } .ds-chain span { display:grid; gap:2px; color:#214fae; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; } .ds-chain small { color:#52647a; font-size:9px; font-weight:400; white-space:nowrap; } .ds-chain i { height:2px; margin:0 6px; background:#2f66d0; } .ds-trace p { margin:0; color:#52647a; line-height:1.6; }"
+    },
+    {
+      "name": "Audience Tabs",
+      "kind": "custom",
+      "description": "Strictly separated Leadership and Personal evidence scopes.",
+      "html": "<div class=\"ds-audience\" role=\"tablist\" aria-label=\"Report audience\"><button role=\"tab\" aria-selected=\"true\" class=\"ds-active\">Leadership<small>Work + manual evidence</small></button><button role=\"tab\" aria-selected=\"false\">Personal<small>All evidence</small></button></div>",
+      "css": ".ds-audience { display:grid; grid-template-columns:1fr 1fr; overflow:hidden; border:1px solid #aebed0; border-radius:4px; font:400 14px/1.5 sans-serif; } .ds-audience button { display:grid; gap:2px; padding:9px 12px; text-align:left; color:#52647a; background:#fff; border:0; cursor:pointer; } .ds-audience button+button { border-left:1px solid #aebed0; } .ds-audience small { font-size:10px; } .ds-audience .ds-active { color:#fff; background:#14273d; } .ds-audience .ds-active small { color:#c3d3e5; } .ds-audience button:focus-visible { position:relative; z-index:1; outline:3px solid #74a2fa; outline-offset:3px; }"
+    },
+    {
+      "name": "Review Gate",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Navy human-decision panel separating source facts, final availability, and adoption.",
+      "html": "<aside class=\"ds-review\"><h2>Review gate</h2><p>The source draft remains the fact authority. A proposal becomes final only after your decision.</p><ol><li>✓ Snapshot frozen</li><li>✓ Source revision 1</li><li>○ Final content available</li><li>○ Human adoption</li></ol><button disabled>Preview adoption</button><small>Interaction preview only; no report data is changed.</small></aside>",
+      "css": ".ds-review { display:grid; gap:13px; padding:18px; color:#fff; background:#14273d; border-radius:4px; font:400 14px/1.5 sans-serif; } .ds-review h2 { margin:0; font-size:15px; font-weight:400; } .ds-review p { margin:0; color:#c3d3e5; font-size:12px; } .ds-review ol { display:grid; gap:9px; margin:0; padding:14px 0; list-style:none; border-top:1px solid #3b526c; border-bottom:1px solid #3b526c; color:#c3d3e5; font-size:12px; } .ds-review button { min-height:38px; padding:8px 13px; border-radius:4px; font-weight:600; color:#42546a; background:#d4deea; border:1px solid #b6c5d5; cursor:not-allowed; } .ds-review button:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-review small { color:#b7c9dc; font-size:10px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Numbered Evidence",
+    "overview": "Numbered Evidence is a compact personal workbench, not a decorative report editor. Navy frames the workspace, ice blue separates work areas from near-white records, and cobalt makes references and selected paths visible. Dense rows, stable IDs, fixed readiness cells, and one aligned evidence trace make the path from captured work to reviewed reporting inspectable.\n\nThis document records the shared visual world of the shipped Numbered Evidence production UI: the shared shell plus the Timeline, Plans, Reports, and report workspace surfaces, with the remaining Library and configuration pages inheriting that shell. They implement the user-directed C hybrid composition: B’s 248px period sidebar combined with C’s split body, persistent context, and report-first review. The approved hybrid is now the production system; A and B survive only as historical prototype alternates, and the development-only `/prototype` switcher is not part of production.",
+    "keyCharacteristics": [
+      "Stable `@id`, `%id`, and `Rid` references remain visible beside content.",
+      "Explicit labels and values accompany green, amber, neutral, and error states.",
+      "Compact controls, tabular numerals, thin dividers, and small radii prioritize scanning.",
+      "Navy is structural; cobalt marks action, selection, citations, and trace alignment.",
+      "Source draft, candidate final, and human adoption remain visibly distinct."
+    ],
+    "rules": [
+      {
+        "name": "The Citation Rule",
+        "body": "Cobalt identifies an actionable or traceable path; do not use it as general decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Monochrome-Proof Rule",
+        "body": "Status color always travels with an explicit word, number, icon, or shape so meaning survives without hue.",
+        "section": "colors"
+      },
+      {
+        "name": "The One-Family Rule",
+        "body": "Geist Sans serves both controls and report content; do not introduce a display serif or separate monospace for citations.",
+        "section": "typography"
+      },
+      {
+        "name": "The Stable-Number Rule",
+        "body": "IDs, dates, counts, revisions, and period ranges use tabular numerals wherever alignment matters.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Record Rule",
+        "body": "Evidence rows, readiness cells, source panes, and report documents use boundaries and tonal contrast, not ambient card shadows.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Shared Selection Rule",
+        "body": "Selected text uses navy ink on the cobalt highlight tint (`#bcd3fa`) with a cobalt caret in every workbench surface; never leave a report, preview, plan, or proposal module on the browser default selection.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do keep `@id`, `%id`, and `Rid` adjacent to the records they identify and align numeric operational data.",
+      "Do preserve the four readiness cells and the single Live event → Next snapshot → Review trace when reorganizing a surface.",
+      "Do keep Leadership and Personal scopes, snapshots, source drafts, finals, and review states explicitly separate.",
+      "Do pair every status color with visible language or a check/shape, and retain the shared focus and reduced-motion behavior.",
+      "Do use compact white records on ice work areas, with navy reserved for shell, capture, and decision gates."
+    ],
+    "donts": [
+      "Don't turn evidence rows into floating cards or use cobalt as a decorative accent detached from action, selection, or traceability.",
+      "Don't collapse source draft, candidate final, and human adoption into one visually undifferentiated document state.",
+      "Don't treat a source draft as a final, enable adoption without final content, or imply that live edits rewrite a frozen report basis.",
+      "Don't replace the shipped C hybrid with the A or B prototype compositions; they are historical alternates only, and the `/prototype` variant switcher and its throwaway components are development tooling, not production code."
+    ]
+  }
+}
