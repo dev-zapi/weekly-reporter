@@ -3,6 +3,7 @@
   --security-cobalt: var(--wr-cobalt, #2f66d0);
   --security-cobalt-dark: var(--wr-cobalt-dark, #214fae);
   --security-ice: var(--wr-ice, #edf3f8);
+  --security-frame: var(--wr-frame-ground, #e2ebf4);
   --security-paper: var(--wr-paper, #fafcfe);
   --security-ink: var(--wr-ink, #172537);
   --security-secondary: var(--wr-secondary, #52647a);
@@ -14,7 +15,7 @@
   padding: 30px 28px;
   color-scheme: light;
   color: var(--security-ink);
-  background: var(--security-paper);
+  background: var(--security-frame);
   font-family: var(--font-ui, var(--font-geist-sans), 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui, sans-serif);
   font-size: 14px;
   line-height: 1.5;
@@ -712,6 +713,14 @@
 @media (prefers-reduced-motion: reduce) {
   .loadingLine {
     animation: none;
+  }
+
+  .dialogBackdrop {
+    animation-duration: 0.01ms;
+  }
+
+  .dialogPopup {
+    animation-duration: 0.01ms;
   }
 }
 

@@ -336,7 +336,11 @@ function PatSection() {
             <h2 id="existing-tokens-heading">Existing tokens</h2>
             <p>Revocation is permanent and immediately blocks future API access.</p>
           </div>
-          {!loadError && <span>{pats.length} records</span>}
+          {!loadError && (
+            <span>
+              {pats.length} {pats.length === 1 ? 'record' : 'records'}
+            </span>
+          )}
         </div>
 
         {loadError ? (

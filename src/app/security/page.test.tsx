@@ -118,6 +118,18 @@ describe('SecurityPage — PAT section', () => {
     expect(screen.getByText('#1')).toBeInTheDocument()
     expect(screen.getByText('#2')).toBeInTheDocument()
     expect(screen.getByText('#3')).toBeInTheDocument()
+
+    // Pluralized count
+    expect(screen.getByText('3 records')).toBeInTheDocument()
+  })
+
+  it('uses the singular record label for a single PAT', async () => {
+    mockFetch.mockResolvedValueOnce(mockJsonResponse({ pats: [SAMPLE_PATS[0]] }))
+
+    render(<SecurityPage />)
+
+    expect(await screen.findByText('1 record')).toBeInTheDocument()
+    expect(screen.queryByText('1 records')).not.toBeInTheDocument()
   })
 
   it('shows loading state before PATs are fetched', () => {
