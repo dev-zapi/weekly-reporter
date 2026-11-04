@@ -3,15 +3,12 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, type KeyboardEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { UserCircle, X, GitBranch, RefreshCw } from 'lucide-react'
+import { UserCircle, X, GitBranch, RefreshCw, Loader2 } from 'lucide-react'
 import { AuthorEmailPicker } from './AuthorEmailPicker'
 import { AutoCompleteInput } from './AutoCompleteInput'
 import { TagInput } from './TagInput'
-import { Badge } from './ui/badge'
+import styles from './collection-sources.module.css'
 
 export interface BranchFormValue {
   name: string
@@ -40,6 +37,7 @@ const isRemote = (type: FormData['type']) => !isLocal(type)
 export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number; initialData?: FormData }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormData>(
     initialData || {
       type: 'git-remote-github',
@@ -55,22 +53,17 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
         branches: [],
       },
       enabled: true,
-    }
+    },
   )
 
-  // 邮箱自动补全 — 从当前仓库获取
   const [knownEmails, setKnownEmails] = useState<string[]>([])
-  // 分支自动补全 — 从当前仓库获取
   const [knownBranches, setKnownBranches] = useState<string[]>([])
   const [currentBranch, setCurrentBranch] = useState('')
   const [branchLoading, setBranchLoading] = useState(false)
   const [branchError, setBranchError] = useState(false)
   const [branchRefreshKey, setBranchRefreshKey] = useState(0)
-
-  // 邮箱表格选择器
   const [pickerOpen, setPickerOpen] = useState(false)
 
-  // 根据当前表单值获取仓库邮箱（防抖）
   useEffect(() => {
     const params = new URLSearchParams({ type: formData.type })
     if (isLocal(formData.type)) {
@@ -83,20 +76,18 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
       params.set('token', formData.config.token)
       if (formData.config.baseUrl) params.set('baseUrl', formData.config.baseUrl)
     }
-    // Use first branch for email fetching
     const firstBranch = formData.config.branches[0]?.name
     if (firstBranch) params.set('branch', firstBranch)
 
     const timer = setTimeout(() => {
       apiFetch(`/api/collect/sources/emails?${params}`)
         .then(res => res.json())
-        .then(data => setKnownEmails((data.authors || []).map((a: { email: string }) => a.email)))
+        .then(data => setKnownEmails((data.authors || []).map((author: { email: string }) => author.email)))
         .catch(() => {})
     }, 500)
     return () => clearTimeout(timer)
   }, [formData.type, formData.config.owner, formData.config.repo, formData.config.token, formData.config.baseUrl, formData.config.branches])
 
-  // 根据当前表单值获取仓库分支（防抖）
   useEffect(() => {
     const params = new URLSearchParams({ type: formData.type })
     if (sourceId) params.set('sourceId', String(sourceId))
@@ -152,9 +143,10 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
     setFormData(prev => ({ ...prev, aliases }))
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     setLoading(true)
+    setSubmitError(null)
 
     const submitData = {
       type: formData.type,
@@ -164,7 +156,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
       config: isLocal(formData.type)
         ? {
           owner: formData.config.owner,
-          authorEmails: formData.config.authorEmails.split(',').map(e => e.trim()).filter(Boolean),
+          authorEmails: formData.config.authorEmails.split(',').map(email => email.trim()).filter(Boolean),
           branches: formData.config.branches.length > 0 ? formData.config.branches : undefined,
         }
         : {
@@ -172,37 +164,38 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
           owner: formData.config.owner,
           repo: formData.config.repo,
           token: formData.config.token,
-          authorEmails: formData.config.authorEmails.split(',').map(e => e.trim()).filter(Boolean),
+          authorEmails: formData.config.authorEmails.split(',').map(email => email.trim()).filter(Boolean),
           branches: formData.config.branches.length > 0 ? formData.config.branches : undefined,
         },
       enabled: formData.enabled,
     }
 
     try {
-      const url = sourceId 
+      const url = sourceId
         ? `/api/collect/sources/${sourceId}`
         : '/api/collect/sources'
       const method = sourceId ? 'PUT' : 'POST'
-      
+
       const res = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(submitData),
       })
-      
+
       const data = await res.json()
-      
+
       if (res.ok) {
         toast.success(sourceId ? 'Updated successfully' : 'Created successfully')
         router.push('/collect')
       } else {
         const issueMessage = data.details?.issues?.[0]?.message
-        toast.error(
-          (issueMessage ? `${data.error}: ${issueMessage}` : data.error || 'Operation failed') +
-            traceSuffix(res),
-        )
+        const message = (issueMessage ? `${data.error}: ${issueMessage}` : data.error || 'Operation failed') +
+          traceSuffix(res)
+        setSubmitError(message)
+        toast.error(message)
       }
     } catch {
+      setSubmitError('Operation failed')
       toast.error('Operation failed')
     } finally {
       setLoading(false)
@@ -210,227 +203,254 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
   }
 
   return (
-    <Card className="overflow-visible">
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Source name</Label>
-            <input
-              id="name"
-              type="text"
-              value={formData.name}
-              onChange={e => handleChange('name', e.target.value)}
-              placeholder="e.g. Backend repository"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              required
-            />
+    <>
+      <form onSubmit={handleSubmit} className={styles.sourceForm} aria-busy={loading}>
+        <section className={styles.formSection} aria-labelledby="source-identity-heading">
+          <div className={styles.formSectionHeader}>
+            <h2 id="source-identity-heading">Source identity</h2>
+            <p>Name the record and define how its events are grouped into Leadership and Personal reports.</p>
           </div>
-
-          <div className="space-y-2">
-            <Label>Project scope</Label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="projectScope"
-                  value="work"
-                  checked={formData.projectScope === 'work'}
-                  onChange={() => handleChange('projectScope', 'work')}
-                  className="rounded border-input"
-                />
-                <span className="text-sm">Work project</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="projectScope"
-                  value="personal"
-                  checked={formData.projectScope === 'personal'}
-                  onChange={() => handleChange('projectScope', 'personal')}
-                  className="rounded border-input"
-                />
-                <span className="text-sm">Personal project</span>
-              </label>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Work projects appear in Leadership reports; personal projects appear only in Personal reports.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="aliases">Aliases</Label>
-            <TagInput
-              value={formData.aliases}
-              onChange={handleAliasesChange}
-              placeholder="e.g. Backend service, API platform"
-            />
-            <p className="text-xs text-muted-foreground">
-              Helps AI identify this project. Aliases appear on events.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="type">Source type</Label>
-            <select
-              id="type"
-              value={formData.type}
-              onChange={e => handleChange('type', e.target.value as FormData['type'])}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              <option value="git-remote-github">GitHub (remote)</option>
-              <option value="git-remote-gitlab">GitLab (remote)</option>
-              <option value="git-local">Local Git repository</option>
-              <option value="git-remote-gitee">Gitee (not supported)</option>
-            </select>
-          </div>
-
-          {isRemote(formData.type) && formData.type === 'git-remote-gitlab' && (
-            <div className="space-y-2">
-              <Label htmlFor="baseUrl">GitLab URL (for self-hosted instances; leave blank for gitlab.com)</Label>
+          <div className={styles.fieldsGrid}>
+            <div className={styles.field}>
+              <label htmlFor="name">Source name</label>
               <input
-                id="baseUrl"
+                id="name"
                 type="text"
-                value={formData.config.baseUrl}
-                onChange={e => handleConfigChange('baseUrl', e.target.value)}
-                placeholder="e.g. https://gitlab.example.com"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              />
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label htmlFor="owner">
-              {isLocal(formData.type) ? 'Local repository path' : 'Repository owner or organization'}
-            </Label>
-            <input
-              id="owner"
-              type="text"
-              value={formData.config.owner}
-              onChange={e => handleConfigChange('owner', e.target.value)}
-              placeholder={isLocal(formData.type) ? 'e.g. /home/user/projects/backend' : 'e.g. my-org'}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              required
-            />
-          </div>
-
-          {isRemote(formData.type) && (
-            <div className="space-y-2">
-              <Label htmlFor="repo">Repository name</Label>
-              <input
-                id="repo"
-                type="text"
-                value={formData.config.repo}
-                onChange={e => handleConfigChange('repo', e.target.value)}
-                placeholder="e.g. backend-api"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.name}
+                onChange={event => handleChange('name', event.target.value)}
+                placeholder="e.g. Backend repository"
+                className={styles.textInput}
                 required
               />
             </div>
-          )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="branches">Branches</Label>
-              {isLocal(formData.type) && (
-                <span className="text-xs text-muted-foreground">
-                  {branchLoading ? 'Reading current branch...' : currentBranch ? `Checked out: ${currentBranch}` : 'Current branch unavailable'}
-                </span>
-              )}
+            <div className={styles.field}>
+              <label htmlFor="type">Source type</label>
+              <select
+                id="type"
+                value={formData.type}
+                onChange={event => handleChange('type', event.target.value as FormData['type'])}
+                className={styles.selectInput}
+              >
+                <option value="git-remote-github">GitHub (remote)</option>
+                <option value="git-remote-gitlab">GitLab (remote)</option>
+                <option value="git-local">Local Git repository</option>
+                <option value="git-remote-gitee">Gitee (not supported)</option>
+              </select>
             </div>
-            <BranchInput
-              value={formData.config.branches}
-              onChange={branches => setFormData(prev => ({ ...prev, config: { ...prev.config, branches } }))}
-              suggestions={knownBranches}
-              currentBranch={isLocal(formData.type) ? currentBranch : ''}
-              loading={branchLoading}
-              error={branchError}
-              showRefresh={isLocal(formData.type)}
-              onRefresh={() => {
-                setBranchRefreshKey(key => key + 1)
-              }}
-            />
-            <p className="text-xs text-muted-foreground">
-              {isLocal(formData.type)
-                ? 'Leave blank to collect all local branches. You can enter a branch not shown in suggestions.'
-                : 'Leave blank to follow the repository default branch. You can enter a branch not shown in suggestions.'}
-            </p>
-          </div>
 
-          {isRemote(formData.type) && (
-            <div className="space-y-2">
-              <Label htmlFor="token">Personal access token</Label>
-              <input
-                id="token"
-                type="password"
-              value={formData.config.token}
-              onChange={e => handleConfigChange('token', e.target.value)}
-              placeholder={sourceId ? 'Leave blank to keep the existing token' : 'Enter an access token'}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              required={!sourceId}
-            />
-            <p className="text-xs text-muted-foreground">
-              {sourceId
-                ? 'Leave blank to keep the existing token; entering a new value replaces it.'
-                : formData.type === 'git-remote-github'
-                ? 'GitHub: Settings → Developer settings → Personal access tokens'
-                : 'GitLab: Settings → Access tokens'}
+            <div className={`${styles.field} ${styles.fieldWide}`}>
+              <fieldset>
+                <legend>Project scope</legend>
+                <div className={styles.choiceGroup}>
+                  <label className={styles.choiceOption}>
+                    <input
+                      type="radio"
+                      name="projectScope"
+                      value="work"
+                      checked={formData.projectScope === 'work'}
+                      onChange={() => handleChange('projectScope', 'work')}
+                    />
+                    <span>Work project</span>
+                  </label>
+                  <label className={styles.choiceOption}>
+                    <input
+                      type="radio"
+                      name="projectScope"
+                      value="personal"
+                      checked={formData.projectScope === 'personal'}
+                      onChange={() => handleChange('projectScope', 'personal')}
+                    />
+                    <span>Personal project</span>
+                  </label>
+                </div>
+              </fieldset>
+              <p className={styles.fieldHelp}>
+                Work projects appear in Leadership reports; personal projects appear only in Personal reports.
               </p>
             </div>
-          )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="authorEmails">Author emails (comma-separated)</Label>
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <UserCircle className="h-3.5 w-3.5" />
-                Select from repository
-              </button>
+            <div className={`${styles.field} ${styles.fieldWide}`} role="group" aria-labelledby="aliases-label">
+              <span id="aliases-label" className={styles.fieldLabel}>Aliases</span>
+              <TagInput
+                value={formData.aliases}
+                onChange={handleAliasesChange}
+                placeholder="e.g. Backend service, API platform"
+                className={styles.tagInput}
+              />
+              <p className={styles.fieldHelp}>Helps AI identify this project. Aliases appear on events.</p>
             </div>
-            <AutoCompleteInput
-              value={formData.config.authorEmails}
-              onChange={v => handleConfigChange('authorEmails', v)}
-              suggestions={knownEmails}
-              placeholder="e.g. user@example.com, work@company.com"
-              allowCreate
-            />
-            <p className="text-xs text-muted-foreground">
-              Only collect commits from these email addresses.
-            </p>
           </div>
+        </section>
 
-          <div className="flex items-center gap-2">
-            <input
-              id="enabled"
-              type="checkbox"
-              checked={formData.enabled}
-              onChange={e => handleChange('enabled', e.target.checked)}
-              className="rounded border-input"
-            />
-            <Label htmlFor="enabled">Enable this source</Label>
+        <section className={styles.formSection} aria-labelledby="repository-connection-heading">
+          <div className={styles.formSectionHeader}>
+            <h2 id="repository-connection-heading">Repository connection</h2>
+            <p>Provide the local path or remote coordinates used for branch lookup and commit collection.</p>
           </div>
-        </CardContent>
-        <CardFooter className="gap-2">
-          <Button type="submit" disabled={loading}>
-            {loading ? 'Saving...' : 'Save'}
-          </Button>
-          <Button type="button" variant="outline" onClick={() => router.push('/collect')}>
+          <div className={styles.fieldsGrid}>
+            {isRemote(formData.type) && formData.type === 'git-remote-gitlab' && (
+              <div className={`${styles.field} ${styles.fieldWide}`}>
+                <label htmlFor="baseUrl">GitLab URL (for self-hosted instances; leave blank for gitlab.com)</label>
+                <input
+                  id="baseUrl"
+                  type="text"
+                  value={formData.config.baseUrl}
+                  onChange={event => handleConfigChange('baseUrl', event.target.value)}
+                  placeholder="e.g. https://gitlab.example.com"
+                  className={styles.textInput}
+                />
+              </div>
+            )}
+
+            <div className={styles.field}>
+              <label htmlFor="owner">
+                {isLocal(formData.type) ? 'Local repository path' : 'Repository owner or organization'}
+              </label>
+              <input
+                id="owner"
+                type="text"
+                value={formData.config.owner}
+                onChange={event => handleConfigChange('owner', event.target.value)}
+                placeholder={isLocal(formData.type) ? 'e.g. /home/user/projects/backend' : 'e.g. my-org'}
+                className={styles.textInput}
+                required
+              />
+            </div>
+
+            {isRemote(formData.type) && (
+              <div className={styles.field}>
+                <label htmlFor="repo">Repository name</label>
+                <input
+                  id="repo"
+                  type="text"
+                  value={formData.config.repo}
+                  onChange={event => handleConfigChange('repo', event.target.value)}
+                  placeholder="e.g. backend-api"
+                  className={styles.textInput}
+                  required
+                />
+              </div>
+            )}
+
+            {isRemote(formData.type) && (
+              <div className={`${styles.field} ${styles.fieldWide}`}>
+                <label htmlFor="token">Personal access token</label>
+                <input
+                  id="token"
+                  type="password"
+                  value={formData.config.token}
+                  onChange={event => handleConfigChange('token', event.target.value)}
+                  placeholder={sourceId ? 'Leave blank to keep the existing token' : 'Enter an access token'}
+                  className={styles.textInput}
+                  required={!sourceId}
+                  aria-describedby="token-help"
+                />
+                <p id="token-help" className={styles.fieldHelp}>
+                  {sourceId
+                    ? 'Leave blank to keep the existing token; entering a new value replaces it.'
+                    : formData.type === 'git-remote-github'
+                      ? 'GitHub: Settings → Developer settings → Personal access tokens'
+                      : 'GitLab: Settings → Access tokens'}
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className={styles.formSection} aria-labelledby="collection-rules-heading">
+          <div className={styles.formSectionHeader}>
+            <h2 id="collection-rules-heading">Collection rules</h2>
+            <p>Limit collection to explicit branches and author emails, or leave branches blank to use the repository default.</p>
+          </div>
+          <div className={styles.fieldsGrid}>
+            <div className={`${styles.field} ${styles.fieldWide}`}>
+              <div className={styles.branchHeader}>
+                <label htmlFor="branches">Branches</label>
+                {isLocal(formData.type) && (
+                  <span className={styles.branchStatus} role="status">
+                    {branchLoading ? 'Reading current branch…' : currentBranch ? `Checked out: ${currentBranch}` : 'Current branch unavailable'}
+                  </span>
+                )}
+              </div>
+              <BranchInput
+                value={formData.config.branches}
+                onChange={branches => setFormData(prev => ({ ...prev, config: { ...prev.config, branches } }))}
+                suggestions={knownBranches}
+                currentBranch={isLocal(formData.type) ? currentBranch : ''}
+                loading={branchLoading}
+                error={branchError}
+                showRefresh={isLocal(formData.type)}
+                onRefresh={() => setBranchRefreshKey(key => key + 1)}
+              />
+              <p id="branches-help" className={styles.fieldHelp}>
+                {isLocal(formData.type)
+                  ? 'Leave blank to collect all local branches. You can enter a branch not shown in suggestions.'
+                  : 'Leave blank to follow the repository default branch. You can enter a branch not shown in suggestions.'}
+              </p>
+            </div>
+
+            <div className={`${styles.field} ${styles.fieldWide}`} role="group" aria-labelledby="author-emails-label">
+              <div className={styles.fieldActionRow}>
+                <span id="author-emails-label" className={styles.fieldLabel}>Author emails (comma-separated)</span>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(true)}
+                  className={styles.textButton}
+                >
+                  <UserCircle size={15} aria-hidden="true" />
+                  Select from repository
+                </button>
+              </div>
+              <AutoCompleteInput
+                value={formData.config.authorEmails}
+                onChange={value => handleConfigChange('authorEmails', value)}
+                suggestions={knownEmails}
+                placeholder="e.g. user@example.com, work@company.com"
+                className={styles.textInput}
+                allowCreate
+              />
+              <p className={styles.fieldHelp}>Only collect commits from these email addresses.</p>
+            </div>
+
+            <div className={`${styles.field} ${styles.fieldWide}`}>
+              <label className={styles.enableOption} htmlFor="enabled">
+                <input
+                  id="enabled"
+                  type="checkbox"
+                  checked={formData.enabled}
+                  onChange={event => handleChange('enabled', event.target.checked)}
+                />
+                <span>Enable this source</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        {submitError && (
+          <div className={`${styles.errorState} ${styles.formError}`} role="alert">
+            <strong>Source could not be saved</strong>
+            <p>{submitError}</p>
+            <p>Review the configuration and try saving again.</p>
+          </div>
+        )}
+
+        <div className={styles.formActions}>
+          <button type="submit" className={styles.primaryButton} disabled={loading}>
+            {loading && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
+            {loading ? 'Saving…' : 'Save source'}
+          </button>
+          <button type="button" className={styles.secondaryButton} onClick={() => router.push('/collect')}>
             Cancel
-          </Button>
-        </CardFooter>
+          </button>
+        </div>
       </form>
 
       <AuthorEmailPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onConfirm={emails => handleConfigChange('authorEmails', emails.join(', '))}
-        currentEmails={formData.config.authorEmails.split(',').map(e => e.trim()).filter(Boolean)}
+        currentEmails={formData.config.authorEmails.split(',').map(email => email.trim()).filter(Boolean)}
         repoParams={{
           type: formData.type,
           path: isLocal(formData.type) ? formData.config.owner : undefined,
@@ -441,7 +461,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
           branch: formData.config.branches[0]?.name || undefined,
         }}
       />
-    </Card>
+    </>
   )
 }
 
@@ -461,7 +481,7 @@ function BranchInput({ value, onChange, suggestions, currentBranch, loading, err
   const [open, setOpen] = useState(false)
   const existing = new Set(value.map(branch => branch.name))
   const filtered = suggestions.filter(branch =>
-    !existing.has(branch) && branch.toLowerCase().includes(input.trim().toLowerCase())
+    !existing.has(branch) && branch.toLowerCase().includes(input.trim().toLowerCase()),
   ).slice(0, 10)
 
   function addBranch(name: string) {
@@ -479,68 +499,89 @@ function BranchInput({ value, onChange, suggestions, currentBranch, loading, err
     onChange(value.filter(branch => branch.name !== name))
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault()
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
       addBranch(input)
-    } else if (e.key === 'Backspace' && !input && value.length > 0) {
+    } else if (event.key === 'Backspace' && !input && value.length > 0) {
       removeBranch(value[value.length - 1].name)
-    } else if (e.key === 'Escape') {
+    } else if (event.key === 'Escape') {
       setOpen(false)
     }
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-md border border-input bg-background px-2 py-1.5">
-        {value.map(branch => {
-          const cursor = branch.lastCommitTime ? new Date(branch.lastCommitTime) : null
-          const status = cursor && !Number.isNaN(cursor.getTime())
-            ? `Synced through ${cursor.toLocaleString()}`
-            : 'Awaiting first sync'
-          return (
-            <Badge key={branch.name} variant="secondary" className="gap-1 py-1 pr-1">
-              <GitBranch className="h-3 w-3" />
-              <span>{branch.name}</span>
-                <span className="text-[10px] font-normal text-muted-foreground" title={`${status} (committer date)`}>{status}</span>
-              <button type="button" onClick={() => removeBranch(branch.name)} className="ml-1 rounded-sm p-0.5 hover:bg-muted" aria-label={`Remove branch ${branch.name}`} title={`Remove branch ${branch.name}`}>
-                <X className="h-3 w-3" />
+    <div className={styles.branchControl}>
+      {value.map(branch => {
+        const cursor = branch.lastCommitTime ? new Date(branch.lastCommitTime) : null
+        const status = cursor && !Number.isNaN(cursor.getTime())
+          ? `Synced through ${cursor.toLocaleString()}`
+          : 'Awaiting first sync'
+        return (
+          <span key={branch.name} className={styles.branchTag}>
+            <GitBranch size={12} aria-hidden="true" />
+            <span>{branch.name}</span>
+            <span className={styles.branchCursor} title={`${status} (committer date)`}>{status}</span>
+            <button
+              type="button"
+              onClick={() => removeBranch(branch.name)}
+              className={styles.branchRemove}
+              aria-label={`Remove branch ${branch.name}`}
+              title={`Remove branch ${branch.name}`}
+            >
+              <X size={12} aria-hidden="true" />
+            </button>
+          </span>
+        )
+      })}
+      <div className={styles.branchInputWrap}>
+        <input
+          id="branches"
+          value={input}
+          onChange={event => { setInput(event.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={handleKeyDown}
+          placeholder={currentBranch ? `Current branch ${currentBranch} (leave blank for default)` : 'Leave blank for default branch'}
+          aria-describedby="branches-help"
+        />
+        {open && (filtered.length > 0 || input.trim()) && (
+          <div className={styles.suggestionMenu}>
+            {filtered.map(branch => (
+              <button
+                key={branch}
+                type="button"
+                className={styles.suggestionOption}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => addBranch(branch)}
+              >
+                {branch}
               </button>
-            </Badge>
-          )
-        })}
-        <div className="relative min-w-[180px] flex-1">
-          <input
-            id="branches"
-            value={input}
-            onChange={e => { setInput(e.target.value); setOpen(true) }}
-            onFocus={() => setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
-            onKeyDown={handleKeyDown}
-            placeholder={currentBranch ? `Current branch ${currentBranch} (leave blank for default)` : 'Leave blank for default branch'}
-            className="w-full bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground/60"
-          />
-          {open && (filtered.length > 0 || input.trim()) && (
-            <div className="absolute left-0 top-full z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md">
-              {filtered.map(branch => (
-                <button key={branch} type="button" className="block w-full rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted" onMouseDown={e => e.preventDefault()} onClick={() => addBranch(branch)}>
-                  {branch}
-                </button>
-              ))}
-              {input.trim() && !existing.has(input.trim()) && !suggestions.some(branch => branch.toLowerCase() === input.trim().toLowerCase()) && (
-                <button type="button" className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-primary hover:bg-muted" onMouseDown={e => e.preventDefault()} onClick={() => addBranch(input)}>
-                  Add “{input.trim()}”
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-        {showRefresh && isLocalPlaceholder(currentBranch, loading, error) && (
-          <button type="button" className="rounded-sm p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onRefresh} title="Reload branches" aria-label="Reload branches">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
+            ))}
+            {input.trim() && !existing.has(input.trim()) && !suggestions.some(branch => branch.toLowerCase() === input.trim().toLowerCase()) && (
+              <button
+                type="button"
+                className={styles.suggestionOption}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => addBranch(input)}
+              >
+                Add “{input.trim()}”
+              </button>
+            )}
+          </div>
         )}
       </div>
+      {showRefresh && isLocalPlaceholder(currentBranch, loading, error) && (
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={onRefresh}
+          title="Reload branches"
+          aria-label="Reload branches"
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+        </button>
+      )}
     </div>
   )
 }
