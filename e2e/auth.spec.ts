@@ -109,10 +109,12 @@ test.describe('认证开启时的 API 行为', () => {
     const password = readStartupPassword()
     await page.goto('/')
     await expect(page).toHaveURL(/\/login/)
-    // 表单元素可见
-    await expect(page.getByPlaceholder('Startup password')).toBeVisible()
+    // Standalone fixed-light login remains outside the workspace shell.
+    await expect(page.getByRole('heading', { name: 'Weekly Reporter' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(0)
 
-    const input = page.getByPlaceholder('Startup password')
+    const input = page.getByLabel('Startup password')
+    await expect(input).toBeVisible()
     await input.click()
     await input.pressSequentially(password, { delay: 5 })
     await expect(page.getByRole('button', { name: /Sign in/ })).toBeEnabled()

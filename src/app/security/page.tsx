@@ -1,16 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import { AlertDialog } from '@base-ui/react/alert-dialog'
 import {
   Tabs,
   TabsList,
   TabsTrigger,
   TabsContent,
 } from '@/components/ui/tabs'
-import { Shield, Copy, Plus, AlertTriangle } from 'lucide-react'
+import { Copy, Plus, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { formatSystemDateTime } from '@/lib/time-format'
@@ -21,31 +19,107 @@ import {
   type PatMetadata,
   type PatStatus,
 } from '@/lib/auth/pat-shared'
+import styles from './security.module.css'
 
 function formatStatus(status: PatStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-function statusBadgeVariant(
-  status: PatStatus,
-): 'default' | 'secondary' | 'destructive' {
-  if (status === 'active') return 'default'
-  if (status === 'revoked') return 'destructive'
-  return 'secondary'
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div className={styles.loadingState} role="status">
+      <span className={styles.loadingLine} aria-hidden="true" />
+      <strong>{label}</strong>
+    </div>
+  )
+}
+
+function LoadError({
+  message,
+  onRetry,
+}: {
+  message: string
+  onRetry: () => void
+}) {
+  return (
+    <div className={styles.errorState} role="alert">
+      <strong>Unable to load security records</strong>
+      <p>{message}</p>
+      <button type="button" className={styles.secondaryButton} onClick={onRetry}>
+        Retry
+      </button>
+    </div>
+  )
+}
+
+function RevokeButton({
+  id,
+  name,
+  revoking,
+  onRevoke,
+}: {
+  id: number
+  name: string
+  revoking: boolean
+  onRevoke: (id: number, name: string) => void
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger
+        className={styles.dangerButton}
+        aria-label={`Revoke ${name}`}
+        aria-busy={revoking}
+        disabled={revoking}
+      >
+        {revoking ? 'Revoking…' : 'Revoke'}
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className={styles.dialogBackdrop} />
+        <AlertDialog.Viewport className={styles.dialogViewport}>
+          <AlertDialog.Popup className={styles.dialogPopup}>
+            <AlertDialog.Title className={styles.dialogTitle}>
+              Revoke PAT &quot;{name}&quot;?
+            </AlertDialog.Title>
+            <AlertDialog.Description className={styles.dialogDescription}>
+              This cannot be undone. Future API calls with this token will be blocked;
+              existing audit records are retained.
+            </AlertDialog.Description>
+            <div className={styles.dialogActions}>
+              <AlertDialog.Close className={styles.secondaryButton}>
+                Cancel
+              </AlertDialog.Close>
+              <AlertDialog.Close
+                className={styles.dangerButton}
+                onClick={() => onRevoke(id, name)}
+              >
+                Revoke PAT
+              </AlertDialog.Close>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Viewport>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  )
 }
 
 export default function SecurityPage() {
   return (
-    <div className="container mx-auto py-8 px-4 max-w-5xl">
-      <div className="flex items-center gap-3 mb-6">
-        <Shield className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">Security</h1>
-      </div>
+    <div className={styles.workspace}>
+      <header className={styles.pageHeading}>
+        <h1>Security</h1>
+        <p>Manage personal access tokens and inspect the API audit trail.</p>
+      </header>
 
-      <Tabs defaultValue="pats">
-        <TabsList>
-          <TabsTrigger value="pats">Personal Access Tokens</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
+      <Tabs defaultValue="pats" className={styles.tabs}>
+        <TabsList className={styles.tabsList} aria-label="Security records">
+          <TabsTrigger value="pats" className={styles.tabsTrigger}>
+            <span>Personal Access Tokens</span>
+            <small>Create and revoke credentials</small>
+          </TabsTrigger>
+          <TabsTrigger value="audit" className={styles.tabsTrigger}>
+            <span>Audit Log</span>
+            <small>Inspect authenticated API calls</small>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="pats">
@@ -63,20 +137,31 @@ export default function SecurityPage() {
 function PatSection() {
   const [pats, setPats] = useState<PatMetadata[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [mutationError, setMutationError] = useState('')
   const [name, setName] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
   const [creating, setCreating] = useState(false)
+  const [revokingId, setRevokingId] = useState<number | null>(null)
   const [justCreated, setJustCreated] = useState<CreatedPat | null>(null)
   const [copied, setCopied] = useState(false)
 
-  const loadPats = useCallback(async () => {
+  const loadPats = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    setLoadError('')
     try {
       const res = await apiFetch('/api/auth/pats')
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error((err.error || 'Failed to load PATs') + traceSuffix(res))
+      }
       const data = await res.json()
       setPats(data.pats ?? [])
     } catch (err) {
       console.error('Failed to load PATs:', err)
-      toast.error('Failed to load PATs')
+      const message = err instanceof Error ? err.message : 'Failed to load PATs'
+      setLoadError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }
@@ -84,7 +169,7 @@ function PatSection() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadPats()
+    loadPats(true)
   }, [loadPats])
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -94,6 +179,7 @@ function PatSection() {
       return
     }
     setCreating(true)
+    setMutationError('')
     try {
       const body: { name: string; expiresAt?: number } = { name: name.trim() }
       if (expiresAt) {
@@ -116,14 +202,17 @@ function PatSection() {
       await loadPats()
     } catch (err) {
       console.error('Create PAT failed:', err)
-      toast.error(err instanceof Error ? err.message : 'Failed to create PAT')
+      const message = err instanceof Error ? err.message : 'Failed to create PAT'
+      setMutationError(message)
+      toast.error(message)
     } finally {
       setCreating(false)
     }
   }
 
   const handleRevoke = async (id: number, patName: string) => {
-    if (!confirm(`Revoke PAT "${patName}"? This cannot be undone.`)) return
+    setMutationError('')
+    setRevokingId(id)
     try {
       const res = await apiFetch(`/api/auth/pats/${id}`, { method: 'DELETE' })
       if (!res.ok) {
@@ -134,7 +223,11 @@ function PatSection() {
       await loadPats()
     } catch (err) {
       console.error('Revoke failed:', err)
-      toast.error(err instanceof Error ? err.message : 'Failed to revoke PAT')
+      const message = err instanceof Error ? err.message : 'Failed to revoke PAT'
+      setMutationError(message)
+      toast.error(message)
+    } finally {
+      setRevokingId(null)
     }
   }
 
@@ -151,20 +244,24 @@ function PatSection() {
   }
 
   if (loading) {
-    return <div className="text-center py-8 text-muted-foreground">Loading...</div>
+    return <LoadingState label="Loading tokens…" />
   }
 
   return (
-    <div className="space-y-6 pt-4">
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Create new token</h2>
-        <form onSubmit={handleCreate} className="flex flex-wrap gap-2 items-end">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-muted-foreground mb-1 block" htmlFor="pat-name">
-              Token name
-            </label>
-            <Input
+    <div className={styles.sectionStack}>
+      <section className={styles.panel} aria-labelledby="create-token-heading">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="create-token-heading">Create new token</h2>
+            <p>Generate a credential for scripted API access.</p>
+          </div>
+        </div>
+        <form onSubmit={handleCreate} className={styles.createForm}>
+          <div className={styles.field}>
+            <label htmlFor="pat-name">Token name</label>
+            <input
               id="pat-name"
+              className={styles.input}
               placeholder="Token name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -172,115 +269,132 @@ function PatSection() {
               required
             />
           </div>
-          <div className="w-[180px]">
-            <label className="text-xs text-muted-foreground mb-1 block" htmlFor="pat-expires">
-              Expires (optional)
-            </label>
-            <Input
+          <div className={styles.field}>
+            <label htmlFor="pat-expires">Expires (optional)</label>
+            <input
               id="pat-expires"
+              className={styles.input}
               type="datetime-local"
               value={expiresAt}
               onChange={(e) => setExpiresAt(e.target.value)}
               disabled={creating}
             />
           </div>
-          <Button type="submit" disabled={creating || !name.trim()}>
-            <Plus className="h-4 w-4 mr-1" />
-            Create
-          </Button>
+          <button
+            type="submit"
+            className={styles.primaryButton}
+            disabled={creating || !name.trim()}
+            aria-busy={creating}
+          >
+            <Plus size={16} aria-hidden="true" />
+            {creating ? 'Creating…' : 'Create'}
+          </button>
         </form>
       </section>
 
+      {mutationError && (
+        <div className={styles.errorState} role="alert">
+          <strong>Token operation failed</strong>
+          <p>{mutationError}</p>
+        </div>
+      )}
+
       {justCreated && (
-        <section
-          className="rounded-lg border-2 border-amber-500 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-2"
-          aria-label="Newly created token"
-        >
-          <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="h-4 w-4" />
-            <span>This token is only shown once — save it now.</span>
+        <section className={styles.tokenNotice} aria-label="Newly created token">
+          <div className={styles.tokenWarning}>
+            <AlertTriangle size={17} aria-hidden="true" />
+            <strong>This token is only shown once — save it now.</strong>
           </div>
-          <div className="flex items-center gap-2">
-            <code
-              data-testid="new-token-value"
-              className="flex-1 font-mono text-sm bg-white dark:bg-black/40 px-3 py-2 rounded border break-all"
-            >
+          <div className={styles.tokenCopyRow}>
+            <code data-testid="new-token-value" className={styles.tokenValue}>
               {justCreated.token}
             </code>
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
+              className={styles.secondaryButton}
               onClick={() => handleCopy(justCreated.token)}
               aria-label="Copy token"
             >
-              <Copy className="h-4 w-4 mr-1" />
+              <Copy size={15} aria-hidden="true" />
               {copied ? 'Copied!' : 'Copy'}
-            </Button>
+            </button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            This token cannot be viewed again. If you lose it, create a new one.
-          </p>
-          <Button variant="ghost" size="sm" onClick={() => setJustCreated(null)}>
+          <p>This token cannot be viewed again. If you lose it, create a new one.</p>
+          <button
+            type="button"
+            className={styles.textButton}
+            onClick={() => setJustCreated(null)}
+          >
             Dismiss
-          </Button>
+          </button>
         </section>
       )}
 
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Existing tokens</h2>
-        {pats.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No PATs yet. Create one above to get started.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 pr-3">Name</th>
-                  <th className="pb-2 pr-3">Prefix</th>
-                  <th className="pb-2 pr-3">Created</th>
-                  <th className="pb-2 pr-3">Last used</th>
-                  <th className="pb-2 pr-3">Expires</th>
-                  <th className="pb-2 pr-3">Status</th>
-                  <th className="pb-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pats.map((pat) => {
-                  const status = getPatStatus(pat)
-                  return (
-                    <tr key={pat.id} className="border-b last:border-0">
-                      <td className="py-2 pr-3 font-medium">{pat.name}</td>
-                      <td className="py-2 pr-3 font-mono text-xs">{pat.prefix}</td>
-                      <td className="py-2 pr-3">{formatSystemDateTime(pat.createdAt)}</td>
-                      <td className="py-2 pr-3">
-                        {pat.lastUsedAt ? formatSystemDateTime(pat.lastUsedAt) : <span className="text-muted-foreground">Never</span>}
-                      </td>
-                      <td className="py-2 pr-3">
-                        {pat.expiresAt ? formatSystemDateTime(pat.expiresAt) : <span className="text-muted-foreground">Never</span>}
-                      </td>
-                      <td className="py-2 pr-3">
-                        <Badge variant={statusBadgeVariant(status)}>
-                          {formatStatus(status)}
-                        </Badge>
-                      </td>
-                      <td className="py-2">
-                        {status === 'active' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRevoke(pat.id, pat.name)}
-                            className="text-destructive hover:text-destructive"
-                          >
-                            Revoke
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      <section className={styles.recordsSection} aria-labelledby="existing-tokens-heading">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="existing-tokens-heading">Existing tokens</h2>
+            <p>Revocation is permanent and immediately blocks future API access.</p>
           </div>
+          {!loadError && <span>{pats.length} records</span>}
+        </div>
+
+        {loadError ? (
+          <LoadError message={loadError} onRetry={() => loadPats(true)} />
+        ) : pats.length === 0 ? (
+          <div className={styles.emptyState}>
+            <strong>No tokens yet</strong>
+            <p>No PATs yet. Create one above to get started.</p>
+          </div>
+        ) : (
+          <ol className={styles.recordList}>
+            {pats.map((pat) => {
+              const status = getPatStatus(pat)
+              return (
+                <li key={pat.id} className={styles.patRecord}>
+                  <span className={styles.recordId}>#{pat.id}</span>
+                  <div className={styles.recordMain}>
+                    <div className={styles.recordTopline}>
+                      <h3>{pat.name}</h3>
+                      <span className={styles.statusBadge} data-status={status}>
+                        {formatStatus(status)}
+                      </span>
+                    </div>
+                    <dl className={styles.patDetails}>
+                      <div>
+                        <dt>Prefix</dt>
+                        <dd>{pat.prefix}</dd>
+                      </div>
+                      <div>
+                        <dt>Created</dt>
+                        <dd>{formatSystemDateTime(pat.createdAt)}</dd>
+                      </div>
+                      <div>
+                        <dt>Last used</dt>
+                        <dd>
+                          {pat.lastUsedAt ? formatSystemDateTime(pat.lastUsedAt) : 'Never'}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Expires</dt>
+                        <dd>
+                          {pat.expiresAt ? formatSystemDateTime(pat.expiresAt) : 'Never'}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                  {status === 'active' && (
+                    <RevokeButton
+                      id={pat.id}
+                      name={pat.name}
+                      revoking={revokingId === pat.id}
+                      onRevoke={handleRevoke}
+                    />
+                  )}
+                </li>
+              )
+            })}
+          </ol>
         )}
       </section>
     </div>
@@ -291,6 +405,7 @@ function AuditSection() {
   const [records, setRecords] = useState<AuditRecord[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [limit] = useState(50)
   const [offset, setOffset] = useState(0)
   // Input values vs. applied filters: typing does not refetch; the Search
@@ -303,6 +418,7 @@ function AuditSection() {
   const loadRecords = useCallback(
     async (currentOffset: number, patName: string, status: string) => {
       setLoading(true)
+      setLoadError('')
       try {
         const params = new URLSearchParams()
         params.set('limit', String(limit))
@@ -311,12 +427,18 @@ function AuditSection() {
         if (status.trim()) params.set('status', status.trim())
 
         const res = await apiFetch(`/api/audit?${params.toString()}`)
+        if (!res.ok) {
+          const err = await res.json()
+          throw new Error((err.error || 'Failed to load audit log') + traceSuffix(res))
+        }
         const data = await res.json()
         setRecords(data.records ?? [])
         setTotal(data.total ?? 0)
       } catch (err) {
         console.error('Failed to load audit records:', err)
-        toast.error('Failed to load audit log')
+        const message = err instanceof Error ? err.message : 'Failed to load audit log'
+        setLoadError(message)
+        toast.error(message)
       } finally {
         setLoading(false)
       }
@@ -348,103 +470,142 @@ function AuditSection() {
   }
 
   return (
-    <div className="space-y-4 pt-4">
-      <div className="flex flex-wrap gap-2 items-end">
-        <div className="min-w-[160px]">
-          <label className="text-xs text-muted-foreground mb-1 block">
-            PAT name
-          </label>
-          <Input
-            placeholder="PAT name"
-            value={patNameInput}
-            onChange={(e) => setPatNameInput(e.target.value)}
-          />
-        </div>
-        <div className="w-[100px]">
-          <label className="text-xs text-muted-foreground mb-1 block">
-            Status
-          </label>
-          <Input
-            placeholder="Status"
-            value={statusInput}
-            onChange={(e) => setStatusInput(e.target.value)}
-          />
-        </div>
-        <Button onClick={handleSearch}>Search</Button>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-8 text-muted-foreground">Loading...</div>
-      ) : records.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4">
-          {total === 0 ? 'No audit records found.' : 'Loading...'}
-        </p>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="pb-2 pr-3">Time</th>
-                  <th className="pb-2 pr-3">PAT name</th>
-                  <th className="pb-2 pr-3">Method</th>
-                  <th className="pb-2 pr-3">Path</th>
-                  <th className="pb-2 pr-3">Status</th>
-                  <th className="pb-2 pr-3">Agent</th>
-                  <th className="pb-2 pr-3">CWD</th>
-                  <th className="pb-2 pr-3">User-Agent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((record) => (
-                  <tr key={record.id} className="border-b last:border-0">
-                    <td className="py-2 pr-3 whitespace-nowrap">
-                      {formatSystemDateTime(record.createdAt)}
-                    </td>
-                    <td className="py-2 pr-3">{record.patName ?? <span className="text-muted-foreground">—</span>}</td>
-                    <td className="py-2 pr-3 font-mono text-xs">{record.method}</td>
-                    <td className="py-2 pr-3 font-mono text-xs break-all">{record.apiPath}</td>
-                    <td className="py-2 pr-3 font-mono">{record.status}</td>
-                    <td className="py-2 pr-3 text-xs">{record.agentIdentity ?? <span className="text-muted-foreground">—</span>}</td>
-                    <td className="py-2 pr-3 text-xs break-all max-w-[200px]">
-                      {record.callerCwd ?? <span className="text-muted-foreground">—</span>}
-                    </td>
-                    <td className="py-2 pr-3 text-xs break-all max-w-[200px]">
-                      {record.userAgent ?? <span className="text-muted-foreground">—</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className={styles.sectionStack}>
+      <section className={styles.panel} aria-labelledby="audit-filter-heading">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="audit-filter-heading">Filter audit records</h2>
+            <p>Search by token name and HTTP response status.</p>
           </div>
+        </div>
+        <form
+          className={styles.filterForm}
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleSearch()
+          }}
+        >
+          <div className={styles.field}>
+            <label htmlFor="audit-pat-name">PAT name</label>
+            <input
+              id="audit-pat-name"
+              className={styles.input}
+              placeholder="PAT name"
+              value={patNameInput}
+              onChange={(e) => setPatNameInput(e.target.value)}
+            />
+          </div>
+          <div className={styles.field}>
+            <label htmlFor="audit-status">Status</label>
+            <input
+              id="audit-status"
+              className={styles.input}
+              placeholder="Status"
+              inputMode="numeric"
+              value={statusInput}
+              onChange={(e) => setStatusInput(e.target.value)}
+            />
+          </div>
+          <button type="submit" className={styles.primaryButton}>
+            Search
+          </button>
+        </form>
+      </section>
 
-          <div className="flex items-center justify-between text-sm text-muted-foreground pt-2">
-            <span>
-              {total === 0
-                ? 'No records'
-                : `Showing ${offset + 1}–${Math.min(offset + limit, total)} of ${total}`}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset === 0}
-                onClick={handlePrev}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={offset + limit >= total}
-                onClick={handleNext}
-              >
-                Next
-              </Button>
+      <section className={styles.recordsSection} aria-labelledby="audit-records-heading">
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="audit-records-heading">API call records</h2>
+            <p>Trace metadata is retained with each authenticated request.</p>
+          </div>
+          {!loading && !loadError && <span>{total} total</span>}
+        </div>
+
+        {loading ? (
+          <LoadingState label="Loading audit records…" />
+        ) : loadError ? (
+          <LoadError
+            message={loadError}
+            onRetry={() => loadRecords(offset, patNameFilter, statusFilter)}
+          />
+        ) : records.length === 0 ? (
+          <div className={styles.emptyState}>
+            <strong>No matching records</strong>
+            <p>No audit records found. Adjust the filters or create API activity with a PAT.</p>
+          </div>
+        ) : (
+          <>
+            <ol className={styles.recordList}>
+              {records.map((record) => (
+                <li key={record.id} className={styles.auditRecord}>
+                  <span className={styles.recordId}>#{record.id}</span>
+                  <div className={styles.recordMain}>
+                    <div className={styles.recordTopline}>
+                      <div>
+                        <h3 className={styles.auditTitle}>
+                          <span>{record.method}</span>
+                          <span>{record.apiPath}</span>
+                        </h3>
+                        <p className={styles.recordTime}>
+                          {formatSystemDateTime(record.createdAt)}
+                        </p>
+                      </div>
+                      <span
+                        className={styles.statusBadge}
+                        data-status={record.status >= 400 ? 'error' : 'success'}
+                      >
+                        {record.status}
+                      </span>
+                    </div>
+                    <dl className={styles.auditDetails}>
+                      <div>
+                        <dt>PAT name</dt>
+                        <dd>{record.patName ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>Agent</dt>
+                        <dd>{record.agentIdentity ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>CWD</dt>
+                        <dd>{record.callerCwd ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt>User-Agent</dt>
+                        <dd>{record.userAgent ?? '—'}</dd>
+                      </div>
+                    </dl>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            <div className={styles.pagination}>
+              <span className={styles.pageSummary}>
+                {`Showing ${offset + 1}–${Math.min(offset + limit, total)} of ${total}`}
+              </span>
+              <div className={styles.paginationActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={offset === 0}
+                  onClick={handlePrev}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  disabled={offset + limit >= total}
+                  onClick={handleNext}
+                >
+                  Next
+                </button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </section>
     </div>
   )
 }
