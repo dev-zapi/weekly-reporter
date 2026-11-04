@@ -1,19 +1,17 @@
 'use client'
-import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { addWeeks, getWeek, getYear, subWeeks } from 'date-fns'
-import { ArrowLeft, Briefcase, ChevronLeft, ChevronRight, LoaderCircle, RefreshCw, User } from 'lucide-react'
+import { ArrowLeft, Briefcase, ChevronLeft, ChevronRight, FileText, RefreshCw, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getWeekRange, formatDate } from '@/lib/utils'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { formatSystemDate } from '@/lib/time-format'
+import { formatDate, getWeekRange } from '@/lib/utils'
+import styles from './new-report.module.css'
 
 type AudienceVariant = 'leadership' | 'personal'
 type PreviewVariant = { variant: AudienceVariant; sourceDraft: string }
@@ -23,33 +21,47 @@ const variantLabels: Record<AudienceVariant, string> = {
   personal: 'Personal',
 }
 
+const variantScopes: Record<AudienceVariant, string> = {
+  leadership: 'Work + manual evidence',
+  personal: 'All evidence',
+}
+
+const subscribeToClientDate = () => () => {}
+const getClientDateSnapshot = () => formatDate(new Date())
+const getServerDateSnapshot = () => ''
+
 export default function NewReportPage() {
   const router = useRouter()
-  const [baseDate, setBaseDate] = useState<Date | null>(null)
+  const clientDateKey = useSyncExternalStore(subscribeToClientDate, getClientDateSnapshot, getServerDateSnapshot)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const initialDate = useMemo(
+    () => clientDateKey ? new Date(`${clientDateKey}T12:00:00`) : null,
+    [clientDateKey],
+  )
+  const baseDate = selectedDate ?? initialDate
   const [preview, setPreview] = useState<PreviewVariant[] | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewRequestVersion, setPreviewRequestVersion] = useState(0)
   const [previewVariant, setPreviewVariant] = useState<AudienceVariant>('leadership')
   const [saving, setSaving] = useState(false)
+  const [titleError, setTitleError] = useState<string | null>(null)
 
   const { start, end } = getWeekRange(baseDate ?? new Date(0))
   const weekStart = formatDate(start)
   const weekEnd = formatDate(end)
-  const displayWeekStart = formatSystemDate(`${weekStart}T00:00:00`)
-  const displayWeekEnd = formatSystemDate(`${weekEnd}T00:00:00`)
+  const displayWeekStart = baseDate ? formatSystemDate(`${weekStart}T00:00:00`) : '—'
+  const displayWeekEnd = baseDate ? formatSystemDate(`${weekEnd}T00:00:00`) : '—'
   const year = getYear(baseDate ?? new Date(0))
   const weekNumber = getWeek(baseDate ?? new Date(0), { weekStartsOn: 1 })
-  const [title, setTitle] = useState('')
-
-  useEffect(() => {
-    const now = new Date()
-    setBaseDate(now)
-    setTitle(`${getYear(now)} Week ${getWeek(now, { weekStartsOn: 1 })} Work Report`)
-  }, [])
+  const [titleOverride, setTitleOverride] = useState<string | null>(null)
+  const title = titleOverride ?? (baseDate
+    ? `${getYear(baseDate)} Week ${getWeek(baseDate, { weekStartsOn: 1 })} Work Report`
+    : '')
 
   function changeWeek(nextDate: Date) {
-    setBaseDate(nextDate)
-    setTitle(`${getYear(nextDate)} Week ${getWeek(nextDate, { weekStartsOn: 1 })} Work Report`)
+    setSelectedDate(nextDate)
+    setTitleOverride(null)
+    setTitleError(null)
     setPreview(null)
     setPreviewError(null)
     setPreviewVariant('leadership')
@@ -94,6 +106,7 @@ export default function NewReportPage() {
 
   async function handleSave() {
     if (!title.trim()) {
+      setTitleError('Please enter a title')
       toast.error('Please enter a title')
       return
     }
@@ -125,84 +138,185 @@ export default function NewReportPage() {
   }
 
   const activePreview = preview?.find((item) => item.variant === previewVariant)?.sourceDraft ?? ''
-  const previewing = preview === null && previewError === null
-
-  if (!baseDate) {
-    return <div className="container mx-auto max-w-4xl px-4 py-8">Loading...</div>
-  }
+  const initializing = baseDate === null
+  const previewing = initializing || (preview === null && previewError === null)
+  const previewStatus = saving ? 'Creating report' : previewing ? 'Loading draft' : previewError ? 'Preview unavailable' : 'Ready to create'
 
   return (
-    <div className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Back">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-2xl font-bold">New Report</h1>
-      </div>
-
-      <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <Button type="button" variant="outline" size="icon" onClick={() => changeWeek(subWeeks(baseDate, 1))} disabled={previewing || saving} aria-label="Previous week">
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-center text-lg font-medium">
-            <span suppressHydrationWarning>Week {weekNumber}, {year} ({displayWeekStart} – {displayWeekEnd})</span>
+    <div className={styles.surface}>
+      <section className={styles.primary} aria-labelledby="new-report-title">
+        <header className={styles.pageHeader}>
+          <div className={styles.titleGroup}>
+            <h1 id="new-report-title">New Report</h1>
+            <p>Choose a week, inspect both deterministic source drafts, then create the report for review.</p>
           </div>
-          <Button type="button" variant="outline" size="icon" onClick={() => changeWeek(addWeeks(baseDate, 1))} disabled={previewing || saving} aria-label="Next week">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+          <button type="button" className={styles.secondaryButton} onClick={() => router.back()} aria-label="Back">
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back
+          </button>
+        </header>
 
-        <div className="space-y-2">
-          <Label htmlFor="title">Title</Label>
-          <Input id="title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={saving} />
-        </div>
-
-        <section aria-label="Source draft preview" className="space-y-4 rounded-lg border border-border p-5">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="font-semibold">Source draft preview (read-only)</h2>
-            {preview && (
-              <Button type="button" variant="outline" onClick={refreshPreview} disabled={saving}>
-                <RefreshCw className="mr-1.5 h-4 w-4" />
-                Refresh
-              </Button>
-            )}
+        <section className={styles.previewPanel} aria-label="Source draft preview" aria-busy={previewing || saving}>
+          <div className={styles.previewHeader}>
+            <div>
+              <h2>Source draft preview (read-only)</h2>
+              <p>Frozen evidence becomes the report basis only after creation.</p>
+            </div>
+            <div className={styles.previewActions}>
+              <span className={styles.statusBadge} data-state={previewError ? 'error' : previewing || saving ? 'pending' : 'ready'}>
+                {previewStatus}
+              </span>
+              {preview && (
+                <button type="button" className={styles.iconTextButton} onClick={refreshPreview} disabled={saving}>
+                  <RefreshCw size={15} aria-hidden="true" />
+                  Refresh
+                </button>
+              )}
+            </div>
           </div>
+
           {previewing ? (
-            <div role="status" className="flex min-h-56 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-              Loading source draft...
+            <div role="status" className={styles.loadingState}>
+              <span className={styles.loadingLine} aria-hidden="true" />
+              <strong>Loading source draft...</strong>
+              <p>Preparing separate Leadership and Personal evidence previews.</p>
             </div>
           ) : previewError ? (
-            <div role="alert" className="flex min-h-56 flex-col items-center justify-center gap-3 text-sm text-destructive">
+            <div role="alert" className={styles.errorState}>
+              <strong>Source draft could not load</strong>
               <p>{previewError}</p>
-              <Button type="button" variant="outline" onClick={refreshPreview} disabled={saving}>
-                <RefreshCw className="mr-1.5 h-4 w-4" />
+              <button type="button" className={styles.secondaryButton} onClick={refreshPreview} disabled={saving}>
+                <RefreshCw size={15} aria-hidden="true" />
                 Retry
-              </Button>
+              </button>
             </div>
           ) : preview ? (
-            <Tabs value={previewVariant} onValueChange={(value) => setPreviewVariant(value as AudienceVariant)}>
-              <TabsList className="w-full">
-                <TabsTrigger value="leadership"><Briefcase className="h-4 w-4" />{variantLabels.leadership}</TabsTrigger>
-                <TabsTrigger value="personal"><User className="h-4 w-4" />{variantLabels.personal}</TabsTrigger>
+            <Tabs
+              className={styles.tabsRoot}
+              value={previewVariant}
+              onValueChange={(value) => setPreviewVariant(value as AudienceVariant)}
+            >
+              <TabsList className={styles.audienceTabs} aria-label="Source draft audience">
+                <TabsTrigger className={styles.audienceTab} value="leadership">
+                  <Briefcase size={16} aria-hidden="true" />
+                  <span>
+                    <strong>{variantLabels.leadership}</strong>
+                    <small>{variantScopes.leadership}</small>
+                  </span>
+                </TabsTrigger>
+                <TabsTrigger className={styles.audienceTab} value="personal">
+                  <User size={16} aria-hidden="true" />
+                  <span>
+                    <strong>{variantLabels.personal}</strong>
+                    <small>{variantScopes.personal}</small>
+                  </span>
+                </TabsTrigger>
               </TabsList>
-              <TabsContent value={previewVariant} className="mt-4">
-                <div className="min-h-56 rounded-lg border border-border bg-muted/20 p-5 prose-report read-only-prose">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{activePreview}</ReactMarkdown>
-                </div>
+              <TabsContent value={previewVariant} className={styles.previewContent}>
+                {activePreview.trim() ? (
+                  <div className={`prose-report read-only-prose ${styles.document}`}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{activePreview}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className={styles.emptyState}>
+                    <FileText size={22} aria-hidden="true" />
+                    <strong>No source draft entries</strong>
+                    <p>
+                      This audience has no evidence in the selected week. You can still create the report and review
+                      its empty source draft.
+                    </p>
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
           ) : null}
         </section>
+      </section>
 
-        <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => router.back()} disabled={previewing || saving}>Cancel</Button>
-          <Button type="button" onClick={handleSave} disabled={previewing || saving || !preview}>
-            {saving ? 'Creating...' : 'Create'}
-          </Button>
-        </div>
-      </div>
+      <aside className={styles.context} aria-label="Report creation settings">
+        <form
+          className={styles.settingsPanel}
+          aria-busy={saving}
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleSave()
+          }}
+        >
+          <section className={styles.settingSection} aria-labelledby="report-period-heading">
+            <div className={styles.sectionHeading}>
+              <h2 id="report-period-heading">Report period</h2>
+              <span>Monday–Sunday</span>
+            </div>
+            <div className={styles.weekControl}>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => baseDate && changeWeek(subWeeks(baseDate, 1))}
+                disabled={previewing || saving}
+                aria-label="Previous week"
+              >
+                <ChevronLeft size={17} aria-hidden="true" />
+              </button>
+              <div className={styles.weekLabel} suppressHydrationWarning>
+                <strong>{baseDate ? `Week ${weekNumber}, ${year}` : 'Loading week…'}</strong>
+                <span>{displayWeekStart} – {displayWeekEnd}</span>
+              </div>
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => baseDate && changeWeek(addWeeks(baseDate, 1))}
+                disabled={previewing || saving}
+                aria-label="Next week"
+              >
+                <ChevronRight size={17} aria-hidden="true" />
+              </button>
+            </div>
+          </section>
+
+          <section className={styles.settingSection} aria-labelledby="report-title-heading">
+            <div className={styles.sectionHeading}>
+              <h2 id="report-title-heading">Report record</h2>
+              <span>Required title</span>
+            </div>
+            <div className={styles.titleField}>
+              <label htmlFor="title">Title</label>
+              <input
+                id="title"
+                className={styles.titleInput}
+                value={title}
+                onChange={(event) => {
+                  setTitleOverride(event.target.value)
+                  if (titleError) setTitleError(null)
+                }}
+                disabled={initializing || saving}
+                aria-required="true"
+                aria-invalid={titleError ? true : undefined}
+                aria-describedby={titleError ? 'title-error' : 'title-help'}
+              />
+              {titleError ? (
+                <p id="title-error" className={styles.fieldError} role="alert">{titleError}</p>
+              ) : (
+                <p id="title-help" className={styles.fieldHelp}>Used to identify this report in the library.</p>
+              )}
+            </div>
+          </section>
+
+          <div className={styles.creationNote}>
+            <h2>Source before final</h2>
+            <p>Creation saves the selected week’s evidence snapshots and deterministic source drafts. No AI final is adopted here.</p>
+          </div>
+
+          <div className={styles.formActions}>
+            <button type="submit" className={styles.primaryButton} disabled={previewing || saving || !preview}>
+              {saving ? 'Creating...' : 'Create'}
+            </button>
+            <button type="button" className={styles.secondaryButton} onClick={() => router.back()} disabled={previewing || saving}>
+              Cancel
+            </button>
+            <p>Create opens the report with the {variantLabels[previewVariant]} audience selected.</p>
+          </div>
+        </form>
+      </aside>
     </div>
   )
 }

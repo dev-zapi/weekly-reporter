@@ -53,7 +53,7 @@ test.describe('新建周报页面 - 原稿事件填充', () => {
     const preview = page.getByRole('region', { name: 'Source draft preview' })
     await expect(preview).toBeVisible()
     // Leadership 是默认选中的受众页签
-    await expect(preview.getByRole('tab', { name: 'Leadership' })).toHaveAttribute('aria-selected', 'true')
+    await expect(preview.getByRole('tab', { name: /Leadership/ })).toHaveAttribute('aria-selected', 'true')
 
     await expect(preview.getByRole('tabpanel')).toContainText('完成了用户认证模块的开发和测试')
     await expect(preview.getByRole('tabpanel')).toContainText('优化了数据库查询性能，响应时间提升 50%')
@@ -65,7 +65,7 @@ test.describe('新建周报页面 - 原稿事件填充', () => {
 
     const preview = page.getByRole('region', { name: 'Source draft preview' })
     await expect(preview).toBeVisible()
-    await preview.getByRole('tab', { name: 'Personal' }).click()
+    await preview.getByRole('tab', { name: /Personal/ }).click()
 
     await expect(preview.getByRole('tabpanel')).toContainText('完成了用户认证模块的开发和测试')
     await expect(preview.getByRole('tabpanel')).toContainText('准备下周的技术分享会材料')

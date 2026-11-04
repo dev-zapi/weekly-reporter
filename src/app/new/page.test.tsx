@@ -9,10 +9,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, back: vi.fn() }),
 }))
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
-vi.mock('@/components/ui/button', async () => {
-  const actual = await vi.importActual<typeof import('@/components/ui/button')>('@/components/ui/button')
-  return actual
-})
 
 global.fetch = mockFetch
 
@@ -134,5 +130,38 @@ describe('NewReportPage', () => {
 
     expect(await screen.findByText('领导事项')).toBeInTheDocument()
     expect(mockFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows an explicit empty state while keeping creation available for an empty draft', async () => {
+    mockFetch.mockResolvedValueOnce(response({
+      variants: [
+        { variant: 'leadership', sourceDraft: '' },
+        { variant: 'personal', sourceDraft: '' },
+      ],
+    }))
+    render(<NewReportPage />)
+
+    expect(await screen.findByText('No source draft entries')).toBeInTheDocument()
+    expect(screen.getByText(/You can still create the report/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled()
+  })
+
+  it('links title validation to the field and does not persist a blank title', async () => {
+    mockFetch.mockResolvedValueOnce(response(previewResponse))
+    render(<NewReportPage />)
+
+    await screen.findByText('领导事项')
+    const titleInput = screen.getByLabelText('Title')
+    fireEvent.change(titleInput, { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(titleInput).toHaveAttribute('aria-invalid', 'true')
+    expect(titleInput).toHaveAttribute('aria-describedby', 'title-error')
+    expect(screen.getByRole('alert')).toHaveTextContent('Please enter a title')
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(titleInput, { target: { value: 'Recovered title' } })
+    expect(titleInput).not.toHaveAttribute('aria-invalid')
+    expect(titleInput).toHaveAttribute('aria-describedby', 'title-help')
   })
 })
