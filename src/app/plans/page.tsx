@@ -8,10 +8,7 @@ export default async function PlansPage({ searchParams }: { searchParams: Search
   // cited-by marker: /plans?scope=<week|month>&start=<periodStart>[&item=<id>]
   const { scope, start, item } = resolvePlansDeepLink(await searchParams)
 
-  return (
-    <main className="container mx-auto max-w-3xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Period Plans</h1>
-      <PeriodPlanManager initialScope={scope} initialStart={start} initialItemId={item} />
-    </main>
-  )
+  // The manager owns the full Numbered Evidence split surface: a title-first
+  // primary column and a persistent context rail, with no body-level top bar.
+  return <PeriodPlanManager initialScope={scope} initialStart={start} initialItemId={item} />
 }

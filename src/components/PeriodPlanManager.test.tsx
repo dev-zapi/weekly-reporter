@@ -327,7 +327,7 @@ describe('PeriodPlanManager', () => {
     render(<PeriodPlanManager />)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Parent month item')).toBeInTheDocument()
+      expect(screen.getByLabelText('Parent month item for %1')).toBeInTheDocument()
     })
     expect(screen.getByRole('option', { name: 'Month goal' })).toBeInTheDocument()
   })
@@ -340,9 +340,9 @@ describe('PeriodPlanManager', () => {
     })
     render(<PeriodPlanManager />)
 
-    await waitFor(() => expect(screen.getByLabelText('Parent month item')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByLabelText('Parent month item for %1')).toBeInTheDocument())
 
-    await user.selectOptions(screen.getByLabelText('Parent month item'), '50')
+    await user.selectOptions(screen.getByLabelText('Parent month item for %1'), '50')
 
     await waitFor(() => {
       const putCall = mockFetch.mock.calls.find(
@@ -380,7 +380,7 @@ describe('PeriodPlanManager', () => {
 
     await waitFor(() => expect(screen.getByText('Do it')).toBeInTheDocument())
 
-    await user.selectOptions(screen.getByLabelText('Status'), 'done')
+    await user.selectOptions(screen.getByLabelText('Status for %3'), 'done')
 
     await waitFor(() => {
       const putCall = mockFetch.mock.calls.find(
@@ -424,7 +424,7 @@ describe('PeriodPlanManager', () => {
       ).length
     const fetchesBefore = weekPlanFetchCount()
 
-    await user.selectOptions(screen.getByLabelText('Priority'), 'high')
+    await user.selectOptions(screen.getByLabelText('Priority for %3'), 'high')
 
     await waitFor(() => {
       const putCall = mockFetch.mock.calls.find(
@@ -483,7 +483,7 @@ describe('PeriodPlanManager', () => {
 
     await waitFor(() => expect(screen.getByText('Quadrant item')).toBeInTheDocument())
 
-    expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('low')
+    expect((screen.getByLabelText('Priority for %4') as HTMLSelectElement).value).toBe('low')
     expect(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
       .toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
@@ -826,7 +826,7 @@ describe('PeriodPlanManager', () => {
       return baseImplementation(input, init)
     })
 
-    await user.selectOptions(screen.getAllByLabelText('Status')[0], 'done')
+    await user.selectOptions(screen.getAllByLabelText(/^Status for %/)[0], 'done')
 
     await waitFor(() => {
       expect(
@@ -880,7 +880,7 @@ describe('PeriodPlanManager', () => {
 
     // The PUT response is the bare item row and a status edit does not refetch,
     // so the read-only inherited section must survive the inline merge.
-    await user.selectOptions(screen.getByLabelText('Status'), 'done')
+    await user.selectOptions(screen.getByLabelText('Status for %10'), 'done')
 
     await waitFor(() => {
       const putCall = mockFetch.mock.calls.find(
@@ -1188,7 +1188,7 @@ describe('PeriodPlanManager', () => {
     await user.click(screen.getByLabelText('Toggle attached week items'))
 
     const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-    const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+    const parentSelect = childRow.getByLabelText('Parent month item for %21') as HTMLSelectElement
     expect(parentSelect.value).toBe('10')
 
     await user.selectOptions(parentSelect, '')
@@ -1252,7 +1252,7 @@ describe('PeriodPlanManager', () => {
 
     await user.click(childTogglesBefore[0])
     const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-    const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+    const parentSelect = childRow.getByLabelText('Parent month item for %21') as HTMLSelectElement
     expect(parentSelect.value).toBe('10')
     // Re-parent targets are the month's own items; cross-month links are never offered.
     expect(within(parentSelect).getAllByRole('option').map((option) => option.textContent)).toEqual([
@@ -1318,7 +1318,7 @@ describe('PeriodPlanManager', () => {
       const user = await expandAttachedWeekItems()
 
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-      await user.selectOptions(childRow.getByLabelText('Status'), 'done')
+      await user.selectOptions(childRow.getByLabelText('Status for %21'), 'done')
 
       await waitFor(() => {
         const putCall = mockFetch.mock.calls.find(
@@ -1340,7 +1340,7 @@ describe('PeriodPlanManager', () => {
       const fetchesBefore = monthFetchCount()
 
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-      await user.selectOptions(childRow.getByLabelText('Priority'), 'high')
+      await user.selectOptions(childRow.getByLabelText('Priority for %21'), 'high')
 
       await waitFor(() => {
         const putCall = mockFetch.mock.calls.find(

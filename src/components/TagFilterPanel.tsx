@@ -11,9 +11,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
 import { Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import styles from './timeline.module.css'
 
 interface TagWithCount {
   name: string
@@ -134,60 +134,63 @@ export function TagFilterPanel({
   }
 
   return (
-    <div className="space-y-4 p-4 border rounded-lg bg-card">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">标签筛选</h3>
+    <section className={styles.filterPanel} aria-label="Tag filter">
+      <div className={styles.filterHeader}>
+        <div>
+          <h2 className={styles.panelTitle}>标签筛选</h2>
+          <p className={styles.panelCopy}>Full-volume event tags.</p>
+        </div>
         {selectedTags.length > 0 && (
-          <Button size="sm" variant="ghost" onClick={onClearTags}>
+          <button type="button" className={styles.textButton} onClick={onClearTags}>
             Clear
-          </Button>
+          </button>
         )}
       </div>
 
       {loading ? (
-        <div className="text-sm text-muted-foreground">Loading…</div>
+        <div className={styles.filterEmpty}>Loading…</div>
       ) : error ? (
-        <div className="text-sm text-destructive">{error}</div>
+        <div className={styles.filterError} role="alert">{error}</div>
       ) : tags.length === 0 ? (
-        <div className="text-sm text-muted-foreground">暂无标签</div>
+        <div className={styles.filterEmpty}>暂无标签</div>
       ) : (
-        <div className="space-y-2">
+        <div className={styles.filterList}>
           {tags.map((tag) => {
             const checked = selectedTags.includes(tag.name)
             return (
-              <div key={tag.name} className="group flex items-center gap-2">
+              <div key={tag.name} className={styles.filterRow} data-checked={checked ? 'true' : 'false'}>
                 <Checkbox
+                  aria-label={`Tag filter ${tag.name}`}
                   checked={checked}
                   onCheckedChange={() => onTagSelect(tag.name)}
                 />
-                <span
-                  className={cn(
-                    'text-sm flex-1 cursor-pointer',
-                    checked ? 'font-medium' : 'text-muted-foreground',
-                  )}
+                <button
+                  type="button"
+                  className={styles.tagLabel}
+                  data-checked={checked ? 'true' : 'false'}
                   onClick={() => onTagSelect(tag.name)}
                 >
                   #{tag.name}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  ({tag.count})
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => handleRenameClick(tag, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded"
-                  aria-label="Rename tag"
-                >
-                  <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
                 </button>
-                <button
-                  type="button"
-                  onClick={(e) => handleDeleteClick(tag, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-accent rounded"
-                  aria-label="Delete tag"
-                >
-                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
+                <span className={styles.filterCount}>({tag.count})</span>
+                <span className={styles.tagMeta}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRenameClick(tag, e)}
+                    className={styles.tagAction}
+                    aria-label={`Rename tag #${tag.name}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteClick(tag, e)}
+                    className={styles.tagAction}
+                    aria-label={`Delete tag #${tag.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </span>
               </div>
             )
           })}
@@ -245,6 +248,6 @@ export function TagFilterPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   )
 }

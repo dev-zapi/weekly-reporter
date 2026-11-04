@@ -36,7 +36,7 @@ function statusBadgeVariant(
 
 export default function SecurityPage() {
   return (
-    <main className="container mx-auto py-8 px-4 max-w-5xl">
+    <div className="container mx-auto py-8 px-4 max-w-5xl">
       <div className="flex items-center gap-3 mb-6">
         <Shield className="h-6 w-6" />
         <h1 className="text-2xl font-bold">Security</h1>
@@ -56,7 +56,7 @@ export default function SecurityPage() {
           <AuditSection />
         </TabsContent>
       </Tabs>
-    </main>
+    </div>
   )
 }
 

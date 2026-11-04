@@ -1,57 +1,85 @@
 'use client'
 
 import Link from 'next/link'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Pencil, Trash2 } from 'lucide-react'
-import type { Report } from '@/lib/db/schema'
+import { ArrowRight, Pencil, Trash2 } from 'lucide-react'
+import type { AudienceVariant, Report } from '@/lib/db/schema'
 import { formatSystemDate } from '@/lib/time-format'
+import styles from './ReportsLibrary.module.css'
+
+/** The subset of a report rendered by the library index. */
+export type ReportSummary = Pick<Report, 'id' | 'title' | 'weekStart' | 'weekEnd' | 'createdAt'>
 
 interface ReportCardProps {
-  report: Report
+  report: ReportSummary
+  /** Audience currently previewed in the library; carried into full review. */
+  audience: AudienceVariant
+  selected: boolean
+  deleting?: boolean
+  onSelect: (id: number) => void
   onDelete: (id: number) => void
 }
 
-export function ReportCard({ report, onDelete }: ReportCardProps) {
+/**
+ * One numbered row in the report index. Selection stays in the primary area;
+ * the trailing controls keep edit, delete, and full review reachable without
+ * turning the record into a card.
+ */
+export function ReportCard({ report, audience, selected, deleting = false, onSelect, onDelete }: ReportCardProps) {
   const weekStart = formatSystemDate(report.weekStart)
   const weekEnd = formatSystemDate(report.weekEnd)
   const createdAt = formatSystemDate(report.createdAt)
 
   return (
-    <a href={`/reports/${report.id}`} className="block">
-      <Card className="hover:shadow-md hover:border-[#333] hover:bg-[#161616] transition-all cursor-pointer">
-        <CardHeader className="pb-2">
-          <div className="flex items-start justify-between gap-4 max-[720px]:flex-col">
-            <CardTitle className="text-lg flex-1 max-[720px]:pr-0">{report.title}</CardTitle>
-            <div className="flex gap-2 items-center max-[720px]:w-full max-[720px]:justify-end max-[720px]:mt-2">
-              <Link href={`/edit/${report.id}`} onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="icon" aria-label="Edit">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(report.id)
-                }}
-                aria-label="Delete"
-              >
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            <span suppressHydrationWarning>{weekStart} - {weekEnd}</span>
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Created <span suppressHydrationWarning>{createdAt}</span>
-          </p>
-        </CardContent>
-      </Card>
-    </a>
+    <div
+      className={`${styles.reportRow} ${selected ? styles.selectedRow : ''}`}
+      role="listitem"
+      data-selected={selected ? 'true' : undefined}
+    >
+      <button
+        type="button"
+        className={styles.rowSelect}
+        aria-pressed={selected}
+        onClick={() => onSelect(report.id)}
+      >
+        <span className={styles.reportRef}>R{report.id}</span>
+        <span className={styles.reportMain}>
+          <strong className={styles.reportTitle}>{report.title}</strong>
+          <span className={styles.reportMeta}>
+            <span suppressHydrationWarning>{weekStart} – {weekEnd}</span>
+            <span aria-hidden="true">·</span>
+            <span>Created <span suppressHydrationWarning>{createdAt}</span></span>
+          </span>
+        </span>
+      </button>
+
+      <div className={styles.rowActions}>
+        <Link
+          href={`/edit/${report.id}`}
+          className={styles.iconAction}
+          aria-label={`Edit ${report.title}`}
+          title="Edit report"
+        >
+          <Pencil className="h-4 w-4" />
+        </Link>
+        <button
+          type="button"
+          className={`${styles.iconAction} ${styles.dangerAction}`}
+          aria-label={`Delete ${report.title}`}
+          title="Delete report"
+          disabled={deleting}
+          onClick={() => onDelete(report.id)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        <Link
+          href={`/reports/${report.id}?audience=${audience}`}
+          className={styles.iconAction}
+          aria-label={`Open full review for ${report.title}`}
+          title="Open full review"
+        >
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+    </div>
   )
 }

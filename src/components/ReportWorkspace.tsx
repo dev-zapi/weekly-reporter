@@ -6,15 +6,28 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, Briefcase, Download, FileText, MessageSquareText, RefreshCw, Save, Trash2, User } from 'lucide-react'
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Briefcase,
+  Download,
+  FileText,
+  MessageSquareText,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  User,
+} from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import { MilkdownEditor } from '@/components/editor/MilkdownEditor'
 import { GenerationWorkspace } from '@/components/GenerationWorkspace'
-import type { AudienceVariant, Report, ReportVariant } from '@/lib/db/schema'
+import { ReportReviewGate } from '@/components/report/ReportReviewGate'
+import type { AudienceVariant, FinalStatus, Report, ReportVariant } from '@/lib/db/schema'
 import { EMPTY_SOURCE_DRAFT } from '@/lib/reports/source-draft'
 import { formatSystemDate } from '@/lib/time-format'
+import styles from '@/components/report/report-workspace.module.css'
 
 interface TemplateOption {
   id: string
@@ -32,6 +45,9 @@ interface ReportBundle extends Report {
   variants: ReportVariant[]
   snapshots: unknown[]
 }
+
+type WorkspaceMode = 'content' | 'ai'
+type ContentPane = 'final' | 'source' | 'compare' | 'edit'
 
 function normalizeBundle(data: Partial<ReportBundle> & { id: number; content?: string }): ReportBundle {
   const legacyVariant: ReportVariant = {
@@ -59,24 +75,55 @@ const variantLabels: Record<AudienceVariant, string> = {
   leadership: 'Leadership',
 }
 
-export function ReportWorkspace({ reportId, editable = true }: { reportId: number; editable?: boolean }) {
+const variantScopes: Record<AudienceVariant, string> = {
+  leadership: 'Work + manual evidence',
+  personal: 'All evidence',
+}
+
+function finalStatusText(hasFinal: boolean, status: FinalStatus): string {
+  if (!hasFinal) return 'None'
+  return status === 'stale' ? 'Stale' : 'Current'
+}
+
+function statusClass(hasFinal: boolean, status: FinalStatus): string {
+  if (!hasFinal) return styles.statusNone
+  return status === 'stale' ? styles.statusStale : styles.statusCurrent
+}
+
+function isAudienceVariant(value: unknown): value is AudienceVariant {
+  return value === 'leadership' || value === 'personal'
+}
+
+export function ReportWorkspace({
+  reportId,
+  editable = true,
+  initialAudience,
+}: {
+  reportId: number
+  editable?: boolean
+  /** Audience carried from the library preview (?audience=...). */
+  initialAudience?: AudienceVariant
+}) {
   const router = useRouter()
   const [bundle, setBundle] = useState<ReportBundle | null>(null)
   const [templates, setTemplates] = useState<TemplateOption[]>([])
-  const [styles, setStyles] = useState<StyleOption[]>([])
-  const [variant, setVariant] = useState<AudienceVariant>('personal')
+  const [styleOptions, setStyles] = useState<StyleOption[]>([])
+  const [variant, setVariant] = useState<AudienceVariant>(initialAudience ?? 'personal')
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [editorKey, setEditorKey] = useState(0)
-  const [workspaceMode, setWorkspaceMode] = useState<'content' | 'ai'>(editable ? 'ai' : 'content')
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(editable ? 'ai' : 'content')
+  const [pane, setPane] = useState<ContentPane>('final')
 
   const currentVariant = useMemo(
     () => bundle?.variants.find((item) => item.variant === variant) ?? null,
     [bundle, variant],
   )
   const hasFinal = Boolean(currentVariant?.finalContent)
-  const displayContent = currentVariant?.finalContent ?? currentVariant?.sourceDraft ?? ''
+  const hasSource = Boolean(currentVariant?.sourceDraft)
+  const finalStatus: FinalStatus = currentVariant?.finalStatus ?? 'none'
+  const sourceRevision = currentVariant?.sourceRevision ?? 0
 
   useEffect(() => {
     let cancelled = false
@@ -101,9 +148,17 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
           })),
         ]
         const normalized = normalizeBundle(reportData)
-        const initialVariant = normalized.variants.find((item) => item.variant === 'personal') ?? normalized.variants[0]
+        // The library carries its selected audience in the URL. Honor it
+        // exactly: a requested variant that is absent must surface as missing,
+        // never be replaced by the other audience's content.
+        const requestedAudience = isAudienceVariant(initialAudience)
+          ? initialAudience
+          : normalized.variants.find((item) => item.variant === 'personal')?.variant
+            ?? normalized.variants[0]?.variant
+            ?? 'personal'
+        const initialVariant = normalized.variants.find((item) => item.variant === requestedAudience) ?? null
         setBundle(normalized)
-        if (initialVariant) setVariant(initialVariant.variant)
+        setVariant(requestedAudience)
         setContent(initialVariant?.finalContent ?? initialVariant?.sourceDraft ?? '')
         setTemplates(allTemplates)
         setStyles((styleData.styles ?? []).map((item: { key: string; label: string }) => ({ key: item.key, label: item.label })))
@@ -115,7 +170,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     }
     void load()
     return () => { cancelled = true }
-  }, [reportId])
+  }, [reportId, initialAudience])
 
   function selectVariant(nextVariant: AudienceVariant) {
     const next = bundle?.variants.find((item) => item.variant === nextVariant)
@@ -123,6 +178,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     setVariant(nextVariant)
     setContent(next.finalContent ?? next.sourceDraft ?? '')
     setEditorKey((key) => key + 1)
+    setPane('final')
   }
 
   function acceptGeneratedVariant(updated: ReportVariant) {
@@ -132,6 +188,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     } : current)
     setContent(updated.finalContent ?? updated.sourceDraft)
     setEditorKey((key) => key + 1)
+    setPane('final')
   }
 
   async function saveEditedFinal() {
@@ -174,6 +231,7 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
       setBundle(normalized)
       setContent(next?.finalContent ?? next?.sourceDraft ?? '')
       setEditorKey((key) => key + 1)
+      setPane('source')
       toast.success('Both source drafts updated. Create a new AI session.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to regenerate source draft')
@@ -183,11 +241,13 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
   }
 
   function exportCurrent() {
-    const blob = new Blob([displayContent], { type: 'text/markdown' })
+    const exportContent = currentVariant?.finalContent ?? currentVariant?.sourceDraft ?? ''
+    const exportKind = currentVariant?.finalContent ? 'final' : 'source-draft'
+    const blob = new Blob([exportContent], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `weekly-report-${variantLabels[variant]}-${bundle?.weekStart ?? ''}.md`
+    anchor.download = `weekly-report-${variantLabels[variant]}-${bundle?.weekStart ?? ''}-${exportKind}.md`
     anchor.click()
     URL.revokeObjectURL(url)
   }
@@ -207,37 +267,194 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
     }
   }
 
-  if (loading) return <div className="py-12 text-center">Loading...</div>
-  if (!bundle || !currentVariant) return <div className="py-12 text-center">Report not found</div>
+  if (loading) {
+    return (
+      <div className={styles.surface}>
+        <div className={styles.statePanel} role="status">Loading report…</div>
+      </div>
+    )
+  }
+  if (!bundle) {
+    return (
+      <div className={styles.surface}>
+        <div className={styles.errorPanel} role="alert">Report not found</div>
+      </div>
+    )
+  }
 
-  return (
-    <main className="container mx-auto max-w-[1500px] px-4 py-8">
-      <div className="mb-6 flex items-start justify-between gap-4 max-[720px]:flex-col">
-        <div className="flex items-start gap-3">
-          <Link href="/reports"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
-          <div><h1 className="text-2xl font-bold">{bundle.title}</h1><p className="mt-1 text-sm text-muted-foreground" suppressHydrationWarning>{formatSystemDate(`${bundle.weekStart}T00:00:00`)} – {formatSystemDate(`${bundle.weekEnd}T00:00:00`)}</p></div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportCurrent}><Download className="mr-1.5 h-4 w-4" />Export</Button>
-          {editable && <Button variant="outline" onClick={() => void regenerateSources()} disabled={busy !== null}><RefreshCw className="mr-1.5 h-4 w-4" />Regenerate source draft</Button>}
-          {!editable && <Link href={`/edit/${reportId}`}><Button>Edit</Button></Link>}
-          {!editable && <Button variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => void deleteReport()} disabled={busy !== null}><Trash2 className="mr-1.5 h-4 w-4" />Delete</Button>}
+  const periodLabel = `${formatSystemDate(`${bundle.weekStart}T00:00:00`)} – ${formatSystemDate(`${bundle.weekEnd}T00:00:00`)}`
+  const availableVariant = bundle.variants[0]?.variant ?? null
+  const audienceTabs = (
+    <div className={styles.audienceTabs} role="group" aria-label="Report audience">
+      {(['leadership', 'personal'] as AudienceVariant[]).map((item) => {
+        const available = bundle.variants.some((candidate) => candidate.variant === item)
+        const active = variant === item
+        return (
+          <button
+            key={item}
+            type="button"
+            className={`${styles.audienceTab} ${active ? styles.audienceTabActive : ''}`}
+            aria-pressed={active}
+            onClick={() => selectVariant(item)}
+            disabled={!available}
+            title={available ? undefined : 'Legacy report has no version for this audience'}
+          >
+            {item === 'leadership'
+              ? <Briefcase size={16} aria-hidden="true" />
+              : <User size={16} aria-hidden="true" />}
+            <span>
+              <strong>{variantLabels[item]}</strong>
+              <small>{variantScopes[item]}</small>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  // A requested audience with no stored variant stays explicit. The other
+  // audience's final is never rendered in its place.
+  if (!currentVariant) {
+    return (
+      <div className={styles.surface}>
+        <header className={styles.pageHeader}>
+          <div className={styles.titleGroup}>
+            <h1 className={styles.title}>{bundle.title}</h1>
+            <p className={styles.description} suppressHydrationWarning>{periodLabel}</p>
+          </div>
+          <div className={styles.actions}>
+            <Link href="/reports" className={styles.secondaryButton}>
+              <ArrowLeft size={16} aria-hidden="true" />
+              All reports
+            </Link>
+            {!editable && (
+              <>
+                <Link href={`/edit/${reportId}`} className={styles.primaryButton}>
+                  <Pencil size={16} aria-hidden="true" />
+                  Edit
+                </Link>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={() => void deleteReport()}
+                  disabled={busy !== null}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+
+        <div className={styles.workspaceBar}>{audienceTabs}</div>
+
+        <div className={styles.noFinal} role="status">
+          <FileText size={22} aria-hidden="true" />
+          <h2>No {variantLabels[variant].toLowerCase()} version</h2>
+          <p>
+            This report has no {variantLabels[variant].toLowerCase()} audience variant. The other
+            audience version is kept separate and is not shown here.
+          </p>
+          {availableVariant && (
+            <div className={styles.noFinalActions}>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => selectVariant(availableVariant)}
+              >
+                <Plus size={16} aria-hidden="true" />
+                Open {variantLabels[availableVariant]} version
+              </button>
+            </div>
+          )}
         </div>
       </div>
+    )
+  }
 
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-2">
-          {(['leadership', 'personal'] as AudienceVariant[]).map((item) => {
-            const available = bundle.variants.some((candidate) => candidate.variant === item)
-            return <Button key={item} variant={variant === item ? 'default' : 'outline'} onClick={() => selectVariant(item)} disabled={!available} title={available ? undefined : 'Legacy report has no version for this audience'}>
-              {item === 'leadership' ? <Briefcase className="mr-1.5 h-4 w-4" /> : <User className="mr-1.5 h-4 w-4" />}{variantLabels[item]}
-            </Button>
-          })}
-          <span className="ml-2 self-center text-sm text-muted-foreground">{hasFinal ? (currentVariant.finalStatus === 'stale' ? 'Final version is stale' : 'Final version available') : 'Source draft only'}</span>
+  const statusLabel = finalStatusText(hasFinal, finalStatus)
+
+  return (
+    <div className={styles.surface}>
+      <header className={styles.pageHeader}>
+        <div className={styles.titleGroup}>
+          <h1 className={styles.title}>{bundle.title}</h1>
+          <p className={styles.description} suppressHydrationWarning>{periodLabel}</p>
+          <div className={styles.metaStrip}>
+            <span className={`${styles.statusBadge} ${statusClass(hasFinal, finalStatus)}`}>{statusLabel}</span>
+            <span>
+              {hasFinal
+                ? finalStatus === 'stale'
+                  ? 'Final version is stale'
+                  : 'Final version available'
+                : 'No final report'}
+            </span>
+            <span>Source revision r{sourceRevision}</span>
+            <span>R{bundle.id}</span>
+            {currentVariant.templateName && <span>{currentVariant.templateName}</span>}
+          </div>
         </div>
-        <div className="flex rounded-lg bg-muted p-1">
-          <button type="button" onClick={() => setWorkspaceMode('content')} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${workspaceMode === 'content' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}><FileText className="h-4 w-4" />Report content</button>
-          <button type="button" onClick={() => setWorkspaceMode('ai')} className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm ${workspaceMode === 'ai' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}><MessageSquareText className="h-4 w-4" />AI chat</button>
+        <div className={styles.actions}>
+          <Link href="/reports" className={styles.secondaryButton}>
+            <ArrowLeft size={16} aria-hidden="true" />
+            All reports
+          </Link>
+          <button type="button" className={styles.secondaryButton} onClick={exportCurrent}>
+            <Download size={16} aria-hidden="true" />
+            Export
+          </button>
+          {editable ? (
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={() => void regenerateSources()}
+              disabled={busy !== null}
+            >
+              <RefreshCw size={16} aria-hidden="true" />
+              Regenerate source draft
+            </button>
+          ) : (
+            <>
+              <Link href={`/edit/${reportId}`} className={styles.primaryButton}>
+                <Pencil size={16} aria-hidden="true" />
+                Edit
+              </Link>
+              <button
+                type="button"
+                className={styles.dangerButton}
+                onClick={() => void deleteReport()}
+                disabled={busy !== null}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+                Delete
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+
+      <div className={styles.workspaceBar}>
+        {audienceTabs}
+        <div className={styles.modeTabs} role="group" aria-label="Report workspace mode">
+          <button
+            type="button"
+            className={`${styles.modeTab} ${workspaceMode === 'content' ? styles.modeTabActive : ''}`}
+            aria-pressed={workspaceMode === 'content'}
+            onClick={() => setWorkspaceMode('content')}
+          >
+            <FileText size={16} aria-hidden="true" />
+            Report content
+          </button>
+          <button
+            type="button"
+            className={`${styles.modeTab} ${workspaceMode === 'ai' ? styles.modeTabActive : ''}`}
+            aria-pressed={workspaceMode === 'ai'}
+            onClick={() => setWorkspaceMode('ai')}
+          >
+            <MessageSquareText size={16} aria-hidden="true" />
+            AI chat
+          </button>
         </div>
       </div>
 
@@ -248,37 +465,204 @@ export function ReportWorkspace({ reportId, editable = true }: { reportId: numbe
           variant={variant}
           reportVariant={currentVariant}
           templates={templates}
-          styles={styles}
+          styles={styleOptions}
           editable={editable}
           onAccepted={acceptGeneratedVariant}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <section className="min-w-0 space-y-4">
-            {editable && hasFinal ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between"><Label>Final version content</Label><Button size="sm" onClick={() => void saveEditedFinal()} disabled={busy !== null}><Save className="mr-1.5 h-4 w-4" />Save</Button></div>
-                <MilkdownEditor key={editorKey} value={content} onChange={setContent} />
+        <div className={styles.contentGrid}>
+          <section className={styles.primaryColumn} aria-label={`${variantLabels[variant]} report review`}>
+            <div className={styles.reviewSurface}>
+              <div className={styles.paneBar}>
+                <div className={styles.paneTabs} role="tablist" aria-label="Report review pane">
+                  <PaneTab value="final" active={pane === 'final'} onSelect={setPane}>Final preview</PaneTab>
+                  <PaneTab value="source" active={pane === 'source'} onSelect={setPane}>Source draft</PaneTab>
+                  <PaneTab value="compare" active={pane === 'compare'} onSelect={setPane}>Compare</PaneTab>
+                  {editable && hasFinal && (
+                    <PaneTab value="edit" active={pane === 'edit'} onSelect={setPane}>Edit final</PaneTab>
+                  )}
+                </div>
+                <span className={styles.paneMeta}>{variantLabels[variant]} · r{sourceRevision}</span>
               </div>
-            ) : (
-              <div className={`rounded-xl border border-border p-6 prose prose-report max-w-none ${editable ? 'bg-[#141414] prose-invert' : 'report-view-content bg-card text-card-foreground'}`}>
-                <div className="not-prose mb-4 flex items-center justify-between"><Label>{hasFinal ? 'Final version content' : 'Source draft (read-only)'}</Label>{hasFinal && currentVariant.finalStatus === 'stale' && <span className="text-xs text-amber-400">Source draft updated; final version is stale</span>}</div>
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+
+              <div hidden={pane !== 'final'}>
+                <div className={styles.documentPanel}>
+                  {hasFinal ? (
+                    <>
+                      <div className={styles.panelLabelRow}>
+                        <h2 className={styles.panelTitle}>Final report</h2>
+                        <span className={`${styles.statusBadge} ${statusClass(hasFinal, finalStatus)}`}>{statusLabel}</span>
+                      </div>
+                      {finalStatus === 'stale' && (
+                        <div className={styles.staleNotice} role="status">
+                          <AlertTriangle size={16} aria-hidden="true" />
+                          <span>
+                            The source draft was regenerated to revision r{sourceRevision}. This final still reflects an
+                            earlier revision and is not current.
+                          </span>
+                        </div>
+                      )}
+                      <div className={styles.finalDocument}>
+                        <div
+                          data-testid="final-report-body"
+                          className={styles.documentBody}
+                        >
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentVariant.finalContent}</ReactMarkdown>
+                        </div>
+                      </div>
+                      {editable && (
+                        <div className={styles.inlineActions}>
+                          <button type="button" className={styles.textButton} onClick={() => setPane('edit')}>
+                            <Pencil size={15} aria-hidden="true" />
+                            Edit final content
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className={styles.noFinal}>
+                      <FileText size={22} aria-hidden="true" />
+                      <h2>No final report yet</h2>
+                      <p>
+                        The source draft is a deterministic, read-only inventory of frozen evidence
+                        for the {variantLabels[variant]} audience. It is not a candidate final.
+                        {editable
+                          ? ' Open AI generation to review a proposal before adoption.'
+                          : ' No final has been adopted for this audience.'}
+                      </p>
+                      <div className={styles.noFinalActions}>
+                        {editable && (
+                          <button type="button" className={styles.primaryButton} onClick={() => setWorkspaceMode('ai')}>
+                            <Plus size={16} aria-hidden="true" />
+                            Open AI generation
+                          </button>
+                        )}
+                        <button type="button" className={styles.textButton} onClick={() => setPane('source')}>
+                          Inspect source draft
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-            {editable && !hasFinal && <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground">This version has only a source draft. Switch to “AI chat” to create a session and ask AI to submit a proposed final version.</div>}
+
+              <div hidden={pane !== 'source'}>
+                <div className={styles.documentPanel}>
+                  <div className={styles.panelLabelRow}>
+                    <h2 className={styles.panelTitle}>Source draft</h2>
+                    <span className={styles.readOnlyBadge}>Read-only</span>
+                  </div>
+                  <p className={styles.panelDescription}>
+                    Deterministic facts from the frozen {variantLabels[variant]} snapshot. This is the fact authority,
+                    not a final.
+                  </p>
+                </div>
+                <div
+                  data-testid="source-draft-scroll"
+                  className={`${styles.sourceScroll} ${styles.documentBody} overflow-y-auto max-h-[min(70vh,720px)]`}
+                >
+                  {hasSource
+                    ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentVariant.sourceDraft}</ReactMarkdown>
+                    : <p>No source draft has been generated for this audience.</p>}
+                </div>
+              </div>
+
+              {pane === 'compare' && (
+                <div className={styles.compareGrid}>
+                  <section className={styles.comparePane} aria-label="Source draft comparison">
+                    <div className={styles.panelLabelRow}>
+                      <h2 className={styles.panelTitle}>Source draft</h2>
+                      <span className={styles.readOnlyBadge}>Read-only</span>
+                    </div>
+                    <div className={`${styles.documentBody} ${styles.compareBody}`}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentVariant.sourceDraft}</ReactMarkdown>
+                    </div>
+                  </section>
+                  <section className={styles.comparePane} aria-label="Final report comparison">
+                    <div className={styles.panelLabelRow}>
+                      <h2 className={styles.panelTitle}>Final report</h2>
+                      <span className={`${styles.statusBadge} ${statusClass(hasFinal, finalStatus)}`}>{statusLabel}</span>
+                    </div>
+                    {hasFinal ? (
+                      <div className={`${styles.documentBody} ${styles.compareBody}`}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentVariant.finalContent}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className={styles.noFinalCompact}>
+                        No final report yet. The source draft remains the fact authority and is not a candidate final.
+                      </div>
+                    )}
+                  </section>
+                </div>
+              )}
+
+              {pane === 'edit' && editable && hasFinal && (
+                <div>
+                  <div className={styles.editToolbar}>
+                    <div className={styles.editToolbarTitle}>
+                      <h2>Edit final content</h2>
+                      <p>Saving updates the current final for {variantLabels[variant]} at source revision r{sourceRevision}.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.primaryButton}
+                      onClick={() => void saveEditedFinal()}
+                      disabled={busy !== null}
+                    >
+                      <Save size={16} aria-hidden="true" />
+                      Save
+                    </button>
+                  </div>
+                  <div className={styles.editorShell}>
+                    <MilkdownEditor key={editorKey} value={content} onChange={setContent} />
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
 
-          <aside className="space-y-4 lg:sticky lg:top-6 lg:self-start">
-            <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground">
-              <p className="mb-2 font-medium text-foreground">Source draft</p>
-              <div data-testid="source-draft-scroll" className="max-h-[min(42vh,440px)] overflow-y-auto rounded-lg border border-border bg-muted/20 p-3 pr-2 prose prose-sm dark:prose-invert prose-report max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentVariant.sourceDraft}</ReactMarkdown>
-              </div>
-            </div>
-          </aside>
+          <div className={styles.contextColumn}>
+            <ReportReviewGate
+              audience={variant}
+              sourceRevision={sourceRevision}
+              snapshotCount={bundle.snapshots.length}
+              sourceDraft={currentVariant.sourceDraft}
+              hasFinal={hasFinal}
+              finalStatus={finalStatus}
+              acceptedProposalId={currentVariant.acceptedProposalId}
+              templateName={currentVariant.templateName}
+              aiStyle={currentVariant.aiStyle}
+              editable={editable}
+              onOpenGeneration={() => setWorkspaceMode('ai')}
+              onEditFinal={() => setPane('edit')}
+            />
+          </div>
         </div>
       )}
-    </main>
+    </div>
+  )
+}
+
+function PaneTab({
+  value,
+  active,
+  onSelect,
+  children,
+}: {
+  value: ContentPane
+  active: boolean
+  onSelect: (value: ContentPane) => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={`${styles.paneTab} ${active ? styles.paneTabActive : ''}`}
+      onClick={() => onSelect(value)}
+    >
+      {children}
+    </button>
   )
 }

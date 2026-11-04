@@ -5,12 +5,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit2, Trash2, FileText, GitBranch, MessageSquare } from 'lucide-react'
+import { Edit2, Trash2, FileText, GitBranch, Link2, MessageSquare } from 'lucide-react'
 import type { RawEvent } from '@/lib/db/schema'
 import { EventTimestamp } from './EventTimestamp'
 import { ContentWithReferences } from './ContentWithReferences'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 import { buildPlansDeepLink } from '@/lib/plan-links'
+import styles from './timeline.module.css'
 
 interface EventCardProps {
   event: RawEvent
@@ -24,6 +25,9 @@ interface EventCardProps {
   onReferenceClick?: (referenceId: number) => void
   onPlanReferenceClick?: (planItemId: number) => void
   highlightKey?: number | null
+  /** Whether this record is the one shown in the evidence trace. */
+  selected?: boolean
+  onSelect?: (eventId: number) => void
 }
 
 interface CommentReferrerSummary {
@@ -35,7 +39,17 @@ interface CommentReferrerSummary {
   periodStart: string
 }
 
-export function EventCard({ event, commentReferrerCount, onEdit, onDelete, onReferenceClick, onPlanReferenceClick, highlightKey }: EventCardProps) {
+export function EventCard({
+  event,
+  commentReferrerCount,
+  onEdit,
+  onDelete,
+  onReferenceClick,
+  onPlanReferenceClick,
+  highlightKey,
+  selected = false,
+  onSelect,
+}: EventCardProps) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(event.content)
@@ -167,120 +181,151 @@ export function EventCard({ event, commentReferrerCount, onEdit, onDelete, onRef
     }
   }
 
-  return (
-    <div ref={cardRef} data-event-id={event.id} className="border rounded-lg p-4 space-y-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-start gap-2 flex-1">
-          {event.isImportant && (
-            <div className="w-2 h-2 rounded-full bg-yellow-500 mt-2" />
-          )}
-          <div className="flex-1 space-y-2">
-            {editing ? (
-              <div className="relative space-y-2">
-                <Textarea
-                  ref={(el) => {
-                    if (el) el.focus()
-                  }}
-                  rows={3}
-                  className="resize-none overflow-y-auto field-sizing-fixed"
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  onKeyDown={handleEditKeyDown}
-                  disabled={loading}
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={handleSubmit} disabled={loading}>
-                    Save
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={loading}>
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm whitespace-pre-line">
-                <ContentWithReferences
-                  content={event.content}
-                  isManual={isManual}
-                  onReferenceClick={onReferenceClick}
-                  onPlanReferenceClick={onPlanReferenceClick}
-                />
-              </p>
-            )}
+  const handleRowClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onSelect || editing) return
+    const target = e.target as HTMLElement
+    if (target.closest('button, a, input, textarea, select')) return
+    onSelect(event.id)
+  }
 
-            <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-              {isManual ? (
-                <FileText className="h-3 w-3" />
-              ) : (
-                <GitBranch className="h-3 w-3" />
-              )}
-              <EventTimestamp event={event} />
-              {typeof commentReferrerCount === 'number' && commentReferrerCount > 0 && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-5 gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => void handleLocateCitation()}
-                    disabled={locatingCitation}
-                    aria-label={`Cited by ${commentReferrerCount} ${
-                      commentReferrerCount === 1 ? 'comment' : 'comments'
-                    }`}
-                  >
-                    <MessageSquare className="h-3 w-3" />
-                    Cited by {commentReferrerCount}{' '}
-                    {commentReferrerCount === 1 ? 'comment' : 'comments'}
-                  </Button>
-                </>
-              )}
-              {event.metadata?.repo && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="font-medium text-foreground/70">{event.metadata.repo}</span>
-                </>
-              )}
-              {event.metadata?.branch && (
-                <span className="text-muted-foreground/70">⌊{event.metadata.branch}⌋</span>
-              )}
-              {event.metadata?.sourceName && (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span
-                    title={
-                      event.metadata?.aliases && event.metadata.aliases.length > 0
-                        ? `Aliases: ${event.metadata.aliases.join(', ')}`
-                        : undefined
-                    }
-                  >
-                    {event.metadata.sourceName}
-                  </span>
-                </>
-              )}
+  return (
+    <div
+      ref={cardRef}
+      data-event-id={event.id}
+      onClick={handleRowClick}
+      className={`${styles.eventRow} ${selected ? styles.eventRowSelected : ''}`}
+    >
+      <span className={styles.eventId}>@{event.id}</span>
+
+      <div className={styles.eventBody}>
+        {editing ? (
+          <div className={styles.editForm}>
+            <Textarea
+              ref={(el) => {
+                if (el) el.focus()
+              }}
+              rows={3}
+              className={styles.editTextarea}
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleEditKeyDown}
+              disabled={loading}
+            />
+            <div className={styles.editActions}>
+              <Button size="sm" onClick={handleSubmit} disabled={loading}>
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={loading}>
+                Cancel
+              </Button>
             </div>
           </div>
-        </div>
+        ) : (
+          <p className={styles.eventTitle}>
+            <ContentWithReferences
+              content={event.content}
+              isManual={isManual}
+              onReferenceClick={onReferenceClick}
+              onPlanReferenceClick={onPlanReferenceClick}
+            />
+          </p>
+        )}
 
-        {!editing && isManual && (
-          <div className="flex gap-1">
-            {onEdit && (
-              <Button size="sm" variant="ghost" onClick={() => setEditing(true)} disabled={loading}>
-                <Edit2 className="h-3 w-3" />
-              </Button>
-            )}
-            {onDelete && (
+        <div className={styles.eventMeta}>
+          {isManual ? (
+            <FileText className="h-3 w-3" aria-hidden="true" />
+          ) : (
+            <GitBranch className="h-3 w-3" aria-hidden="true" />
+          )}
+          <EventTimestamp event={event} />
+          {isManual && event.isImportant && (
+            <span className={styles.importantFlag}>Important</span>
+          )}
+          {typeof commentReferrerCount === 'number' && commentReferrerCount > 0 && (
+            <>
+              <span className={styles.metaDivider} aria-hidden="true">·</span>
               <Button
+                type="button"
                 size="sm"
                 variant="ghost"
+                className="h-5 gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => void handleLocateCitation()}
+                disabled={locatingCitation}
+                aria-label={`Cited by ${commentReferrerCount} ${
+                  commentReferrerCount === 1 ? 'comment' : 'comments'
+                }`}
+              >
+                <MessageSquare className="h-3 w-3" aria-hidden="true" />
+                Cited by {commentReferrerCount}{' '}
+                {commentReferrerCount === 1 ? 'comment' : 'comments'}
+              </Button>
+            </>
+          )}
+          {event.metadata?.repo && (
+            <>
+              <span className={styles.metaDivider} aria-hidden="true">·</span>
+              <span className={styles.eventRepo}>{event.metadata.repo}</span>
+            </>
+          )}
+          {event.metadata?.branch && (
+            <span className={styles.eventSource}>⌊{event.metadata.branch}⌋</span>
+          )}
+          {event.metadata?.sourceName && (
+            <>
+              <span className={styles.metaDivider} aria-hidden="true">·</span>
+              <span
+                className={styles.eventSourceName}
+                title={
+                  event.metadata?.aliases && event.metadata.aliases.length > 0
+                    ? `Aliases: ${event.metadata.aliases.join(', ')}`
+                    : undefined
+                }
+              >
+                {event.metadata.sourceName}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className={styles.eventActions}>
+        {!editing && onSelect && (
+          <button
+            type="button"
+            className={styles.inspectButton}
+            onClick={() => onSelect(event.id)}
+            aria-pressed={selected}
+            aria-label={`${selected ? 'Tracing' : 'Inspect'} event ${event.id}`}
+          >
+            <span className={styles.inspectLabel}>{selected ? 'Tracing' : 'Inspect'}</span>
+            <Link2 size={14} aria-hidden="true" />
+          </button>
+        )}
+        {!editing && isManual && (
+          <>
+            {onEdit && (
+              <button
+                type="button"
+                className={styles.iconButton}
+                onClick={() => setEditing(true)}
+                disabled={loading}
+                aria-label="Edit event"
+              >
+                <Edit2 className="h-3 w-3" aria-hidden="true" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                className={styles.iconButton}
                 onClick={handleDelete}
                 disabled={loading}
                 aria-label="Delete event"
               >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+              </button>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>

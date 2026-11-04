@@ -1,7 +1,7 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import styles from './timeline.module.css'
 
 export type SourceFilter = 'manual' | 'auto'
 
@@ -16,6 +16,11 @@ const SOURCE_LABELS: Record<SourceFilter, string> = {
   auto: 'Automatic',
 }
 
+const SOURCE_NOTES: Record<SourceFilter, string> = {
+  manual: 'Recorded by you',
+  auto: 'Collected from sources',
+}
+
 export function SourceFilterPanel({
   selectedSources,
   onSourceSelect,
@@ -24,19 +29,26 @@ export function SourceFilterPanel({
   const sources: SourceFilter[] = ['manual', 'auto']
 
   return (
-    <div className="space-y-4 p-4 border rounded-lg">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">Filter by source</h3>
+    <section className={styles.filterPanel} aria-label="Source filter">
+      <div className={styles.filterHeader}>
+        <div>
+          <h2 className={styles.panelTitle}>Filter by source</h2>
+          <p className={styles.panelCopy}>Manual entries and collected evidence.</p>
+        </div>
         {selectedSources.length > 0 && selectedSources.length < 2 && (
-          <Button size="sm" variant="ghost" onClick={onClearFilters}>
+          <button type="button" className={styles.textButton} onClick={onClearFilters}>
             Clear
-          </Button>
+          </button>
         )}
       </div>
 
-      <div className="space-y-2">
+      <div className={styles.filterList}>
         {sources.map((s) => (
-          <div key={s} className="flex items-center gap-2">
+          <div
+            key={s}
+            className={styles.filterRow}
+            data-checked={selectedSources.includes(s) ? 'true' : 'false'}
+          >
             {/* 可访问名：勾选框与旁边的纯文本 span 未做 label 关联，
                 无障碍树里原本是无名勾选框，role/name 定位（e2e、屏幕阅读器）
                 都无法区分 manual 与 auto。 */}
@@ -45,10 +57,11 @@ export function SourceFilterPanel({
               checked={selectedSources.includes(s)}
               onCheckedChange={() => onSourceSelect(s)}
             />
-            <span className="text-sm">{SOURCE_LABELS[s]}</span>
+            <span>{SOURCE_LABELS[s]}</span>
+            <span className={styles.filterCount}>{SOURCE_NOTES[s]}</span>
           </div>
         ))}
       </div>
-    </div>
+    </section>
   )
 }

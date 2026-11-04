@@ -40,13 +40,17 @@ test.describe('周报列表页', () => {
   test('每个卡片都应显示日期范围', async ({ page }) => {
     await page.goto('/reports')
 
+    // The right-side preview repeats the selected report title, so scope these
+    // assertions to the numbered index rather than the whole page.
+    const index = page.getByRole('list', { name: 'Reports' })
+
     // Wait for the list to render
-    await expect(page.getByText('E2E 测试周报 1')).toBeVisible()
-    await expect(page.getByText('E2E 测试周报 2')).toBeVisible()
+    await expect(index.getByText('E2E 测试周报 1')).toBeVisible()
+    await expect(index.getByText('E2E 测试周报 2')).toBeVisible()
 
     // Verify each card displays its week range
     // (formatSystemDate renders Intl medium dates — "Jan 8, 2024" in en-US)
-    await expect(page.getByText('Jan 8, 2024 - Jan 14, 2024')).toBeVisible()
-    await expect(page.getByText('Jan 15, 2024 - Jan 21, 2024')).toBeVisible()
+    await expect(index.getByText('Jan 8, 2024 – Jan 14, 2024')).toBeVisible()
+    await expect(index.getByText('Jan 15, 2024 – Jan 21, 2024')).toBeVisible()
   })
 })

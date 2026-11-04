@@ -84,7 +84,23 @@ describe('NewReportPage', () => {
       weekStart: expect.any(String),
       weekEnd: expect.any(String),
     }))
-    expect(mockPush).toHaveBeenCalledWith('/reports/7')
+    expect(mockPush).toHaveBeenCalledWith('/reports/7?audience=leadership')
+  })
+
+  it('preserves the previewed audience after creation and renders readable preview prose', async () => {
+    mockFetch
+      .mockResolvedValueOnce(response(previewResponse))
+      .mockResolvedValueOnce(response({ report: { id: 7 } }))
+    render(<NewReportPage />)
+
+    await screen.findByText('Source draft preview (read-only)')
+    fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+    const personalDraft = await screen.findByText('个人事项')
+    expect(personalDraft.closest('.read-only-prose')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/reports/7?audience=personal'))
   })
 
   it('clears an existing preview when the week changes', async () => {

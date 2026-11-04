@@ -94,9 +94,9 @@ export default function EditTemplatePage() {
 
   if (loading) {
     return (
-      <main className="container mx-auto py-8 px-4 max-w-3xl">
+      <div className="container mx-auto py-8 px-4 max-w-3xl">
         <div className="text-center py-8">Loading...</div>
-      </main>
+      </div>
     )
   }
 
@@ -105,7 +105,7 @@ export default function EditTemplatePage() {
   }
 
   return (
-    <main className="container mx-auto py-8 px-4 max-w-3xl">
+    <div className="container mx-auto py-8 px-4 max-w-3xl">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/templates">
           <Button variant="ghost" size="icon">←</Button>
@@ -129,6 +129,6 @@ export default function EditTemplatePage() {
           onCancel={() => router.push('/templates')} 
         />
       </div>
-    </main>
+    </div>
   )
 }

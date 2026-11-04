@@ -1,6 +1,6 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
+import styles from './timeline.module.css'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -18,19 +18,17 @@ const VIEW_MODE_LABELS: Record<ViewMode, string> = {
 
 export function TimelineViewSwitcher({ viewMode, onViewModeChange }: TimelineViewSwitcherProps) {
   return (
-    <div className="flex rounded-md border">
-      {VIEW_MODES.map((mode, index) => (
-        <Button
+    <div className={styles.viewSwitcher} role="group" aria-label="Timeline grouping">
+      {VIEW_MODES.map((mode) => (
+        <button
           key={mode}
           type="button"
-          variant={viewMode === mode ? 'default' : 'ghost'}
-          size="sm"
-          className={index === 0 ? 'rounded-r-none' : index === VIEW_MODES.length - 1 ? 'rounded-l-none' : 'rounded-none'}
+          className={`${styles.viewButton} ${viewMode === mode ? styles.viewButtonActive : ''}`}
           onClick={() => onViewModeChange(mode)}
           aria-pressed={viewMode === mode}
         >
           {VIEW_MODE_LABELS[mode]}
-        </Button>
+        </button>
       ))}
     </div>
   )

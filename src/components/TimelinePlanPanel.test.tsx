@@ -305,7 +305,7 @@ describe('TimelinePlanPanel', () => {
     expect(within(personalRow).queryByText(/^personal$/i)).not.toBeInTheDocument()
   })
 
-  it('renders priority as a colour tint with an accessible name and no visible text label', async () => {
+  it('renders each priority with a visible label and a fixed-light dot', async () => {
     await renderWith([
       makeItem(1, 'High item', 'planned', 'work', { priority: 'high' }),
       makeItem(2, 'Normal item', 'planned', 'work', { priority: 'normal' }),
@@ -313,20 +313,40 @@ describe('TimelinePlanPanel', () => {
     ])
 
     const cases = [
-      { text: 'High item', label: 'Priority: 高', tint: 'bg-rose-500', rowTint: 'bg-rose-50' },
-      { text: 'Normal item', label: 'Priority: 中', tint: 'bg-gray-400', rowTint: 'bg-muted/40' },
-      { text: 'Low item', label: 'Priority: 低', tint: 'bg-sky-500', rowTint: 'bg-sky-50' },
+      { text: 'High item', label: '高 priority', tint: 'bg-[#214fae]' },
+      { text: 'Normal item', label: '中 priority', tint: 'bg-[#8fa5bd]' },
+      { text: 'Low item', label: '低 priority', tint: 'bg-[#cbd6e2]' },
     ] as const
 
-    for (const { text, label, tint, rowTint } of cases) {
+    for (const { text, label, tint } of cases) {
       const row = screen.getByText(text).closest('li')!
-      expect(row).toHaveClass(rowTint)
-      const priority = within(row).getByRole('img', { name: label })
-      expect(priority).toHaveClass(tint)
-      expect(priority).toHaveTextContent('')
-      // Priority is conveyed by tint only, never by a visible text label.
-      expect(within(row).queryByText(/高|中|低/)).not.toBeInTheDocument()
+      // Priority must not borrow a warning/error row fill.
+      expect(row).not.toHaveClass('bg-rose-50', 'bg-sky-50', 'bg-muted/40')
+      expect(within(row).getByText(label)).toBeInTheDocument()
+      const priority = within(row).getByText(label)
+      const dot = priority.querySelector('[aria-hidden="true"]')
+      expect(dot).toHaveClass(tint)
     }
+  })
+
+  it('keeps the plan projection on the fixed-light palette in both themes', async () => {
+    await renderWith([
+      makeItem(1, 'High item', 'planned', 'work', {
+        priority: 'high',
+        isImportant: true,
+        isUrgent: true,
+      }),
+    ])
+
+    const panel = screen.getByRole('region', { name: 'Timeline plan table' })
+    const classNames = Array.from(panel.querySelectorAll('*'))
+      .map((node) => node.getAttribute('class') ?? '')
+      .join(' ')
+
+    expect(classNames).not.toMatch(/(^|\s)dark:/)
+    expect(classNames).not.toMatch(/\b(rose|sky|amber|blue|red|gray|green)-[0-9]/)
+    expect(classNames).not.toMatch(/\btext-(muted-foreground|destructive)\b/)
+    expect(classNames).not.toMatch(/\bbg-muted\b/)
   })
 
   it('renders important and urgent flags as icon-only indicators with accessible names', async () => {
@@ -343,7 +363,7 @@ describe('TimelinePlanPanel', () => {
     expect(important).toHaveTextContent('')
     expect(urgent).toHaveTextContent('')
     // Flags are orthogonal to priority: a low-priority item still shows both.
-    expect(within(both).getByRole('img', { name: 'Priority: 低' })).toBeInTheDocument()
+    expect(within(both).getByText('低 priority')).toBeInTheDocument()
     // Icon-only: neither flag contributes a visible text label.
     expect(within(both).queryByText(/important|urgent/i)).not.toBeInTheDocument()
 

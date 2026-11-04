@@ -37,9 +37,9 @@ export default function CollectPage() {
   }, [completionVersion])
   
   return (
-    <main className="container mx-auto py-6 px-4 max-w-7xl">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
+    <div className="container mx-auto py-6 px-4 max-w-7xl">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
@@ -47,7 +47,7 @@ export default function CollectPage() {
           </Link>
           <h1 className="text-2xl font-bold">Source Management</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <CollectPageSyncButton
             onStart={() => setSyncResults(null)}
             onResults={setSyncResults}
@@ -80,6 +80,6 @@ export default function CollectPage() {
         onClose={() => setScanDialogOpen(false)}
         onSuccess={handleScanSuccess}
       />
-    </main>
+    </div>
   )
 }

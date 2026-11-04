@@ -141,8 +141,22 @@
 }
 
 :root {
-  --font-ui: system-ui;
-  --font-editor: Geist;
+  /* Numbered Evidence shell tokens (see DESIGN.md). */
+  --wr-navy: #14273d;
+  --wr-navy-deep: #0d1b2c;
+  --wr-cobalt: #2f66d0;
+  --wr-cobalt-dark: #214fae;
+  --wr-ice: #edf3f8;
+  --wr-frame-ground: #e2ebf4;
+  --wr-paper: #fafcfe;
+  --wr-ink: #172537;
+  --wr-secondary: #52647a;
+  --wr-line: #cbd6e2;
+  --wr-focus: #74a2fa;
+
+  /* Next self-hosted Geist is the single UI family; Settings may override. */
+  --font-ui: var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-editor: var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 @layer base {
@@ -225,6 +239,24 @@
 
 .prose-report p + p {
   margin-top: 1em;
+}
+
+/* Read-only previews sit on a light workbench panel rather than the dark
+   surface .prose-report was originally tuned for. Restore theme-aware ink and
+   let long unbroken tokens wrap inside the panel instead of panning the page. */
+.read-only-prose {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+}
+
+.read-only-prose h2 {
+  color: var(--foreground);
+  border-bottom-color: var(--border);
+}
+
+.read-only-prose li::before {
+  background: var(--muted-foreground);
 }
 
 /* The unfinished streaming block never changes Markdown structure. */

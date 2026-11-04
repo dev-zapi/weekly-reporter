@@ -5,6 +5,7 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
+  AlertTriangle,
   Archive,
   Bot,
   Check,
@@ -23,7 +24,6 @@ import {
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_GENERATION_INSTRUCTION } from '@/lib/generation/context'
 import {
@@ -42,6 +42,7 @@ import { isReportContentToolResult, REPORT_CONTENT_TOOL_NAME, type ReportContent
 import type { GenerationStreamEvent, ReviewableProposal } from '@/lib/generation/stream'
 import { ProposalReviewPanel } from './generation/ProposalReviewPanel'
 import { useStreamingReveal } from './generation/useStreamingReveal'
+import styles from './generation/generation.module.css'
 
 interface TemplateOption {
   id: string
@@ -140,22 +141,31 @@ function SystemContextCard({ detail, onRefresh }: { detail: SessionDetail; onRef
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-muted/15 p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Bot className="h-4 w-4" />System message</div>
-      <div className="space-y-2">
+    <div className={styles.systemCard}>
+      <div className={styles.systemHeading}><Bot size={15} aria-hidden="true" />System message</div>
+      <div>
         {blocks.map(([label, content]) => (
-          <details key={label} className="rounded-lg border border-border bg-background p-3">
-            <summary className="cursor-pointer text-sm font-medium">{label}</summary>
-            <div className="mt-3 flex justify-end"><Button variant="ghost" size="sm" onClick={() => void copy(content)}><Clipboard className="mr-1.5 h-3.5 w-3.5" />Copy</Button></div>
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{content}</pre>
+          <details key={label} className={styles.systemDetails}>
+            <summary>{label}</summary>
+            <div className={styles.systemBlockHeader}>
+              <span />
+              <button type="button" className={styles.ghostButton} onClick={() => void copy(content)}>
+                <Clipboard size={14} aria-hidden="true" />
+                Copy
+              </button>
+            </div>
+            <pre className={styles.systemPre}>{content}</pre>
           </details>
         ))}
       </div>
-      <div className="mt-3 rounded-lg border border-border bg-background p-3">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-sm font-medium">Source draft overview</p>
+      <div className={styles.overviewCard}>
+        <div className={styles.overviewHeader}>
+          <p>Source draft overview</p>
           <Dialog>
-            <DialogTrigger render={<Button variant="outline" size="sm" />}><FileText className="mr-1.5 h-3.5 w-3.5" />View full source draft</DialogTrigger>
+            <DialogTrigger render={<Button variant="outline" size="sm" />}>
+              <FileText className={styles.tabIcon} size={14} aria-hidden="true" />
+              View full source draft
+            </DialogTrigger>
             <DialogContent className="max-h-[88vh] sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Full source draft used by this session</DialogTitle>
@@ -165,17 +175,38 @@ function SystemContextCard({ detail, onRefresh }: { detail: SessionDetail; onRef
             </DialogContent>
           </Dialog>
         </div>
-        <pre className="whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{detail.sourceOverview}</pre>
+        <pre className={styles.systemPre}>{detail.sourceOverview}</pre>
       </div>
-      <details className="mt-2 rounded-lg border border-border bg-background p-3">
-        <summary className="cursor-pointer text-sm font-medium">Template snapshot · {detail.templateName}</summary>
-        <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{detail.templateContent}</pre>
+      <details className={styles.systemDetails}>
+        <summary>Template snapshot · {detail.templateName}</summary>
+        <pre className={styles.systemPre}>{detail.templateContent}</pre>
       </details>
-      <details className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-        <summary className="cursor-pointer text-sm font-medium">Historical query snapshots · 历史参考·不可信</summary>
-        <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-          {detail.historicalReferencesChanged && <p role="alert" className="text-amber-500">参考已变化。请显式启动新一轮生成以产生新提案。</p>}
-          {(detail.querySnapshots ?? []).map((snapshot) => <div key={snapshot.id} className="flex items-center justify-between gap-2"><details className="min-w-0 flex-1"><summary className="cursor-pointer">#{snapshot.id} {snapshot.toolName} · {snapshot.resultCount} 项 · {snapshot.trigger}{snapshot.errorCode ? ` · ${snapshot.errorCode}` : ''}{snapshot.truncated ? ' · 截断' : ''}</summary><p className="mt-1">来源报告 {snapshot.sourceReportId} · 受众 {snapshot.sourceAudience} · 周期 {snapshot.sourceWeekStart ?? '-'} – {snapshot.sourceWeekEnd ?? '-'} · 状态 {snapshot.sourceFinalStatus ?? '-'} · 快照时间 {String(snapshot.calledAt)} · 历史参考·不可信</p><pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap">参数 {JSON.stringify(snapshot.parameters)}{snapshot.result && `\n摘要 ${JSON.stringify(snapshot.result).slice(0, 300)}`}</pre></details>{onRefresh && <Button variant="outline" size="sm" onClick={() => onRefresh(snapshot.id)}>刷新</Button>}</div>)}
+      <details className={styles.snapshotDetails}>
+        <summary>Historical query snapshots · 历史参考·不可信</summary>
+        <div className={styles.snapshotBody}>
+          {detail.historicalReferencesChanged && <p role="alert">参考已变化。请显式启动新一轮生成以产生新提案。</p>}
+          {(detail.querySnapshots ?? []).map((snapshot) => (
+            <div key={snapshot.id} className={styles.snapshotRow}>
+              <details>
+                <summary>
+                  #{snapshot.id} {snapshot.toolName} · {snapshot.resultCount} 项 · {snapshot.trigger}
+                  {snapshot.errorCode ? ` · ${snapshot.errorCode}` : ''}
+                  {snapshot.truncated ? ' · 截断' : ''}
+                </summary>
+                <p>
+                  来源报告 {snapshot.sourceReportId} · 受众 {snapshot.sourceAudience} · 周期 {snapshot.sourceWeekStart ?? '-'} – {snapshot.sourceWeekEnd ?? '-'} ·
+                  状态 {snapshot.sourceFinalStatus ?? '-'} · 快照时间 {String(snapshot.calledAt)} · 历史参考·不可信
+                </p>
+                <pre>
+                  参数 {JSON.stringify(snapshot.parameters)}
+                  {snapshot.result && `\n摘要 ${JSON.stringify(snapshot.result).slice(0, 300)}`}
+                </pre>
+              </details>
+              {onRefresh && (
+                <button type="button" className={styles.secondaryButton} onClick={() => onRefresh(snapshot.id)}>刷新</button>
+              )}
+            </div>
+          ))}
           {(detail.querySnapshots ?? []).length === 0 && <p>尚未查询历史周报。</p>}
         </div>
       </details>
@@ -185,75 +216,121 @@ function SystemContextCard({ detail, onRefresh }: { detail: SessionDetail; onRef
 
 function ReportListToolResultCard({ output, content, onRetry }: { output: ReportListToolResult; content: string | null; onRetry?: () => void }) {
   return (
-    <div className="ml-11 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Wrench className="h-4 w-4 text-amber-500" />
-        <span className="font-medium">查询周报列表</span>
-        <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">历史参考·不可信</span>
+    <div className={styles.toolCard}>
+      <div className={styles.toolCardHeader}>
+        <Wrench size={14} aria-hidden="true" />
+        <strong>查询周报列表</strong>
+        <span className={styles.toolBadge}>历史参考·不可信</span>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{content}</p>
+      <p className={styles.toolCopy}>{content}</p>
       {output.ok ? (
-        <div className="mt-3 space-y-2">
+        <div className={styles.toolGrid}>
           {output.items.length > 0 ? output.items.map((item) => (
-            <div key={item.reportId} className="rounded-lg border border-border bg-background p-3">
-              <p className="font-medium">来源：{item.title} <span className="text-xs text-muted-foreground">#{item.reportId}</span></p>
-              <dl className="mt-2 grid gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-[auto_1fr]">
+            <div key={item.reportId} className={styles.toolItem}>
+              <p className={styles.toolItemTitle}>
+                来源：{item.title} <span>#{item.reportId}</span>
+              </p>
+              <dl className={styles.toolMeta}>
                 <dt>周期</dt><dd>{item.weekStart} – {item.weekEnd}</dd>
                 <dt>受众</dt><dd>{item.audience === 'leadership' ? '领导版' : '个人版'} · {item.audience}</dd>
                 <dt>状态</dt><dd>{item.finalStatus}</dd>
                 <dt>更新时间</dt><dd>{new Date(item.updatedAt).toLocaleString()}</dd>
                 <dt>正文可用</dt><dd>{item.contentAvailable ? '是' : '否'}</dd>
               </dl>
-              {item.warning ? <p role="alert" className="mt-2 text-xs text-amber-600 dark:text-amber-400">{item.warning}</p> : null}
+              {item.warning ? <p role="alert" className={styles.toolCopy}>{item.warning}</p> : null}
               {item.matches?.length ? (
-                <details className="mt-2 rounded border border-border p-2">
-                  <summary className="cursor-pointer text-xs text-muted-foreground">查询命中 ({item.matches.length})</summary>
-                  <div className="mt-2 space-y-2">
+                <details className={styles.systemDetails}>
+                  <summary>查询命中 ({item.matches.length})</summary>
+                  <div className={styles.toolGrid}>
                     {item.matches.map((match, index) => (
-                      <pre key={`${match.field}-${match.startLine ?? 0}-${index}`} className="whitespace-pre-wrap break-words text-xs">{match.field}{match.startLine ? ` · lines ${match.startLine}–${match.endLine}` : ''}\n{match.content}</pre>
+                      <pre key={`${match.field}-${match.startLine ?? 0}-${index}`} className={styles.toolPre}>
+                        {match.field}{match.startLine ? ` · lines ${match.startLine}–${match.endLine}` : ''}
+                        {'\n'}{match.content}
+                      </pre>
                     ))}
                   </div>
                 </details>
               ) : null}
             </div>
-          )) : <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">未找到符合条件的历史周报</p>}
-          <details className="rounded-lg border border-border bg-background p-2">
-            <summary className="cursor-pointer text-xs text-muted-foreground">规范化 appliedFilters</summary>
-            <pre className="mt-2 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(output.appliedFilters, null, 2)}</pre>
+          )) : <p className={styles.toolCopy}>未找到符合条件的历史周报</p>}
+          <details className={styles.systemDetails}>
+            <summary>规范化 appliedFilters</summary>
+            <pre className={styles.toolPre}>{JSON.stringify(output.appliedFilters, null, 2)}</pre>
           </details>
         </div>
       ) : (
-        <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"><p>{output.error.code} · {output.error.message}</p>{output.error.code === 'QUERY_FAILED' && onRetry ? <Button size="sm" variant="outline" className="mt-2" onClick={onRetry}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />重试历史查询</Button> : null}</div>
+        <div className={styles.toolError}>
+          <p>{output.error.code} · {output.error.message}</p>
+          {output.error.code === 'QUERY_FAILED' && onRetry ? (
+            <button type="button" className={styles.ghostButton} onClick={onRetry}>
+              <RefreshCw size={14} aria-hidden="true" />
+              重试历史查询
+            </button>
+          ) : null}
+        </div>
       )}
     </div>
   )
 }
 
 function ReportContentToolResultCard({ output, content, onRetry }: { output: ReportContentToolResult; content: string | null; onRetry?: () => void }) {
-  return <div className="ml-11 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-    <div className="flex flex-wrap items-center gap-2"><Wrench className="h-4 w-4 text-amber-500" /><span className="font-medium">查询周报内容</span><span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs text-amber-500">历史参考·不可信</span></div>
-    <p className="mt-2 text-xs text-muted-foreground">{content}</p>
-    {output.ok && output.found && <><dl className="mt-2 grid gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-[auto_1fr]"><dt>来源</dt><dd>{output.identity.title} · {output.identity.weekStart} – {output.identity.weekEnd}</dd><dt>受众/状态</dt><dd>{output.identity.audience} · {output.identity.finalStatus}{output.identity.isLegacy ? ' · legacy' : ''}</dd><dt>截断</dt><dd>{output.truncated ? '是' : '否'}{output.totalChars !== undefined ? ` · ${output.returnedChars}/${output.totalChars} 字符` : ''}</dd></dl>{output.identity.warning ? <p role="alert" className="mt-2 text-xs text-amber-600 dark:text-amber-400">{output.identity.warning}</p> : null}{output.content ? <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-background p-2 text-xs">{output.content}</pre> : output.matches?.map((match) => <pre key={`${match.startLine}-${match.endLine}`} className="mt-2 whitespace-pre-wrap break-words rounded border border-border bg-background p-2 text-xs">lines {match.startLine}–{match.endLine}\n{match.content}</pre>)}</>}
-    {output.ok && !output.found && <p className="mt-2 text-xs text-muted-foreground">未找到可用周报</p>}
-    {!output.ok && <div className="mt-2 text-xs text-destructive"><p>{output.error.code} · {output.error.message}</p>{output.error.code === 'QUERY_FAILED' && onRetry ? <Button size="sm" variant="outline" className="mt-2" onClick={onRetry}><RefreshCw className="mr-1.5 h-3.5 w-3.5" />重试历史查询</Button> : null}</div>}
-  </div>
+  return (
+    <div className={styles.toolCard}>
+      <div className={styles.toolCardHeader}>
+        <Wrench size={14} aria-hidden="true" />
+        <strong>查询周报内容</strong>
+        <span className={styles.toolBadge}>历史参考·不可信</span>
+      </div>
+      <p className={styles.toolCopy}>{content}</p>
+      {output.ok && output.found && (
+        <>
+          <dl className={styles.toolMeta}>
+            <dt>来源</dt><dd>{output.identity.title} · {output.identity.weekStart} – {output.identity.weekEnd}</dd>
+            <dt>受众/状态</dt><dd>{output.identity.audience} · {output.identity.finalStatus}{output.identity.isLegacy ? ' · legacy' : ''}</dd>
+            <dt>截断</dt><dd>{output.truncated ? '是' : '否'}{output.totalChars !== undefined ? ` · ${output.returnedChars}/${output.totalChars} 字符` : ''}</dd>
+          </dl>
+          {output.identity.warning ? <p role="alert" className={styles.toolCopy}>{output.identity.warning}</p> : null}
+          {output.content
+            ? <pre className={styles.toolPre}>{output.content}</pre>
+            : output.matches?.map((match) => (
+              <pre key={`${match.startLine}-${match.endLine}`} className={styles.toolPre}>
+                lines {match.startLine}–{match.endLine}
+                {'\n'}{match.content}
+              </pre>
+            ))}
+        </>
+      )}
+      {output.ok && !output.found && <p className={styles.toolCopy}>未找到可用周报</p>}
+      {!output.ok && (
+        <div className={styles.toolError}>
+          <p>{output.error.code} · {output.error.message}</p>
+          {output.error.code === 'QUERY_FAILED' && onRetry ? (
+            <button type="button" className={styles.ghostButton} onClick={onRetry}>
+              <RefreshCw size={14} aria-hidden="true" />
+              重试历史查询
+            </button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function TranscriptPart({ part, onRetry }: { part: MessagePart; onRetry?: () => void }) {
   if (part.role === 'system' || part.partType === 'status') return null
   if (part.role === 'user') {
     return (
-      <div className="flex justify-end gap-3">
-        <div className="max-w-[86%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-primary px-4 py-3 text-sm text-primary-foreground">{part.content}</div>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><User className="h-4 w-4" /></div>
+      <div className={styles.userRow}>
+        <div className={styles.userBubble}>{part.content}</div>
+        <div className={`${styles.avatar} ${styles.avatarUser}`}><User size={15} aria-hidden="true" /></div>
       </div>
     )
   }
   if (part.partType === 'reasoning') {
     return (
-      <div className="ml-11 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-        <p className="mb-2 text-xs font-medium text-violet-400">Provider reasoning / thinking</p>
-        <div className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{part.content}</div>
+      <div className={styles.reasoningCard}>
+        <p className={styles.reasoningLabel}>Provider reasoning / thinking</p>
+        <div className={styles.assistantBody}>{part.content}</div>
       </div>
     )
   }
@@ -266,23 +343,25 @@ function TranscriptPart({ part, onRetry }: { part: MessagePart; onRetry?: () => 
       return <ReportContentToolResultCard output={part.data.output} content={part.content} onRetry={onRetry} />
     }
     return (
-      <details className="ml-11 rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
-        <summary className="flex cursor-pointer items-center gap-2"><Wrench className="h-4 w-4" />{part.content}</summary>
+      <details className={styles.toolDetails}>
+        <summary className={styles.toolSummary}><Wrench size={14} aria-hidden="true" />{part.content}</summary>
       </details>
     )
   }
   if (part.partType === 'proposal-accepted') {
-    return <div className="text-center text-xs text-emerald-500"><Check className="mr-1 inline h-3.5 w-3.5" />{part.content}</div>
+    return <div className={styles.acceptedLine}><Check size={13} aria-hidden="true" /> {part.content}</div>
   }
   if (part.partType === 'error') {
-    return <div className="ml-11 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{part.content}</div>
+    return <div className={styles.errorCard}>{part.content}</div>
   }
   if (part.role === 'assistant') {
     return (
-      <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-background"><Bot className="h-4 w-4" /></div>
-        <div className="min-w-0 flex-1 rounded-2xl rounded-tl-sm border border-border bg-background px-4 py-3 prose dark:prose-invert prose-report max-w-none text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.content ?? ''}</ReactMarkdown>
+      <div className={styles.assistantRow}>
+        <div className={`${styles.avatar} ${styles.avatarAssistant}`}><Bot size={15} aria-hidden="true" /></div>
+        <div className={styles.assistantCard}>
+          <div className={styles.assistantBody}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{part.content ?? ''}</ReactMarkdown>
+          </div>
         </div>
       </div>
     )
@@ -298,21 +377,21 @@ function LiveAssistant({ reasoning, text, toolState, working }: { reasoning: str
   const hasText = text.markdownBlocks.length > 0 || text.pendingChunks.length > 0
   if (!working && !reasoning && !hasText && !toolState) return null
   return (
-    <div className="space-y-3">
+    <div className={styles.liveGroup}>
       {reasoning && (
-        <div className="ml-11 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
-      <p className="mb-2 text-xs font-medium text-violet-400">Provider reasoning / thinking</p>
-          <div className="live-reasoning-line text-sm leading-6 text-muted-foreground">
+        <div className={styles.reasoningCard}>
+          <p className={styles.reasoningLabel}>Provider reasoning / thinking</p>
+          <div className={`live-reasoning-line ${styles.assistantBody}`}>
             <span className="live-reasoning-content">{reasoning}</span>
           </div>
         </div>
       )}
       {(hasText || working) && (
-        <div className="flex items-start gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-background"><Bot className="h-4 w-4" /></div>
-          <div className="min-w-0 flex-1 space-y-3 rounded-2xl rounded-tl-sm border border-border bg-background px-4 py-3">
+        <div className={styles.assistantRow}>
+          <div className={`${styles.avatar} ${styles.avatarAssistant}`}><Bot size={15} aria-hidden="true" /></div>
+          <div className={styles.assistantCard}>
             {hasText && (
-              <div className="prose dark:prose-invert prose-report max-w-none text-sm">
+              <div className={styles.assistantBody}>
                 {text.markdownBlocks.map((block, index) => <RenderedMarkdownBlock key={index} content={block} />)}
                 {text.pendingChunks.length > 0 && (
                   <div className="streaming-markdown-pending">
@@ -321,8 +400,8 @@ function LiveAssistant({ reasoning, text, toolState, working }: { reasoning: str
                 )}
               </div>
             )}
-            {working && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle className="h-4 w-4 animate-spin" />Working...</p>}
-            {toolState && <p className="flex items-center gap-2 text-xs text-muted-foreground"><Wrench className="h-3.5 w-3.5" />{toolState}</p>}
+            {working && <p role="status" className={styles.composerHint}><LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> Working...</p>}
+            {toolState && <p className={styles.composerHint}><Wrench size={13} aria-hidden="true" /> {toolState}</p>}
           </div>
         </div>
       )}
@@ -335,7 +414,7 @@ export function GenerationWorkspace({
   variant,
   reportVariant,
   templates,
-  styles,
+  styles: styleOptions,
   editable,
   onAccepted,
 }: {
@@ -584,59 +663,254 @@ export function GenerationWorkspace({
   const noProposalAfterLastTurn = Boolean(lastTurn?.status === 'completed' && !detail?.proposals.some((item) => item.turnId === lastTurn.id))
   const canChat = editable && detail?.status === 'active' && detail.sourceIsCurrent
 
-  if (loading) return <div className="py-12 text-center text-sm text-muted-foreground">Loading generation sessions...</div>
+  if (loading) return <div className={styles.workspace}><div className={styles.transcriptLoading} role="status">Loading generation sessions...</div></div>
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0" />
-          <select className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm" value={activeSessionId ?? ''} onChange={(event) => { const value = event.target.value; setActiveSessionId(value ? Number(value) : null); if (!value) setDetail(null) }}>
+    <div className={styles.workspace}>
+      <div className={styles.sessionBar}>
+        <div className={styles.sessionSelectWrap}>
+          <Sparkles size={16} aria-hidden="true" />
+          <label htmlFor="generation-session-select" className={styles.srOnly}>Generation session</label>
+          <select
+            id="generation-session-select"
+            className={styles.select}
+            value={activeSessionId ?? ''}
+            onChange={(event) => {
+              const value = event.target.value
+              setActiveSessionId(value ? Number(value) : null)
+              if (!value) setDetail(null)
+            }}
+          >
             <option value="">New generation session</option>
-            {sessions.map((session) => <option key={session.id} value={session.id}>{session.status === 'archived' ? '[Archived] ' : ''}{session.title}</option>)}
+            {sessions.map((session) => (
+              <option key={session.id} value={session.id}>
+                {session.status === 'archived' ? '[Archived] ' : ''}{session.title}
+              </option>
+            ))}
           </select>
         </div>
-        {editable && <Button variant="outline" size="sm" onClick={() => { setActiveSessionId(null); setDetail(null); setComposer(DEFAULT_GENERATION_INSTRUCTION) }}><Plus className="mr-1.5 h-4 w-4" />New session</Button>}
+        {editable && (
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => { setActiveSessionId(null); setDetail(null); setComposer(DEFAULT_GENERATION_INSTRUCTION) }}
+          >
+            <Plus size={16} aria-hidden="true" />
+            New session
+          </button>
+        )}
       </div>
 
       {!activeSessionId ? (
         editable ? (
-          <div className="mx-auto max-w-3xl space-y-5 rounded-xl border border-border p-5">
-            <div><h2 className="font-semibold">Create AI generation session</h2><p className="mt-1 text-sm text-muted-foreground">The current source draft, template, style, and system prompts are locked when you create the session, then the initial instruction below is sent.</p></div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="generation-template">Template</Label><select id="generation-template" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={templateId} onChange={(event) => { setTemplateId(event.target.value); const selected = templates.find((item) => item.id === event.target.value); setStyleOverride(selected?.aiStyle ?? '') }}><option value="">Select a template</option>{templates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-              <div className="space-y-2"><Label htmlFor="generation-style">AI style</Label><select id="generation-style" className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm" value={styleOverride} onChange={(event) => setStyleOverride(event.target.value)}><option value="">Use template default style</option>{styles.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></div>
+          <div className={styles.createPanel}>
+            <div className={styles.createHeading}>
+              <h2 className={styles.createTitle}>Create AI generation session</h2>
+              <p className={styles.createCopy}>
+                The current source draft, template, style, and system prompts are locked when you create the session,
+                then the initial instruction below is sent.
+              </p>
             </div>
-            <div className="space-y-2"><Label htmlFor="initial-generation-message">Initial instruction (editable)</Label><Textarea id="initial-generation-message" className="min-h-28" value={composer} onChange={(event) => setComposer(event.target.value)} /></div>
-            <Button className="w-full" onClick={() => void createSession()} disabled={creating || !templateId || !composer.trim()}>{creating ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}Create session and send</Button>
+            <div className={styles.createGrid}>
+              <div className={styles.field}>
+                <label htmlFor="generation-template" className={styles.fieldLabel}>Template</label>
+                <select
+                  id="generation-template"
+                  className={styles.select}
+                  value={templateId}
+                  onChange={(event) => {
+                    setTemplateId(event.target.value)
+                    const selected = templates.find((item) => item.id === event.target.value)
+                    setStyleOverride(selected?.aiStyle ?? '')
+                  }}
+                >
+                  <option value="">Select a template</option>
+                  {templates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </div>
+              <div className={styles.field}>
+                <label htmlFor="generation-style" className={styles.fieldLabel}>AI style</label>
+                <select
+                  id="generation-style"
+                  className={styles.select}
+                  value={styleOverride}
+                  onChange={(event) => setStyleOverride(event.target.value)}
+                >
+                  <option value="">Use template default style</option>
+                  {styleOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="initial-generation-message" className={styles.fieldLabel}>Initial instruction (editable)</label>
+              <Textarea
+                id="initial-generation-message"
+                className={styles.textarea}
+                value={composer}
+                onChange={(event) => setComposer(event.target.value)}
+              />
+            </div>
+            <button
+              type="button"
+              className={`${styles.primaryButton} ${styles.fullWidth}`}
+              onClick={() => void createSession()}
+              disabled={creating || !templateId || !composer.trim()}
+            >
+              {creating
+                ? <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+                : <Send size={16} aria-hidden="true" />}
+              Create session and send
+            </button>
           </div>
-        ) : <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">This version has no AI generation sessions.</div>
+        ) : (
+          <div className={styles.emptyPanel}>This version has no AI generation sessions.</div>
+        )
       ) : !detail ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">Loading chat...</div>
+        <div className={styles.workspace}><div className={styles.transcriptLoading}>Loading chat...</div></div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,44%)]">
-          <section className="min-w-0 rounded-xl border border-border bg-muted/5">
-            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="truncate font-semibold">{detail.title}</h2>{detail.status === 'archived' && <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">Archived</span>}</div><p className="mt-0.5 text-xs text-muted-foreground">{detail.templateName} · {detail.aiStyleLabel} · Source r{detail.sourceRevision}{detail.turns.at(-1) ? ` · ${detail.turns.at(-1)?.protocol}/${detail.turns.at(-1)?.model}` : ''}</p></div>
-              {editable && <div className="flex gap-1"><Button variant="ghost" size="icon-sm" title="Rename" onClick={() => void renameSession()}><Pencil /></Button>{detail.status === 'active' && <Button variant="ghost" size="icon-sm" title="Archive" onClick={() => void archiveSession()} disabled={streaming}><Archive /></Button>}</div>}
+        <div className={styles.sessionGrid}>
+          <section className={styles.chatPanel}>
+            <div className={styles.chatHeader}>
+              <div className={styles.chatTitleWrap}>
+                <div className={styles.chatTitleRow}>
+                  <h2 className={styles.chatTitle}>{detail.title}</h2>
+                  {detail.status === 'archived' && <span className={styles.archivedBadge}>Archived</span>}
+                </div>
+                <p className={styles.sessionMeta}>
+                  {detail.templateName} · {detail.aiStyleLabel} · Source r{detail.sourceRevision}
+                  {detail.turns.at(-1) ? ` · ${detail.turns.at(-1)?.protocol}/${detail.turns.at(-1)?.model}` : ''}
+                </p>
+              </div>
+              {editable && (
+                <div className={styles.headerActions}>
+                  <button type="button" className={styles.iconButton} title="Rename" aria-label="Rename" onClick={() => void renameSession()}>
+                    <Pencil size={15} aria-hidden="true" />
+                  </button>
+                  {detail.status === 'active' && (
+                    <button
+                      type="button"
+                      className={styles.iconButton}
+                      title="Archive"
+                      aria-label="Archive"
+                      onClick={() => void archiveSession()}
+                      disabled={streaming}
+                    >
+                      <Archive size={15} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-              {!detail.sourceIsCurrent && <div className="border-b border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-500">The source draft has changed. This session is retained for audit; create a new session from the latest draft.</div>}
-            <div ref={transcriptRef} onScroll={handleTranscriptScroll} className="generation-transcript max-h-[calc(100vh-15rem)] min-h-[520px] space-y-4 overflow-y-auto p-4">
-              <SystemContextCard detail={detail} onRefresh={(snapshotId) => { if (snapshotId) void (async () => { const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshotId }) }); if (!response.ok) { toast.error('刷新历史查询失败' + traceSuffix(response)); return } await loadDetail(detail.id) })() }} />
-              {detail.messages.map((part) => <TranscriptPart key={part.id} part={part} onRetry={part.partType === 'tool-result' ? () => { const message = detail.messages.filter((item) => item.role === 'user').at(-1)?.content; if (message) void streamTurn(detail.id, message) } : undefined} />)}
-              {liveUser && <TranscriptPart part={{ id: -1, turnId: liveTurnId, sequence: Number.MAX_SAFE_INTEGER, role: 'user', partType: 'text', content: liveUser, data: null }} />}
-              <LiveAssistant reasoning={liveReasoning} text={liveText} toolState={liveToolState} working={streaming || Boolean(detail.activeTurn && !liveTurnId)} />
-              {noProposalAfterLastTurn && !streaming && canChat && <div className="ml-11 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">No proposed final version was submitted this turn. <Button variant="link" className="h-auto px-1" onClick={() => void sendMessage('Turn the current discussion into a complete proposed final version and submit it with propose_final_report.')}>Submit current version</Button></div>}
-              {lastTurn?.status === 'failed' && !streaming && canChat && lastUserMessage && <div className="ml-11 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">Generation failed this turn. <Button variant="link" className="h-auto px-1 text-destructive" onClick={() => void sendMessage(lastUserMessage)}>Retry turn</Button></div>}
+            {!detail.sourceIsCurrent && (
+              <div className={styles.staleBanner} role="alert">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span>The source draft has changed. This session is retained for audit; create a new session from the latest draft.</span>
+              </div>
+            )}
+            <div
+              ref={transcriptRef}
+              onScroll={handleTranscriptScroll}
+              className={`${styles.transcript} generation-transcript min-h-[520px] max-h-[calc(100vh-15rem)] overflow-y-auto`}
+            >
+              <SystemContextCard
+                detail={detail}
+                onRefresh={(snapshotId) => {
+                  if (snapshotId) void (async () => {
+                    const response = await apiFetch(`/api/reports/${reportId}/generation-sessions/${detail.id}/query-snapshots/refresh`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ snapshotId }),
+                    })
+                    if (!response.ok) {
+                      toast.error('刷新历史查询失败' + traceSuffix(response))
+                      return
+                    }
+                    await loadDetail(detail.id)
+                  })()
+                }}
+              />
+              {detail.messages.map((part) => (
+                <TranscriptPart
+                  key={part.id}
+                  part={part}
+                  onRetry={part.partType === 'tool-result'
+                    ? () => {
+                        const message = detail.messages.filter((item) => item.role === 'user').at(-1)?.content
+                        if (message) void streamTurn(detail.id, message)
+                      }
+                    : undefined}
+                />
+              ))}
+              {liveUser && (
+                <TranscriptPart
+                  part={{ id: -1, turnId: liveTurnId, sequence: Number.MAX_SAFE_INTEGER, role: 'user', partType: 'text', content: liveUser, data: null }}
+                />
+              )}
+              <LiveAssistant
+                reasoning={liveReasoning}
+                text={liveText}
+                toolState={liveToolState}
+                working={streaming || Boolean(detail.activeTurn && !liveTurnId)}
+              />
+              {noProposalAfterLastTurn && !streaming && canChat && (
+                <div className={styles.noProposalHint}>
+                  No proposed final version was submitted this turn.{' '}
+                  <button
+                    type="button"
+                    className={styles.inlineLink}
+                    onClick={() => void sendMessage('Turn the current discussion into a complete proposed final version and submit it with propose_final_report.')}
+                  >
+                    Submit current version
+                  </button>
+                </div>
+              )}
+              {lastTurn?.status === 'failed' && !streaming && canChat && lastUserMessage && (
+                <div className={styles.retryLine}>
+                  Generation failed this turn.{' '}
+                  <button type="button" className={styles.inlineLink} onClick={() => void sendMessage(lastUserMessage)}>
+                    Retry turn
+                  </button>
+                </div>
+              )}
             </div>
             {canChat && (
-              <div className="border-t border-border p-3">
-                <Textarea value={composer} onChange={(event) => setComposer(event.target.value)} placeholder="Ask AI to revise, answer a question, or submit the current version..." disabled={streaming} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage() } }} />
-                <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Enter to send, Shift+Enter for a new line</p>{streaming ? <Button variant="outline" size="sm" onClick={() => void stopTurn()}><Square className="mr-1.5 h-3.5 w-3.5" />Stop</Button> : <Button size="sm" onClick={() => void sendMessage()} disabled={!composer.trim()}><Send className="mr-1.5 h-3.5 w-3.5" />Send</Button>}</div>
+              <div className={styles.composer}>
+                <Textarea
+                  className={styles.textarea}
+                  value={composer}
+                  onChange={(event) => setComposer(event.target.value)}
+                  placeholder="Ask AI to revise, answer a question, or submit the current version..."
+                  disabled={streaming}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      void sendMessage()
+                    }
+                  }}
+                />
+                <div className={styles.composerFoot}>
+                  <p className={styles.composerHint}>Enter to send, Shift+Enter for a new line</p>
+                  {streaming ? (
+                    <button type="button" className={styles.secondaryButton} onClick={() => void stopTurn()}>
+                      <Square size={14} aria-hidden="true" />
+                      Stop
+                    </button>
+                  ) : (
+                    <button type="button" className={styles.primaryButton} onClick={() => void sendMessage()} disabled={!composer.trim()}>
+                      <Send size={15} aria-hidden="true" />
+                      Send
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </section>
-          <ProposalReviewPanel proposal={proposal} editable={editable && detail.sourceIsCurrent} accepting={accepting} onAccept={() => proposal && void acceptProposal(proposal)} />
+          <ProposalReviewPanel
+            proposal={proposal}
+            editable={editable && detail.sourceIsCurrent}
+            accepting={accepting}
+            onAccept={() => proposal && void acceptProposal(proposal)}
+          />
         </div>
       )}
     </div>

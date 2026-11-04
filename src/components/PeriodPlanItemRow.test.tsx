@@ -50,7 +50,22 @@ describe('PeriodPlanItemRow', () => {
     expect(screen.getByText('Test item')).toBeInTheDocument()
     // Badge and the matching <option> both carry the status label
     expect(screen.getAllByText('Planned').length).toBeGreaterThan(0)
-    expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('planned')
+    expect((screen.getByLabelText('Status for %1') as HTMLSelectElement).value).toBe('planned')
+  })
+
+  it('labels dense row selects with the item reference', () => {
+    render(
+      <PeriodPlanItemRow
+        item={mockItem}
+        onUpdate={mockOnUpdate}
+        onDelete={mockOnDelete}
+        onDefer={mockOnDefer}
+      />
+    )
+
+    expect(screen.getByLabelText('Status for %1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Priority for %1')).toBeInTheDocument()
+    expect(screen.getByLabelText('Project scope for %1')).toBeInTheDocument()
   })
 
   it('calls onUpdate when status is changed', async () => {
@@ -65,7 +80,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const statusSelect = screen.getByLabelText('Status')
+    const statusSelect = screen.getByLabelText('Status for %1')
     await user.selectOptions(statusSelect, 'done')
 
     expect(mockOnUpdate).toHaveBeenCalledWith(1, { status: 'done' })
@@ -83,7 +98,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const prioritySelect = screen.getByLabelText('Priority') as HTMLSelectElement
+    const prioritySelect = screen.getByLabelText('Priority for %1') as HTMLSelectElement
     expect(prioritySelect.value).toBe('normal')
 
     await user.selectOptions(prioritySelect, 'high')
@@ -160,7 +175,7 @@ describe('PeriodPlanItemRow', () => {
     // One occurrence in the toggle control, one in the badge.
     expect(screen.getAllByText('Important')).toHaveLength(2)
     expect(screen.getAllByText('Urgent')).toHaveLength(2)
-    expect((screen.getByLabelText('Priority') as HTMLSelectElement).value).toBe('low')
+    expect((screen.getByLabelText('Priority for %1') as HTMLSelectElement).value).toBe('low')
     expect(screen.getByRole('button', { name: 'Toggle plan item important flag' }))
       .toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: 'Toggle plan item urgent flag' }))
@@ -178,7 +193,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const scopeSelect = screen.getByLabelText('Project scope')
+    const scopeSelect = screen.getByLabelText('Project scope for %1')
     await user.selectOptions(scopeSelect, 'personal')
 
     expect(mockOnUpdate).toHaveBeenCalledWith(1, { projectScope: 'personal' })
@@ -378,7 +393,7 @@ describe('PeriodPlanItemRow', () => {
 
       // Badge and the matching <option> both carry the label
       expect(screen.getAllByText(labels[index]).length).toBeGreaterThan(0)
-      expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe(status)
+      expect((screen.getByLabelText('Status for %1') as HTMLSelectElement).value).toBe(status)
       unmount()
     })
   })
@@ -399,7 +414,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const parentSelect = screen.getByLabelText('Parent month item')
+    const parentSelect = screen.getByLabelText('Parent month item for %1')
     await user.selectOptions(parentSelect, '50')
 
     expect(mockOnUpdate).toHaveBeenCalledWith(1, { parentItemId: 50 })
@@ -415,7 +430,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Parent month item for %/)).not.toBeInTheDocument()
   })
 
   it('always renders the parent selector in week scope, even with no parent options', async () => {
@@ -431,7 +446,7 @@ describe('PeriodPlanItemRow', () => {
       />
     )
 
-    const parentSelect = screen.getByLabelText('Parent month item')
+    const parentSelect = screen.getByLabelText('Parent month item for %1')
     // Only the clear option remains, so a stale link is always clearable.
     const options = within(parentSelect).getAllByRole('option')
     expect(options).toHaveLength(1)
@@ -1043,6 +1058,8 @@ describe('PeriodPlanItemRow', () => {
         attachCandidates: AttachCandidateWeek[]
         onAttach: (childId: number, parentItemId: number) => void
         childParentOptions: PlanRowItem[]
+        selectedItemId: number | null
+        onSelect: (id: number) => void
       }> = {},
     ) {
       return render(
@@ -1060,6 +1077,8 @@ describe('PeriodPlanItemRow', () => {
           attachCandidates={props.attachCandidates}
           onAttach={props.onAttach}
           childParentOptions={props.childParentOptions}
+          selectedItemId={props.selectedItemId}
+          onSelect={props.onSelect}
         />
       )
     }
@@ -1206,8 +1225,8 @@ describe('PeriodPlanItemRow', () => {
       expect(row.getByText('Inherited child')).toBeInTheDocument()
       expect(row.getByText('Week 2026-09-07 - 2026-09-13')).toBeInTheDocument()
       // Review-only: no write or comment controls.
-      expect(row.queryByLabelText('Status')).not.toBeInTheDocument()
-      expect(row.queryByLabelText('Priority')).not.toBeInTheDocument()
+      expect(row.queryByLabelText(/^Status for %/)).not.toBeInTheDocument()
+      expect(row.queryByLabelText(/^Priority for %/)).not.toBeInTheDocument()
       expect(row.queryByLabelText('Defer to next period')).not.toBeInTheDocument()
       expect(row.queryByLabelText('Delete item')).not.toBeInTheDocument()
       expect(row.queryByLabelText('Toggle comments')).not.toBeInTheDocument()
@@ -1220,6 +1239,47 @@ describe('PeriodPlanItemRow', () => {
         expect.stringContaining('/api/plan-items/41/fulfillment'),
         expect.anything(),
       )
+    })
+
+    it('selects inherited week items through the numbered row control', async () => {
+      const user = userEvent.setup()
+      const onSelect = vi.fn()
+      renderMonthItem(
+        {
+          inheritedChildGroups: [
+            {
+              ancestorItemId: 99,
+              ancestorMonth: '2026-09',
+              items: [
+                {
+                  id: 41,
+                  text: 'Inherited child',
+                  status: 'planned',
+                  projectScope: 'work',
+                  priority: 'normal',
+                  isImportant: false,
+                  isUrgent: false,
+                  weekPeriodStart: '2026-09-07',
+                  weekPeriodEnd: '2026-09-13',
+                  fulfillmentCount: 1,
+                },
+              ],
+            },
+          ],
+        },
+        { selectedItemId: 41, onSelect },
+      )
+
+      await user.click(screen.getByLabelText('Toggle inherited week items'))
+
+      const row = within(
+        screen.getByRole('group', { name: 'Inherited week item Inherited child' }),
+      )
+      const indexButton = row.getByRole('button', { name: 'Inspect plan item %41' })
+      expect(indexButton).toHaveAttribute('aria-pressed', 'true')
+
+      await user.click(indexButton)
+      expect(onSelect).toHaveBeenCalledWith(41)
     })
 
     it('offers the comment toggle on child week item rows while keeping text read-only', async () => {
@@ -1303,8 +1363,8 @@ describe('PeriodPlanItemRow', () => {
       await user.click(screen.getByLabelText('Toggle attached week items'))
 
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-      await user.selectOptions(childRow.getByLabelText('Status'), 'done')
-      await user.selectOptions(childRow.getByLabelText('Priority'), 'high')
+      await user.selectOptions(childRow.getByLabelText('Status for %21'), 'done')
+      await user.selectOptions(childRow.getByLabelText('Priority for %21'), 'high')
       await user.click(childRow.getByRole('button', { name: 'Toggle plan item important flag' }))
       await user.click(childRow.getByRole('button', { name: 'Toggle plan item urgent flag' }))
 
@@ -1393,7 +1453,7 @@ describe('PeriodPlanItemRow', () => {
       )
 
       // The top-level monthly row has no parent selector of its own.
-      expect(screen.queryByLabelText('Parent month item')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText(/^Parent month item for %/)).not.toBeInTheDocument()
 
       await user.click(screen.getByLabelText('Attach week item'))
       const dialog = within(await screen.findByRole('dialog'))
@@ -1436,7 +1496,7 @@ describe('PeriodPlanItemRow', () => {
 
       await user.click(screen.getByLabelText('Toggle attached week items'))
       const childRow = within(screen.getByRole('group', { name: 'Week item Week child' }))
-      const parentSelect = childRow.getByLabelText('Parent month item') as HTMLSelectElement
+      const parentSelect = childRow.getByLabelText('Parent month item for %21') as HTMLSelectElement
 
       // The current parent is selected, detach is the empty option, and only
       // the month's own items are offered as re-parent targets.

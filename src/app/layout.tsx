@@ -3,8 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { Navigation } from "@/components/Navigation";
-import { Footer } from "@/components/Footer";
+import { AppShell } from "@/components/AppShell";
 import { SyncAllSourcesProvider } from "@/components/SyncAllSources";
 import { AuthGate } from "@/components/AuthGate";
 import { isAuthDisabled } from "@/lib/auth/guard";
@@ -41,16 +40,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full">
         <AuthGate authEnabled={authEnabled} />
         <ThemeProvider>
           <SyncAllSourcesProvider>
-            <Navigation />
-            <main className="flex-1">
-              {children}
-            </main>
+            <AppShell>{children}</AppShell>
           </SyncAllSourcesProvider>
-          <Footer />
         </ThemeProvider>
         <Toaster />
       </body>

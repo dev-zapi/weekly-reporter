@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import styles from './timeline.module.css'
 
 export interface HeatmapData {
   date: string
@@ -11,6 +12,8 @@ interface ActivityHeatmapProps {
   data: HeatmapData[]
   selectedDate: string | null
   onDateSelect: (date: string | null) => void
+  /** Optional load error; shown instead of implying an empty activity year. */
+  error?: string | null
 }
 
 function getLevel(count: number): number {
@@ -50,26 +53,27 @@ function getWeekdays(): string[] {
 }
 
 const heatmapColors = [
-  'var(--color-heatmap-0)',
-  'var(--color-heatmap-1)',
-  'var(--color-heatmap-2)',
-  'var(--color-heatmap-3)',
-  'var(--color-heatmap-4)',
-  'var(--color-heatmap-5)',
-  'var(--color-heatmap-6)',
+  '#e8eef6',
+  '#dbe8f9',
+  '#b9d1f4',
+  '#8fb4ec',
+  '#6695e2',
+  '#3f74d5',
+  '#214fae',
 ]
 
 const CELL_SIZE = 10
 const GAP = 2
 const LABEL_COL_WIDTH = 18
 
-export function ActivityHeatmap({ data, selectedDate, onDateSelect }: ActivityHeatmapProps) {
+export function ActivityHeatmap({ data, selectedDate, onDateSelect, error }: ActivityHeatmapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
   // Use a deterministic date for SSR/hydration, then switch to the browser's
   // current date after mount so timezone boundaries cannot change the markup.
   const [today, setToday] = useState<Date | null>(null)
   const weekdays = getWeekdays()
+  const total = useMemo(() => data.reduce((sum, entry) => sum + entry.count, 0), [data])
 
   useEffect(() => {
     setToday(new Date())
@@ -138,14 +142,22 @@ export function ActivityHeatmap({ data, selectedDate, onDateSelect }: ActivityHe
   const numWeeks = weeks.length
 
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div ref={containerRef}>
-        {numWeeks === 0 ? (
-          <div className="text-xs text-muted-foreground py-4 text-center">No data</div>
+    <section className={styles.heatmapPanel} aria-label="Activity heatmap">
+      <div className={styles.heatmapHeader}>
+        <div>
+          <h2 className={styles.panelTitle}>Activity</h2>
+          <p>{total} recorded events · last year</p>
+        </div>
+      </div>
+      <div ref={containerRef} className={styles.heatmapGrid}>
+        {error ? (
+          <div className={styles.heatmapError} role="alert">{error}</div>
+        ) : numWeeks === 0 ? (
+          <div className={`${styles.heatmapMuted} text-xs py-4 text-center`}>No data</div>
         ) : (
           <>
             {/* Month labels */}
-            <div className="relative h-4 text-[10px] text-muted-foreground mb-0.5" style={{ marginLeft: `${LABEL_COL_WIDTH}px` }}>
+            <div className={`${styles.heatmapMuted} relative h-4 text-[10px] mb-0.5`} style={{ marginLeft: `${LABEL_COL_WIDTH}px` }}>
               {monthLabels.map(({ month, pct }) => (
                 <span
                   key={month}
@@ -171,7 +183,7 @@ export function ActivityHeatmap({ data, selectedDate, onDateSelect }: ActivityHe
                 <div
                   key={`${day}-${i}`}
                   suppressHydrationWarning
-                  className="text-[10px] leading-none text-muted-foreground text-right pr-1"
+                  className={`${styles.heatmapMuted} text-[10px] leading-none text-right pr-1`}
                   style={{
                     gridRow: i + 1,
                     gridColumn: 1,
@@ -189,19 +201,20 @@ export function ActivityHeatmap({ data, selectedDate, onDateSelect }: ActivityHe
                   const level = getLevel(count)
                   const isSelected = date === selectedDate
                   return (
-                    <div
+                    <button
                       key={date}
+                      type="button"
                       data-count={count}
                       data-level={level}
                       data-selected={isSelected ? 'true' : undefined}
                       title={`${count} events · ${date}`}
-                      className="rounded-[2px] cursor-pointer transition-colors"
+                      aria-label={`${count} ${count === 1 ? 'event' : 'events'} on ${date}`}
+                      aria-pressed={isSelected}
+                      className={styles.heatmapDay}
                       style={{
                         width: `${CELL_SIZE}px`,
                         height: `${CELL_SIZE}px`,
                         backgroundColor: heatmapColors[level],
-                        outline: isSelected ? '1.5px solid var(--foreground)' : 'none',
-                        outlineOffset: '-1px',
                       }}
                       onClick={() => onDateSelect(date === selectedDate ? null : date)}
                     />
@@ -212,6 +225,6 @@ export function ActivityHeatmap({ data, selectedDate, onDateSelect }: ActivityHe
           </>
         )}
       </div>
-    </div>
+    </section>
   )
 }

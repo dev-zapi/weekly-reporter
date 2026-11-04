@@ -114,7 +114,9 @@ export default function NewReportPage() {
         throw new Error((data.error || 'Creation failed') + traceSuffix(response))
       }
       toast.success('Source draft created')
-      router.push(`/reports/${data.report.id}`)
+      // Keep the audience the user was previewing so the workspace does not
+      // silently reopen the other audience's version.
+      router.push(`/reports/${data.report.id}?audience=${previewVariant}`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Creation failed. Please try again.')
     } finally {
@@ -126,11 +128,11 @@ export default function NewReportPage() {
   const previewing = preview === null && previewError === null
 
   if (!baseDate) {
-    return <main className="container mx-auto max-w-4xl px-4 py-8">Loading...</main>
+    return <div className="container mx-auto max-w-4xl px-4 py-8">Loading...</div>
   }
 
   return (
-    <main className="container mx-auto max-w-4xl px-4 py-8">
+    <div className="container mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => router.back()} aria-label="Back">
           <ArrowLeft className="h-4 w-4" />
@@ -186,7 +188,7 @@ export default function NewReportPage() {
                 <TabsTrigger value="personal"><User className="h-4 w-4" />{variantLabels.personal}</TabsTrigger>
               </TabsList>
               <TabsContent value={previewVariant} className="mt-4">
-                <div className="min-h-56 rounded-lg border border-border bg-muted/20 p-5 prose-report">
+                <div className="min-h-56 rounded-lg border border-border bg-muted/20 p-5 prose-report read-only-prose">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{activePreview}</ReactMarkdown>
                 </div>
               </TabsContent>
@@ -201,6 +203,6 @@ export default function NewReportPage() {
           </Button>
         </div>
       </div>
-    </main>
+    </div>
   )
 }

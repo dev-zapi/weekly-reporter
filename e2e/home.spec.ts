@@ -10,7 +10,11 @@ test.describe('首页', () => {
   test('应该显示来源筛选面板', async ({ page }) => {
     await page.goto('/')
     await expect(page.getByText('Filter by source')).toBeVisible()
-    await expect(page.getByText('Manual')).toBeVisible()
-    await expect(page.getByText('Automatic')).toBeVisible()
+    await expect(
+      page.getByRole('checkbox', { name: 'Manual source filter' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('checkbox', { name: 'Automatic source filter' }),
+    ).toBeVisible()
   })
 })

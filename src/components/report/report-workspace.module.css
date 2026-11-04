@@ -1,0 +1,1107 @@
+/* Numbered Evidence — report review surface.
+   Fixed light workbench palette from DESIGN.md. Scoped to the report workspace. */
+
+.surface {
+  --navy: #14273d;
+  --navy-deep: #0d1b2c;
+  --cobalt: #2f66d0;
+  --cobalt-dark: #214fae;
+  --ice: #edf3f8;
+  --frame-ground: #e2ebf4;
+  --paper: #fafcfe;
+  --ink: #172537;
+  --secondary: #52647a;
+  --line: #cbd6e2;
+  --green: #18794e;
+  --green-bg: #e9f5ee;
+  --amber: #8a4d05;
+  --amber-bg: #fff3dd;
+  --red: #a43b3b;
+  max-width: 1500px;
+  /* Fill the viewport with the paper ground. The AI-chat mode renders no
+     .contentGrid, so without this the themed body shows through below the
+     report content (a black band in dark theme). */
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 30px 28px 110px;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color-scheme: light;
+}
+
+.surface *,
+.surface *::before,
+.surface *::after {
+  box-sizing: border-box;
+}
+
+.surface button,
+.surface input,
+.surface select,
+.surface textarea {
+  font: inherit;
+}
+
+/* Keep the UA reset without outranking component button tones: a bare
+   `.surface button` selector beats the single-class variants below and made
+   active tabs, danger controls, and secondary actions inherit the ink color. */
+.surface :where(button) {
+  color: inherit;
+}
+
+.surface button:disabled {
+  cursor: not-allowed;
+}
+
+.surface :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid #74a2fa;
+  outline-offset: 3px;
+}
+
+/* Shared workbench selection and caret palette. Without these, selecting text
+   in the final, source, or compare document falls back to the browser default. */
+.surface ::selection {
+  color: var(--navy-deep);
+  background: #bcd3fa;
+}
+
+.surface :is(input, textarea) {
+  caret-color: var(--cobalt);
+}
+
+/* Heading and page frame ------------------------------------------------ */
+
+.pageHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.titleGroup {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: var(--navy);
+  font-size: clamp(24px, 2.2vw, 34px);
+  font-weight: 400;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.description {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 14px;
+  color: var(--secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metaStrip > span + span {
+  position: relative;
+}
+
+.metaStrip > span + span::before {
+  content: "·";
+  position: absolute;
+  left: -9px;
+  color: #8b9aab;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+
+/* Controls -------------------------------------------------------------- */
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.textButton,
+.iconButton,
+.gateButton,
+.gateSecondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: var(--cobalt);
+  border: 1px solid var(--cobalt);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--cobalt-dark);
+  border-color: var(--cobalt-dark);
+}
+
+.secondaryButton {
+  color: var(--navy);
+  background: #ffffff;
+  border: 1px solid #aebed0;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: #eaf1fb;
+  border-color: var(--cobalt);
+}
+
+.dangerButton {
+  color: #ffffff;
+  background: var(--red);
+  border: 1px solid var(--red);
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: #8b3030;
+  border-color: #8b3030;
+}
+
+.textButton {
+  min-height: 32px;
+  padding: 4px 0;
+  color: var(--cobalt-dark);
+  background: transparent;
+  border: 0;
+}
+
+.textButton:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.iconButton {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--navy);
+  background: #ffffff;
+  border: 1px solid #aebed0;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: #eaf1fb;
+  border-color: var(--cobalt);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled,
+.gateButton:disabled,
+.gateSecondary:disabled {
+  color: #42546a;
+  background: #d4deea;
+  border-color: #b6c5d5;
+  opacity: 1;
+}
+
+.textButton:disabled {
+  color: #8a97a6;
+  cursor: not-allowed;
+}
+
+.fullWidth {
+  width: 100%;
+}
+
+/* Status ---------------------------------------------------------------- */
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--navy);
+  background: #e5edf5;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.statusCurrent {
+  color: var(--green);
+  background: var(--green-bg);
+  border-color: #a9d4ba;
+}
+
+.statusStale {
+  color: var(--amber);
+  background: var(--amber-bg);
+  border-color: #e6c892;
+}
+
+.statusNone {
+  color: var(--secondary);
+  background: #f2f6fa;
+  border-color: var(--line);
+}
+
+.readOnlyBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  color: var(--secondary);
+  background: #eef2f6;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Workspace tabs -------------------------------------------------------- */
+
+.workspaceBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.audienceTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-width: 340px;
+  overflow: hidden;
+  border: 1px solid #aebed0;
+  border-radius: 4px;
+}
+
+.audienceTab {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  color: var(--secondary);
+  text-align: left;
+  background: #ffffff;
+  border: 0;
+  cursor: pointer;
+}
+
+.audienceTab + .audienceTab {
+  border-left: 1px solid #aebed0;
+}
+
+.audienceTab > span {
+  display: grid;
+  gap: 2px;
+}
+
+.audienceTab strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.audienceTab small {
+  color: inherit;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.audienceTab:hover:not(:disabled) {
+  color: var(--navy);
+  background: #eef4fb;
+}
+
+.audienceTabActive,
+.audienceTabActive:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--navy);
+}
+
+.audienceTabActive small {
+  color: #c3d3e5;
+  opacity: 1;
+}
+
+.audienceTab:disabled {
+  color: #8a97a6;
+  background: #f2f5f8;
+  cursor: not-allowed;
+}
+
+.modeTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: #dfe8f1;
+  border-radius: 4px;
+}
+
+.modeTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 11px;
+  color: var(--secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.modeTab:hover:not(:disabled) {
+  color: var(--navy);
+}
+
+.modeTabActive,
+.modeTabActive:hover {
+  color: var(--navy);
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(20 39 61 / 12%);
+  font-weight: 600;
+}
+
+/* Content split --------------------------------------------------------- */
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  gap: 0;
+  align-items: stretch;
+  min-height: 100dvh;
+  /* The rail is part of the shared frame: bleed through the surface's right
+     padding so it meets the body edge like the approved C split. */
+  margin-right: -28px;
+}
+
+.primaryColumn {
+  min-width: 0;
+  padding-right: 28px;
+}
+
+.contextColumn {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  min-width: 0;
+  min-height: 100dvh;
+  padding: 26px 20px;
+  background: var(--frame-ground);
+  border-left: 1px solid var(--line);
+}
+
+.reviewSurface {
+  min-width: 0;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.paneBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 9px 12px;
+  background: #e4ecf4;
+  border-bottom: 1px solid var(--line);
+  border-radius: 4px 4px 0 0;
+}
+
+.paneTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.paneTab {
+  min-height: 32px;
+  padding: 5px 10px;
+  color: var(--secondary);
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.paneTab:hover {
+  color: var(--navy);
+}
+
+.paneTabActive,
+.paneTabActive:hover {
+  color: var(--navy);
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(20 39 61 / 12%);
+  font-weight: 600;
+}
+
+.paneMeta {
+  color: var(--secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.documentPanel {
+  padding: 20px 22px 24px;
+}
+
+.panelLabelRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.panelTitle {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.008em;
+}
+
+.panelDescription {
+  max-width: 70ch;
+  margin: 0 0 14px;
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.staleNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  color: var(--amber);
+  background: var(--amber-bg);
+  border: 1px solid #e6c892;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.staleNotice svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.noFinal {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 26px;
+  color: var(--secondary);
+  background: #f2f6fa;
+  border: 1px dashed #aebed0;
+  border-radius: 4px;
+}
+
+.noFinal svg {
+  color: var(--cobalt-dark);
+}
+
+.noFinal h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.noFinal p {
+  max-width: 58ch;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.noFinalActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* Document typography --------------------------------------------------- */
+
+/* The report surface stays fixed-light regardless of the app theme. The body
+   carries its own ink and ground so no theme utility or inherited token can
+   repaint or invert the preview. */
+.finalDocument {
+  color: #26384d;
+  background: #ffffff;
+}
+
+.documentBody {
+  max-width: 72ch;
+  color: #26384d;
+  font-size: 13px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.documentBody > :first-child {
+  margin-top: 0;
+}
+
+.documentBody h1 {
+  margin: 26px 0 10px;
+  padding-bottom: 7px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.documentBody h2 {
+  margin: 24px 0 10px;
+  padding-bottom: 7px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.documentBody h3 {
+  margin: 20px 0 8px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.documentBody h4 {
+  margin: 16px 0 6px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.documentBody p {
+  margin: 10px 0;
+}
+
+.documentBody ul,
+.documentBody ol {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.documentBody li {
+  margin: 4px 0;
+  padding-left: 3px;
+}
+
+.documentBody li::marker {
+  color: var(--cobalt-dark);
+}
+
+.documentBody strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.documentBody em {
+  color: var(--ink);
+}
+
+.documentBody a {
+  color: var(--cobalt-dark);
+  text-underline-offset: 3px;
+}
+
+.documentBody blockquote {
+  margin: 12px 0;
+  padding: 4px 0 4px 12px;
+  color: var(--secondary);
+  border-left: 3px solid var(--line);
+}
+
+.documentBody code {
+  padding: 1px 4px;
+  background: #eef2f6;
+  border-radius: 3px;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.documentBody pre {
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: #f2f6fa;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.documentBody pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.documentBody table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.documentBody th,
+.documentBody td {
+  padding: 6px 8px;
+  text-align: left;
+  border: 1px solid var(--line);
+}
+
+.documentBody th {
+  color: var(--ink);
+  background: #eef2f6;
+}
+
+.documentBody hr {
+  margin: 20px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* The final document is a fixed-light surface: its prose is painted by this
+   component module rather than the global theme-aware reader. */
+.finalDocument .documentBody p {
+  color: #26384d;
+}
+
+.finalDocument .documentBody h2,
+.finalDocument .documentBody h3 {
+  color: var(--ink);
+  border-bottom-color: var(--line);
+}
+
+.finalDocument .documentBody li::before {
+  background: var(--secondary);
+}
+
+.sourceScroll {
+  min-height: 120px;
+  padding: 18px 20px;
+  overflow-y: auto;
+  background: #f7fafc;
+  border-top: 1px solid var(--line);
+  scrollbar-color: #9bacc0 #eef2f6;
+  scrollbar-width: thin;
+}
+
+.sourceScroll .documentBody {
+  max-width: 72ch;
+}
+
+.compareGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.comparePane {
+  min-width: 0;
+}
+
+.compareBody {
+  max-height: min(70vh, 720px);
+  padding: 16px;
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  scrollbar-color: #9bacc0 #eef2f6;
+  scrollbar-width: thin;
+}
+
+.noFinalCompact {
+  padding: 20px;
+  color: var(--secondary);
+  background: #f2f6fa;
+  border: 1px dashed #aebed0;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.editToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #e4ecf4;
+  border-bottom: 1px solid var(--line);
+}
+
+.editToolbarTitle {
+  display: grid;
+  gap: 3px;
+}
+
+.editToolbarTitle h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.editToolbarTitle p {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 11px;
+}
+
+.editorShell {
+  padding: 16px;
+  background: #ffffff;
+}
+
+/* Review gate ----------------------------------------------------------- */
+
+.reviewPanel {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  color: #ffffff;
+  background: var(--navy);
+  border-radius: 4px;
+}
+
+.reviewHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.reviewHeading h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.008em;
+}
+
+.reviewHeading svg {
+  flex: none;
+  color: #8fb3ed;
+}
+
+.reviewCopy {
+  margin: 0;
+  color: #c3d3e5;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.reviewSteps {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 14px 0;
+  list-style: none;
+  border-top: 1px solid #3b526c;
+  border-bottom: 1px solid #3b526c;
+}
+
+.reviewStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #c3d3e5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.reviewStep[data-done="true"] {
+  color: #b9f0ce;
+}
+
+.reviewStep[data-done="false"] {
+  color: #c3d3e5;
+}
+
+.reviewStep svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.reviewStep > span {
+  display: grid;
+  gap: 2px;
+}
+
+.reviewStep strong {
+  font-weight: 600;
+}
+
+.reviewStep small {
+  color: #8fa5bd;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.reviewStep[data-done="true"] small {
+  color: #86b89b;
+}
+
+.provenance {
+  display: grid;
+  margin: 0;
+  padding: 0;
+}
+
+.provenanceRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #2b415a;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.provenanceRow:last-child {
+  border-bottom: 0;
+}
+
+.provenanceRow dt {
+  color: #8fa5bd;
+}
+
+.provenanceRow dd {
+  margin: 0;
+  color: #eaf1f8;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.reviewActions {
+  display: grid;
+  gap: 8px;
+}
+
+.gateButton {
+  color: #ffffff;
+  background: var(--cobalt);
+  border: 1px solid #6e99e8;
+}
+
+.gateButton:hover:not(:disabled) {
+  background: var(--cobalt-dark);
+  border-color: var(--cobalt-dark);
+}
+
+.gateSecondary {
+  color: #eaf1f8;
+  background: transparent;
+  border: 1px solid #51708f;
+}
+
+.gateSecondary:hover:not(:disabled) {
+  background: #203b58;
+  border-color: #8fb3ed;
+}
+
+.reviewNote {
+  margin: 0;
+  color: #8fa5bd;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* States ---------------------------------------------------------------- */
+
+.statePanel {
+  padding: 48px 24px;
+  color: var(--secondary);
+  text-align: center;
+}
+
+.errorPanel {
+  padding: 18px;
+  color: var(--red);
+  background: #fff1f1;
+  border: 1px solid #dca6a6;
+  border-radius: 4px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1100px) {
+  /* Below the desktop split the review gate moves under the document, so the
+     column becomes a full-width framed band rather than a side rail. */
+  .contentGrid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    margin-right: 0;
+  }
+
+  .primaryColumn {
+    padding-right: 0;
+  }
+
+  .contextColumn {
+    min-height: 0;
+    padding: 22px 16px;
+    background: var(--frame-ground);
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .compareGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 780px) {
+  .surface {
+    padding: 22px 16px 100px;
+  }
+
+  .pageHeader {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .workspaceBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .audienceTabs {
+    min-width: 0;
+  }
+
+  .modeTabs {
+    align-self: flex-start;
+  }
+
+  .contentGrid {
+    display: block;
+    min-height: 0;
+    margin-right: 0;
+  }
+
+  .primaryColumn {
+    padding-right: 0;
+  }
+
+  .contextColumn {
+    min-height: 0;
+    padding: 20px 16px;
+    background: var(--frame-ground);
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .documentPanel {
+    padding: 18px 16px 20px;
+  }
+
+  .paneBar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .paneMeta {
+    padding-left: 2px;
+  }
+
+  .compareGrid {
+    padding: 12px;
+  }
+
+  .noFinal {
+    padding: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface *,
+  .surface *::before,
+  .surface *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
