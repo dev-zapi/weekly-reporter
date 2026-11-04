@@ -1,18 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { POST } from './route'
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core'
+import { GET, POST } from './route'
 
 vi.mock('@/lib/db', () => {
   const mockReturning = vi.fn()
   const mockValues = vi.fn().mockReturnValue({ returning: mockReturning })
   const mockInsert = vi.fn().mockReturnValue({ values: mockValues })
   const mockFindMany = vi.fn()
+  const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }])
+  const mockFrom = vi.fn().mockReturnValue({ where: mockWhere })
+  const mockSelect = vi.fn().mockReturnValue({ from: mockFrom })
 
   return {
     getDb: vi.fn(() => ({
       query: { collectSources: { findMany: mockFindMany } },
       insert: mockInsert,
+      select: mockSelect,
     })),
-    __mocks: { mockFindMany, mockInsert, mockValues, mockReturning },
+    __mocks: { mockFindMany, mockInsert, mockValues, mockReturning, mockSelect, mockWhere },
   }
 })
 
@@ -27,6 +32,56 @@ const requestWith = (body: unknown) => new Request('http://localhost/api/collect
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify(body),
+})
+
+describe('/api/collect/sources GET', () => {
+  const getMocks = async () => {
+    const mod = (await import('@/lib/db')) as unknown as { __mocks: Record<string, ReturnType<typeof vi.fn>> }
+    return mod.__mocks
+  }
+
+  const requestWithQuery = (query: string) =>
+    new Request(`http://localhost/api/collect/sources?${query}`)
+
+  const renderedWhere = (mockFindMany: ReturnType<typeof vi.fn>) => {
+    const where = mockFindMany.mock.calls[0][0].where
+    return new SQLiteSyncDialect().sqlToQuery(where.getSQL())
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => vi.restoreAllMocks())
+
+  it('matches the stored `failed` status when the Failed filter sends `failure`', async () => {
+    const { mockFindMany } = await getMocks()
+    mockFindMany.mockResolvedValueOnce([])
+
+    const response = await GET(requestWithQuery('syncStatus=failure'))
+    expect(response.status).toBe(200)
+
+    const query = renderedWhere(mockFindMany)
+    expect(query.params).toContain('failed')
+    expect(query.sql).toContain(' in ')
+  })
+
+  it('matches the stored `failed` status when the client already uses `failed`', async () => {
+    const { mockFindMany } = await getMocks()
+    mockFindMany.mockResolvedValueOnce([])
+
+    await GET(requestWithQuery('syncStatus=failed'))
+
+    const query = renderedWhere(mockFindMany)
+    expect(query.params).toContain('failed')
+  })
+
+  it('only matches `success` for the success filter', async () => {
+    const { mockFindMany } = await getMocks()
+    mockFindMany.mockResolvedValueOnce([])
+
+    await GET(requestWithQuery('syncStatus=success'))
+
+    const query = renderedWhere(mockFindMany)
+    expect(query.params).toEqual(['success'])
+  })
 })
 
 describe('/api/collect/sources POST', () => {

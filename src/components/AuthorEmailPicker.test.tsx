@@ -59,6 +59,26 @@ describe('AuthorEmailPicker', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
+  it('forwards the source id so edit forms can reuse the stored token', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ authors: [] }),
+    } as Response)
+    render(
+      <AuthorEmailPicker
+        open
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        currentEmails={[]}
+        repoParams={{ ...repoParams, sourceId: 7 }}
+      />,
+    )
+
+    await screen.findByText('No author information found')
+    const requestUrl = String(mockFetch.mock.calls[0][0])
+    expect(requestUrl).toContain('sourceId=7')
+  })
+
   it('shows author lookup failures and retries the same picker', async () => {
     mockFetch
       .mockResolvedValueOnce({

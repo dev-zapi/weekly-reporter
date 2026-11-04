@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { expandInputPath } from '@/lib/collect/paths'
+import { getDb } from '@/lib/db'
+import { collectSources } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 
 const execFileAsync = promisify(execFile)
 
@@ -22,15 +25,25 @@ export const GET = withAuth(async function GET(request: Request) {
     const token = searchParams.get('token') || ''
     const baseUrl = searchParams.get('baseUrl') || ''
     const branch = searchParams.get('branch') || ''
+    const sourceId = Number(searchParams.get('sourceId') || '')
+
+    // Edit forms never receive the stored token; fall back to it server-side so
+    // author lookup keeps working for existing remote sources.
+    let effectiveToken = token
+    if (!effectiveToken && type !== 'git-local' && Number.isInteger(sourceId) && sourceId > 0) {
+      const db = getDb()
+      const source = await db.query.collectSources.findFirst({ where: eq(collectSources.id, sourceId) })
+      effectiveToken = source?.config.token || ''
+    }
 
     let authors: AuthorInfo[] = []
 
     if (type === 'git-local' && path) {
       authors = await getLocalAuthors(expandInputPath(path), branch)
-    } else if (type === 'git-remote-github' && owner && repo && token) {
-      authors = await getGitHubAuthors(owner, repo, token)
-    } else if (type === 'git-remote-gitlab' && owner && repo && token) {
-      authors = await getGitLabAuthors(owner, repo, token, baseUrl)
+    } else if (type === 'git-remote-github' && owner && repo && effectiveToken) {
+      authors = await getGitHubAuthors(owner, repo, effectiveToken)
+    } else if (type === 'git-remote-gitlab' && owner && repo && effectiveToken) {
+      authors = await getGitLabAuthors(owner, repo, effectiveToken, baseUrl)
     }
 
     return NextResponse.json({ authors })

@@ -2,10 +2,11 @@ import { withAuth } from '@/lib/auth/guard'
 import { NextResponse } from 'next/server'
 import type { ZodError } from 'zod'
 import { getDb } from '@/lib/db'
-import { asc, desc, isNull, or, sql, count } from 'drizzle-orm'
+import { asc, desc, inArray, isNull, or, sql, count } from 'drizzle-orm'
 import { like, and, eq } from 'drizzle-orm'
 import { collectSources } from '@/lib/db/schema'
 import { collectSourceSchema } from '@/lib/validations'
+import { SYNC_FAILED_STATUSES } from '@/lib/collect/sync-status'
 
 const SORTABLE_COLUMNS = ['name', 'type', 'projectScope', 'lastSyncAt', 'status'] as const
 type SortBy = (typeof SORTABLE_COLUMNS)[number]
@@ -48,8 +49,12 @@ export const GET = withAuth(async function GET(request: Request) {
         )
       )
     }
-    if (syncStatus === 'success' || syncStatus === 'failure') {
-      conditions.push(eq(collectSources.lastSyncStatus, syncStatus))
+    if (syncStatus === 'success') {
+      conditions.push(eq(collectSources.lastSyncStatus, 'success'))
+    } else if (syncStatus === 'failure' || syncStatus === 'failed') {
+      // The collector stores `failed`; clients filter by `failure`. Accept both
+      // spellings so the Failed filter matches real sync failures.
+      conditions.push(inArray(collectSources.lastSyncStatus, [...SYNC_FAILED_STATUSES]))
     } else if (syncStatus === 'never') {
       conditions.push(isNull(collectSources.lastSyncAt))
     }

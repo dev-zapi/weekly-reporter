@@ -24,6 +24,7 @@ interface AuthorEmailPickerProps {
   onConfirm: (emails: string[]) => void
   currentEmails: string[]
   repoParams: {
+    sourceId?: number
     type: string
     path?: string
     owner?: string
@@ -54,6 +55,7 @@ function AuthorEmailPickerContent({
 
   useEffect(() => {
     const params = new URLSearchParams({ type: repoParams.type })
+    if (repoParams.sourceId) params.set('sourceId', String(repoParams.sourceId))
     if (repoParams.path) params.set('path', repoParams.path)
     if (repoParams.owner) params.set('owner', repoParams.owner)
     if (repoParams.repo) params.set('repo', repoParams.repo)
@@ -80,7 +82,7 @@ function AuthorEmailPickerContent({
     return () => {
       active = false
     }
-  }, [requestVersion, repoParams.type, repoParams.path, repoParams.owner, repoParams.repo, repoParams.token, repoParams.baseUrl, repoParams.branch])
+  }, [requestVersion, repoParams.sourceId, repoParams.type, repoParams.path, repoParams.owner, repoParams.repo, repoParams.token, repoParams.baseUrl, repoParams.branch])
 
   function toggleEmail(email: string) {
     setSelected(previous => {

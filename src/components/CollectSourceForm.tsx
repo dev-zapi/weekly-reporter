@@ -66,16 +66,18 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
 
   useEffect(() => {
     const params = new URLSearchParams({ type: formData.type })
+    if (sourceId) params.set('sourceId', String(sourceId))
     if (isLocal(formData.type)) {
       if (!formData.config.owner) return
       params.set('path', formData.config.owner)
     } else {
-      if (!formData.config.owner || !formData.config.repo || !formData.config.token) return
+      if (!formData.config.owner || !formData.config.repo || (!formData.config.token && !sourceId)) return
       params.set('owner', formData.config.owner)
       params.set('repo', formData.config.repo)
-      params.set('token', formData.config.token)
+      if (formData.config.token) params.set('token', formData.config.token)
       if (formData.config.baseUrl) params.set('baseUrl', formData.config.baseUrl)
     }
+    // Use first branch for email fetching
     const firstBranch = formData.config.branches[0]?.name
     if (firstBranch) params.set('branch', firstBranch)
 
@@ -86,7 +88,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
         .catch(() => {})
     }, 500)
     return () => clearTimeout(timer)
-  }, [formData.type, formData.config.owner, formData.config.repo, formData.config.token, formData.config.baseUrl, formData.config.branches])
+  }, [sourceId, formData.type, formData.config.owner, formData.config.repo, formData.config.token, formData.config.baseUrl, formData.config.branches])
 
   useEffect(() => {
     const params = new URLSearchParams({ type: formData.type })
@@ -452,6 +454,7 @@ export function CollectSourceForm({ sourceId, initialData }: { sourceId?: number
         onConfirm={emails => handleConfigChange('authorEmails', emails.join(', '))}
         currentEmails={formData.config.authorEmails.split(',').map(email => email.trim()).filter(Boolean)}
         repoParams={{
+          sourceId,
           type: formData.type,
           path: isLocal(formData.type) ? formData.config.owner : undefined,
           owner: formData.config.owner,

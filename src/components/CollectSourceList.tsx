@@ -14,6 +14,7 @@ import {
   bulkDelete,
 } from '@/lib/collect/source-commands'
 import { useSourceListQuery } from './collect/useSourceListQuery'
+import { isSyncFailure } from '@/lib/collect/sync-status'
 import styles from './collection-sources.module.css'
 
 export interface CollectSource {
@@ -28,6 +29,7 @@ export interface CollectSource {
     token: string
     authorEmails: string[]
     branches?: Array<string | { name: string; lastCommitTime?: string | null }>
+    branchCursors?: Array<{ name: string; lastCommitTime: string | null }>
     aliases?: string[]
   }
   enabled: boolean
@@ -168,13 +170,23 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
   }
 
   function getSyncCursor(config: CollectSource['config']): string | null {
-    const maxCursor = config.branches?.reduce((max, b) => {
+    // `branches` only carries cursors for explicitly configured branches; the
+    // all-branches (and remote default) mode advances `branchCursors`. Prefer
+    // whichever has the latest committer time so the column reflects the real
+    // collection cursor instead of showing "–" for default-branch sources.
+    const branchMax = config.branches?.reduce((max, b) => {
       if (typeof b === 'object' && b.lastCommitTime) {
         const t = new Date(b.lastCommitTime).getTime()
         return t > max ? t : max
       }
       return max
-    }, 0)
+    }, 0) ?? 0
+    const cursorMax = config.branchCursors?.reduce((max, c) => {
+      if (!c.lastCommitTime) return max
+      const t = new Date(c.lastCommitTime).getTime()
+      return t > max ? t : max
+    }, 0) ?? 0
+    const maxCursor = Math.max(branchMax, cursorMax)
     if (maxCursor) {
       return formatSystemDateTime(maxCursor)
     }
@@ -493,8 +505,8 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
                     const aliasesTrunc = truncateList(source.config.aliases || [])
                     const emailsTrunc = truncateList(source.config.authorEmails || [])
                     const syncCursor = getSyncCursor(source.config)
-                    const hasSyncError = source.lastSyncStatus === 'failure'
-                    const syncState = source.lastSyncStatus === 'success' ? 'success' : source.lastSyncStatus === 'failure' ? 'failure' : 'never'
+                    const hasSyncError = isSyncFailure(source.lastSyncStatus)
+                    const syncState = source.lastSyncStatus === 'success' ? 'success' : hasSyncError ? 'failure' : 'never'
                     const statusTitle = sourceStatus === 'enabled' ? 'Click to disable' : sourceStatus === 'unavailable' ? 'Path unavailable; restore manually' : 'Click to enable'
                     const syncDisabled = isSourceBusy || source.config.authorEmails.length === 0
 
@@ -554,7 +566,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
                           </span>
                         </td>
                         <td data-label="Last sync">
-                          <span className={styles.dateText} data-state={source.lastSyncStatus || undefined}>
+                          <span className={styles.dateText} data-state={syncState === 'never' ? undefined : syncState}>
                             {source.lastSyncAt ? relativeTime(source.lastSyncAt) : 'Never synced'}
                           </span>
                         </td>

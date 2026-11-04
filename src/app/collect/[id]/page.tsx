@@ -38,7 +38,11 @@ export default function EditCollectSourcePage({ params }: { params: Promise<{ id
           repo: data.config.repo || '',
           token: '',
           branches: Array.isArray(data.config.branches)
-            ? data.config.branches.map((b: string | BranchFormValue) => typeof b === 'string' ? { name: b, lastCommitTime: null } : { name: b.name, lastCommitTime: b.lastCommitTime || null })
+            ? data.config.branches
+              .map((b: string | BranchFormValue) => typeof b === 'string' ? { name: b, lastCommitTime: null } : { name: b.name, lastCommitTime: b.lastCommitTime || null })
+              // Blank names are the legacy "all branches" placeholder, not an
+              // editable branch: rendering one produces an unnamed chip.
+              .filter((branch: BranchFormValue) => branch.name.trim() !== '')
             : [],
           authorEmails: Array.isArray(data.config.authorEmails) ? data.config.authorEmails.join(',') : '',
         },
