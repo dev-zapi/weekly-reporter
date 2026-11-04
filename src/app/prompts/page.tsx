@@ -10,7 +10,7 @@ export default function PromptsPage() {
         <div className={styles.headingText}>
           <h1 id="prompt-library-title">Prompt Management</h1>
           <p className={styles.description}>
-            Maintain reusable AI writing styles and the system prompts used for writing suggestions and report scoring.
+            Maintain reusable AI writing styles and the system prompts used for writing suggestions and final report generation.
           </p>
         </div>
       </header>

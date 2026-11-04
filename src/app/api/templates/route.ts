@@ -8,11 +8,8 @@ import { OFFICIAL_TEMPLATES } from '@/lib/official-templates'
 export const GET = withAuth(async function GET() {
   try {
     const db = getDb()
-    console.log('Database obtained:', !!db)
-    
     const userTemplates = await db.select().from(templates)
-    console.log('User templates:', userTemplates)
-    
+
     return NextResponse.json({
       official: OFFICIAL_TEMPLATES,
       user: userTemplates,

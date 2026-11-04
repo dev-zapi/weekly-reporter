@@ -42,20 +42,14 @@ Analyze these aspects:
 Give specific, concise suggestions (no more than 20 words each).
 If the content is already strong, return an empty array [].`
 
-const DEFAULT_SCORE = `You are a weekly report scoring expert. Score the report below and provide suggestions.
+const DEFAULT_GENERATE = `你是周报终版生成助手。请严格依据原稿中的事实，按照模板要求输出 Markdown 周报。
 
-Report content:
-{{content}}
-
-Score these dimensions (0-100):
-1. structure: whether all sections are complete
-2. content: whether the report includes concrete details and data
-3. value: whether results and contributions are emphasized
-
-Return:
-1. A score for each dimension
-2. Specific improvement suggestions (no more than 30 words each)
-3. An optional rewrite example`
+规则：
+- 只处理当前受众版本提供的原稿，不得引入其他版本的信息。
+- 可以重组、合并、概括和补全表达，但不得虚构项目、数字、结果、时间或计划。
+- 模板是格式规范，不要输出模板占位符、解释文字或代码围栏。
+- 原稿没有事实支撑的章节请省略，或明确写出暂无内容。
+- 只返回终版 Markdown 正文。`
 
 const SYSTEM_PROMPTS = [
   {
@@ -66,11 +60,11 @@ const SYSTEM_PROMPTS = [
     defaultText: DEFAULT_CHECK,
   },
   {
-    key: 'score',
-    title: 'Report scoring prompt',
-    description: 'Scores complete reports across multiple dimensions.',
-    variables: ['{{content}}'],
-    defaultText: DEFAULT_SCORE,
+    key: 'generate',
+    title: 'Final report generation prompt',
+    description: 'Generates the final report from the selected source draft, template, and AI style.',
+    variables: [],
+    defaultText: DEFAULT_GENERATE,
   },
 ] as const
 
@@ -524,10 +518,15 @@ function SystemPromptTab() {
               <div className={styles.systemHeading}>
                 <h2 id={`prompt-${prompt.key}`}>{prompt.title}</h2>
                 <p>
-                  {prompt.description} Variables:
-                  <span className={styles.variables}>
-                    {prompt.variables.map((variable) => <code key={variable}>{variable}</code>)}
-                  </span>
+                  {prompt.description}
+                  {prompt.variables.length > 0 && (
+                    <>
+                      {' '}Variables:
+                      <span className={styles.variables}>
+                        {prompt.variables.map((variable) => <code key={variable}>{variable}</code>)}
+                      </span>
+                    </>
+                  )}
                 </p>
               </div>
               {!isEditing && (

@@ -45,7 +45,7 @@ const stylesPayload = {
 const promptsPayload = {
   prompts: [
     { key: 'check', promptText: 'Saved writing suggestions.' },
-    { key: 'score', promptText: 'Saved scoring prompt.' },
+    { key: 'generate', promptText: 'Saved final-generation prompt.' },
   ],
 }
 
@@ -106,7 +106,8 @@ describe('PromptManager', () => {
 
     fireEvent.click(await screen.findByRole('tab', { name: 'System prompts' }))
     expect(await screen.findByText('Saved writing suggestions.')).toBeInTheDocument()
-    expect(screen.getByText('Saved scoring prompt.')).toBeInTheDocument()
+    expect(screen.getByText('Saved final-generation prompt.')).toBeInTheDocument()
+    expect(screen.queryByText('Report scoring prompt')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0])
     const textarea = screen.getByLabelText('Writing suggestions prompt text')
@@ -119,6 +120,29 @@ describe('PromptManager', () => {
         expect.objectContaining({
           method: 'PUT',
           body: JSON.stringify({ key: 'check', promptText: 'Revised writing suggestions.' }),
+        }),
+      )
+    })
+  })
+
+  it('edits and saves the live final-generation prompt', async () => {
+    routeConfiguration()
+    render(<PromptManager />)
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'System prompts' }))
+    expect(await screen.findByText('Saved final-generation prompt.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1])
+    const textarea = screen.getByLabelText('Final report generation prompt text')
+    fireEvent.change(textarea, { target: { value: 'Revised final-generation prompt.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/prompts/system',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ key: 'generate', promptText: 'Revised final-generation prompt.' }),
         }),
       )
     })
