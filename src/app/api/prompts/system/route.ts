@@ -29,7 +29,7 @@ export const PUT = withAuth(async function PUT(request: Request) {
     const validated = systemPromptSchema.parse(body)
     const key = body.key
 
-    if (!key || !['check', 'score', 'generate'].includes(key)) {
+    if (!key || !['check', 'generate'].includes(key)) {
       return NextResponse.json(
         { error: 'Invalid prompt key', code: 'VALIDATION_ERROR' },
         { status: 400 },

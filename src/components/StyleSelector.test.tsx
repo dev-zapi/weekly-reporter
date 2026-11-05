@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StyleSelector } from './StyleSelector'
 
 const mockStylesResponse = {
@@ -148,6 +148,31 @@ describe('StyleSelector', () => {
       await waitFor(() => {
         expect(screen.getByText('formal')).toBeInTheDocument()
       })
+    })
+
+    it('retries a failed style index request', async () => {
+      mockFetch.mockReset()
+      mockFetch
+        .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Unavailable' }) })
+        .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockStylesResponse) })
+
+      render(<StyleSelector onChange={mockOnChange} />)
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('AI styles could not be loaded')
+      fireEvent.click(screen.getByRole('button', { name: 'Retry loading styles' }))
+      await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+      expect(screen.getByText('正式汇报')).toBeInTheDocument()
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('announces when no AI styles are configured', async () => {
+      mockFetch.mockReset()
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ styles: [] }) })
+
+      render(<StyleSelector onChange={mockOnChange} />)
+
+      expect(await screen.findByText('No AI styles are configured.')).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'AI style' })).toBeDisabled()
     })
   })
 })

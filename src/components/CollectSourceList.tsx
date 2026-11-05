@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { RefreshCw, RotateCcw, Download, Trash2, Edit, ChevronLeft, ChevronRight, Search, X, Loader2, CheckCircle2, XCircle, Clock, ToggleLeft, ToggleRight, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, User } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatSystemDate, formatSystemDateTime, formatSystemRelativeTime } from '@/lib/time-format'
@@ -16,6 +14,8 @@ import {
   bulkDelete,
 } from '@/lib/collect/source-commands'
 import { useSourceListQuery } from './collect/useSourceListQuery'
+import { isSyncFailure } from '@/lib/collect/sync-status'
+import styles from './collection-sources.module.css'
 
 export interface CollectSource {
   id: number
@@ -29,6 +29,7 @@ export interface CollectSource {
     token: string
     authorEmails: string[]
     branches?: Array<string | { name: string; lastCommitTime?: string | null }>
+    branchCursors?: Array<{ name: string; lastCommitTime: string | null }>
     aliases?: string[]
   }
   enabled: boolean
@@ -41,15 +42,87 @@ export interface CollectSource {
 
 type SortableColumn = 'name' | 'type' | 'projectScope' | 'lastSyncAt' | 'status'
 
-function getSortIcon(col: SortableColumn, sortBy: string, sortOrder: string) {
-  if (sortBy !== col) return <ArrowUpDown className="h-3 w-3 text-muted-foreground/40" />
-  if (sortOrder === 'asc') return <ArrowUp className="h-3 w-3" />
-  return <ArrowDown className="h-3 w-3" />
+interface FilterOption {
+  value: string
+  label: string
+}
+
+function FilterGroup({
+  label,
+  name,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  name: string
+  value: string
+  options: FilterOption[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <fieldset className={styles.filterGroup}>
+      <legend>{label}</legend>
+      <div className={styles.filterOptions}>
+        {options.map(option => (
+          <label key={option.value} className={styles.filterOption}>
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={event => onChange(event.target.value)}
+            />
+            {option.label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function SortHeader({
+  column,
+  label,
+  sortBy,
+  sortOrder,
+  onSort,
+}: {
+  column: SortableColumn
+  label: string
+  sortBy: string
+  sortOrder: string
+  onSort: (column: string) => void
+}) {
+  const direction = sortBy === column ? sortOrder : null
+  const icon = sortBy !== column
+    ? <ArrowUpDown size={12} aria-hidden="true" />
+    : sortOrder === 'asc'
+      ? <ArrowUp size={12} aria-hidden="true" />
+      : <ArrowDown size={12} aria-hidden="true" />
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className={styles.sortButton}
+      aria-label={`Sort by ${label}${direction ? `, currently ${direction}ending` : ''}`}
+    >
+      {label}
+      {icon}
+    </button>
+  )
+}
+
+function relativeTime(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  if (diff < 30 * 24 * 60 * 60 * 1000) return formatSystemRelativeTime(dateStr)
+  return formatSystemDate(dateStr)
 }
 
 export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => void) => void }) {
   const {
-    sources, setSources, total, loading, page, setPage, filters, refetch,
+    sources, setSources, total, loading, error, page, setPage, filters, refetch,
   } = useSourceListQuery()
   const {
     searchInput, searchTerm, syncStatusFilter, sourceStatusFilter,
@@ -75,6 +148,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
   }, [onRefresh, setPage, refetch])
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const hasFilters = Boolean(searchTerm || typeFilter || syncStatusFilter || sourceStatusFilter || scopeFilter)
 
   function getSourceTypeLabel(type: string): string {
     switch (type) {
@@ -91,24 +165,28 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
     }
   }
 
-  function relativeTime(dateStr: string) {
-    const diff = Date.now() - new Date(dateStr).getTime()
-    if (diff < 30 * 24 * 60 * 60 * 1000) return formatSystemRelativeTime(dateStr)
-    return formatSystemDate(dateStr)
-  }
-
   function getBranchNames(config: CollectSource['config']): string[] {
     return config.branches?.map(b => typeof b === 'string' ? b : b.name).filter(Boolean) || []
   }
 
   function getSyncCursor(config: CollectSource['config']): string | null {
-    const maxCursor = config.branches?.reduce((max, b) => {
+    // `branches` only carries cursors for explicitly configured branches; the
+    // all-branches (and remote default) mode advances `branchCursors`. Prefer
+    // whichever has the latest committer time so the column reflects the real
+    // collection cursor instead of showing "–" for default-branch sources.
+    const branchMax = config.branches?.reduce((max, b) => {
       if (typeof b === 'object' && b.lastCommitTime) {
         const t = new Date(b.lastCommitTime).getTime()
         return t > max ? t : max
       }
       return max
-    }, 0)
+    }, 0) ?? 0
+    const cursorMax = config.branchCursors?.reduce((max, c) => {
+      if (!c.lastCommitTime) return max
+      const t = new Date(c.lastCommitTime).getTime()
+      return t > max ? t : max
+    }, 0) ?? 0
+    const maxCursor = Math.max(branchMax, cursorMax)
     if (maxCursor) {
       return formatSystemDateTime(maxCursor)
     }
@@ -142,10 +220,10 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
       }
 
       refetch()
-    } catch (error) {
+    } catch {
       toast.error(opts?.resync ? 'Resync failed' : 'Sync failed')
     } finally {
-      setSyncingIds(prev => { const n = new Set(prev); n.delete(sourceId); return n })
+      setSyncingIds(prev => { const next = new Set(prev); next.delete(sourceId); return next })
     }
   }
 
@@ -161,7 +239,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
     } catch {
       toast.error('Repository fetch failed')
     } finally {
-      setFetchingIds(prev => { const n = new Set(prev); n.delete(sourceId); return n })
+      setFetchingIds(prev => { const next = new Set(prev); next.delete(sourceId); return next })
     }
   }
 
@@ -169,18 +247,18 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
     if (currentStatus === 'unavailable') return
     const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled'
     setTogglingIds(prev => new Set(prev).add(sourceId))
-    setSources(prev => prev.map(s => s.id === sourceId ? { ...s, status: newStatus as any, enabled: newStatus === 'enabled' } : s))
+    setSources(prev => prev.map(source => source.id === sourceId ? { ...source, status: newStatus, enabled: newStatus === 'enabled' } : source))
     try {
       const result = await toggleSource(sourceId, newStatus)
       if (!result.ok) {
-        setSources(prev => prev.map(s => s.id === sourceId ? { ...s, status: currentStatus as any, enabled: currentStatus === 'enabled' } : s))
+        setSources(prev => prev.map(source => source.id === sourceId ? { ...source, status: currentStatus as CollectSource['status'], enabled: currentStatus === 'enabled' } : source))
         toast.error(result.error || 'Failed to update status')
       }
     } catch {
-      setSources(prev => prev.map(s => s.id === sourceId ? { ...s, status: currentStatus as any, enabled: currentStatus === 'enabled' } : s))
+      setSources(prev => prev.map(source => source.id === sourceId ? { ...source, status: currentStatus as CollectSource['status'], enabled: currentStatus === 'enabled' } : source))
       toast.error('Failed to update status')
     } finally {
-      setTogglingIds(prev => { const n = new Set(prev); n.delete(sourceId); return n })
+      setTogglingIds(prev => { const next = new Set(prev); next.delete(sourceId); return next })
     }
   }
 
@@ -199,7 +277,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
       } else {
         toast.error(result.error || 'Delete failed')
       }
-    } catch (error) {
+    } catch {
       toast.error('Delete failed')
     }
   }
@@ -207,11 +285,8 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
   function toggleSelect(id: number) {
     setSelectedIds(prev => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
       return next
     })
   }
@@ -220,7 +295,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
     if (selectedIds.size === sources.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(sources.map(s => s.id)))
+      setSelectedIds(new Set(sources.map(source => source.id)))
     }
   }
 
@@ -237,7 +312,7 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
       } else {
         toast.error(result.error || 'Update failed')
       }
-    } catch (error) {
+    } catch {
       toast.error('Update failed')
     } finally {
       setBulkUpdating(false)
@@ -270,460 +345,357 @@ export function CollectSourceList({ onRefresh }: { onRefresh?: (fetchFn: () => v
     }
   }
 
-  function handleSort(column: SortableColumn) {
-    setSort(column)
-  }
-
-  function SortHeader({ column, label }: { column: SortableColumn; label: string }) {
-    return (
-      <button
-        onClick={() => handleSort(column)}
-        className="inline-flex items-center gap-1 hover:text-foreground whitespace-nowrap"
-      >
-        {label}
-        {getSortIcon(column, sortBy, sortOrder)}
-      </button>
-    )
-  }
-
-  if (loading && sources.length === 0) {
-    return <div className="text-center py-8">Loading...</div>
-  }
-
   return (
-    <>
-      <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="Search by name…"
-            className="h-8 pl-8 text-sm"
-          />
-          {searchInput && (
-            <button
-              onClick={() => { setSearchInput(''); setSearchTerm('') }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
+    <section aria-labelledby="source-index-heading">
+      <div className={styles.sectionHeading}>
+        <div>
+          <h2 id="source-index-heading">Source index</h2>
+          <p>Stable source references, collection readiness, and repository operations.</p>
         </div>
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter by type">
-          {[
-            { value: '', label: 'All' },
-            { value: 'git-remote-github', label: 'GitHub' },
-            { value: 'git-remote-gitlab', label: 'GitLab' },
-            { value: 'git-remote-gitee', label: 'Gitee' },
-            { value: 'git-local', label: 'Local' },
-          ].map(option => (
-            <label
-              key={option.value}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md cursor-pointer transition-colors ${
-                typeFilter === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="sourceType"
-                value={option.value}
-                checked={typeFilter === option.value}
-                onChange={e => setTypeFilter(e.target.value)}
-                className="sr-only"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter by sync status">
-          {[
-            { value: '', label: 'All' },
-            { value: 'success', label: 'Success' },
-            { value: 'failure', label: 'Failed' },
-            { value: 'never', label: 'Never synced' },
-          ].map(option => (
-            <label
-              key={option.value}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md cursor-pointer transition-colors ${
-                syncStatusFilter === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="syncStatus"
-                value={option.value}
-                checked={syncStatusFilter === option.value}
-                onChange={e => setSyncStatusFilter(e.target.value)}
-                className="sr-only"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter by source status">
-          {[
-            { value: '', label: 'All' },
-            { value: 'enabled', label: 'Enabled' },
-            { value: 'disabled', label: 'Disabled' },
-            { value: 'unavailable', label: 'Unavailable' },
-          ].map(option => (
-            <label
-              key={option.value}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md cursor-pointer transition-colors ${
-                sourceStatusFilter === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="sourceStatus"
-                value={option.value}
-                checked={sourceStatusFilter === option.value}
-                onChange={e => setSourceStatusFilter(e.target.value)}
-                className="sr-only"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        <div className="flex items-center gap-1" role="radiogroup" aria-label="Filter by project scope">
-          {[
-            { value: '', label: 'All' },
-            { value: 'work', label: 'Work' },
-            { value: 'personal', label: 'Personal' },
-          ].map(option => (
-            <label
-              key={option.value}
-              className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md cursor-pointer transition-colors ${
-                scopeFilter === option.value
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              <input
-                type="radio"
-                name="sourceScope"
-                value={option.value}
-                checked={scopeFilter === option.value}
-                onChange={e => setScopeFilter(e.target.value)}
-                className="sr-only"
-              />
-              {option.label}
-            </label>
-          ))}
-        </div>
-        {(searchTerm || typeFilter || syncStatusFilter || sourceStatusFilter || scopeFilter) && (
-          <span className="text-xs text-muted-foreground">
-            {total} results found
-          </span>
-        )}
+        <span className={styles.resultMeta} role="status" aria-live="polite">
+          {loading && sources.length > 0 ? 'Refreshing sources…' : `${total} ${total === 1 ? 'source' : 'sources'}`}
+        </span>
       </div>
 
-      {total === 0 && !loading ? (
-        !searchTerm && !typeFilter && !syncStatusFilter && !sourceStatusFilter && !scopeFilter ? (
-          <div className="border rounded-lg py-8 text-center">
-            <p className="text-muted-foreground mb-4">No sources yet</p>
-            <Link href="/collect/new">
-              <Button variant="outline">
-                Add source
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            No results found
-          </div>
-        )
+      {loading && sources.length === 0 ? (
+        <div className={styles.loadingState} role="status" aria-live="polite">
+          <span className={styles.loadingLine} aria-hidden="true" />
+          <span>Loading collection sources…</span>
+        </div>
       ) : (
-        <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="sticky left-0 z-10 bg-muted-30-solid px-3 py-2.5 text-left w-10">
-                  <input
-                    type="checkbox"
-                    checked={sources.length > 0 && selectedIds.size === sources.length}
-                    onChange={toggleSelectAll}
-                    className="rounded border-input h-4 w-4"
-                  />
-                </th>
-                <th className="sticky left-10 z-10 bg-muted-30-solid px-3 py-2.5 text-left min-w-[150px]">
-                  <SortHeader column="name" label="Name" />
-                </th>
-                <th className="px-3 py-2.5 text-left min-w-[90px]">
-                  <SortHeader column="type" label="Type" />
-                </th>
-                <th className="px-3 py-2.5 text-left min-w-[140px]">Repository</th>
-                <th className="px-3 py-2.5 text-left min-w-[120px]">Branches</th>
-                <th className="px-3 py-2.5 text-left min-w-[100px]">Aliases</th>
-                <th className="px-3 py-2.5 text-left min-w-[150px]">Emails</th>
-                <th className="px-3 py-2.5 text-left min-w-[80px]">
-                  <SortHeader column="projectScope" label="Project scope" />
-                </th>
-                <th className="px-3 py-2.5 text-left min-w-[90px]">
-                  <SortHeader column="status" label="Status" />
-                </th>
-                <th className="px-3 py-2.5 text-left min-w-[80px]">Sync</th>
-                <th className="px-3 py-2.5 text-left min-w-[100px]">
-                  <SortHeader column="lastSyncAt" label="Last sync" />
-                </th>
-                <th className="px-3 py-2.5 text-left min-w-[140px]">Synced through</th>
-                <th className="sticky right-0 z-10 border-l bg-muted-30-solid px-3 py-2.5 text-left min-w-[120px]">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.map(source => {
-                const isSyncing = syncingIds.has(source.id)
-                const isFetching = fetchingIds.has(source.id)
-                const isSourceBusy = isSyncing || isFetching
-                const isToggling = togglingIds.has(source.id)
-                const isSelected = selectedIds.has(source.id)
-                const sourceStatus = source.status || (source.enabled ? 'enabled' : 'disabled')
-                const branchesTrunc = truncateList(getBranchNames(source.config))
-                const aliasesTrunc = truncateList(source.config.aliases || [])
-                const emailsTrunc = truncateList(source.config.authorEmails || [])
-                const syncCursor = getSyncCursor(source.config)
-                const hasSyncError = source.lastSyncStatus === 'failure'
-
-                return (
-                  <tr
-                    key={source.id}
-                    data-selected={isSelected || undefined}
-                    data-error={hasSyncError || undefined}
-                    className={`group border-b hover:bg-muted/30 transition-colors ${isSelected ? 'bg-primary/5' : ''} ${hasSyncError ? 'bg-red-50/30 dark:bg-red-950/10' : ''}`}
+        <>
+          <div className={styles.filterPanel}>
+            <div className={styles.filterTop}>
+              <div className={styles.searchField}>
+                <Search size={15} aria-hidden="true" />
+                <label htmlFor="source-search" className={styles.srOnly}>Search sources by name</label>
+                <input
+                  id="source-search"
+                  type="search"
+                  value={searchInput}
+                  onChange={event => setSearchInput(event.target.value)}
+                  placeholder="Search by name…"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    onClick={() => { setSearchInput(''); setSearchTerm('') }}
+                    className={styles.clearSearch}
+                    aria-label="Clear source search"
+                    title="Clear search"
                   >
-                    <td className="sticky left-0 z-[5] bg-background transition-colors px-3 py-2.5 group-hover:bg-muted-30-solid group-data-[selected]:bg-primary-5-solid group-data-[error]:bg-error-row-solid">
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              {hasFilters && <span className={styles.resultMeta}>{total} results found</span>}
+            </div>
+            <div className={styles.filterGroups}>
+              <FilterGroup
+                label="Source type"
+                name="sourceType"
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={[
+                  { value: '', label: 'All' },
+                  { value: 'git-remote-github', label: 'GitHub' },
+                  { value: 'git-remote-gitlab', label: 'GitLab' },
+                  { value: 'git-remote-gitee', label: 'Gitee' },
+                  { value: 'git-local', label: 'Local' },
+                ]}
+              />
+              <FilterGroup
+                label="Sync result"
+                name="syncStatus"
+                value={syncStatusFilter}
+                onChange={setSyncStatusFilter}
+                options={[
+                  { value: '', label: 'All' },
+                  { value: 'success', label: 'Success' },
+                  { value: 'failure', label: 'Failed' },
+                  { value: 'never', label: 'Never synced' },
+                ]}
+              />
+              <FilterGroup
+                label="Source status"
+                name="sourceStatus"
+                value={sourceStatusFilter}
+                onChange={setSourceStatusFilter}
+                options={[
+                  { value: '', label: 'All' },
+                  { value: 'enabled', label: 'Enabled' },
+                  { value: 'disabled', label: 'Disabled' },
+                  { value: 'unavailable', label: 'Unavailable' },
+                ]}
+              />
+              <FilterGroup
+                label="Project scope"
+                name="sourceScope"
+                value={scopeFilter}
+                onChange={setScopeFilter}
+                options={[
+                  { value: '', label: 'All' },
+                  { value: 'work', label: 'Work' },
+                  { value: 'personal', label: 'Personal' },
+                ]}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className={styles.errorState} role="alert">
+              <strong>Sources could not be loaded</strong>
+              <p>{error}</p>
+              <button type="button" className={styles.secondaryButton} onClick={() => void refetch()}>
+                <RefreshCw size={15} aria-hidden="true" />
+                Retry
+              </button>
+            </div>
+          )}
+
+          {!error && total === 0 && !loading ? (
+            !hasFilters ? (
+              <div className={styles.emptyState}>
+                <strong>No sources yet</strong>
+                <p>Add a repository manually or scan a directory to begin collecting evidence.</p>
+                <Link href="/collect/new" className={styles.secondaryButton}>Add source</Link>
+              </div>
+            ) : (
+              <div className={styles.emptyState}>
+                <strong>No matching sources</strong>
+                <p>Change the search text or filters to see other collection sources.</p>
+              </div>
+            )
+          ) : sources.length > 0 ? (
+            <div className={styles.tableFrame} tabIndex={0} role="region" aria-label="Collection source records">
+              <table className={styles.sourceTable}>
+                <thead>
+                  <tr>
+                    <th className={styles.selectCell} scope="col">
                       <input
                         type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSelect(source.id)}
-                        className="rounded border-input h-4 w-4"
+                        checked={sources.length > 0 && selectedIds.size === sources.length}
+                        onChange={toggleSelectAll}
+                        aria-label="Select all sources on this page"
                       />
-                    </td>
-                    <td className="sticky left-10 z-[5] bg-background transition-colors px-3 py-2.5 font-medium truncate max-w-[200px] group-hover:bg-muted-30-solid group-data-[selected]:bg-primary-5-solid group-data-[error]:bg-error-row-solid">
-                      {source.name}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {getSourceTypeLabel(source.type)}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
-                      {source.type === 'git-local'
-                        ? source.config.owner
-                        : `${source.config.owner}/${source.config.repo}`}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground" title={branchesTrunc.full}>
-                      {branchesTrunc.text}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground" title={aliasesTrunc.full}>
-                      {aliasesTrunc.text}
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground truncate max-w-[200px]" title={emailsTrunc.full}>
-                      {emailsTrunc.text}
-                    </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">
-                      {source.projectScope === 'work' ? (
-                        <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
-                          <Briefcase className="h-3 w-3" />
-                          Work project
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                          <User className="h-3 w-3" />
-                          Personal project
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <button
-                        onClick={() => !isToggling && handleToggle(source.id, sourceStatus)}
-                        disabled={isToggling || sourceStatus === 'unavailable'}
-                        className={`inline-flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full transition-all ${
-                          sourceStatus === 'enabled'
-                            ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50 cursor-pointer'
-                            : sourceStatus === 'unavailable'
-                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 cursor-not-allowed'
-                            : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 cursor-pointer'
-                        } ${isToggling ? 'opacity-50 pointer-events-none' : ''}`}
-                        title={sourceStatus === 'enabled' ? 'Click to disable' : sourceStatus === 'unavailable' ? 'Path unavailable; restore manually' : 'Click to enable'}
-                      >
-                        {isToggling ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : sourceStatus === 'enabled' ? (
-                          <ToggleRight className="h-3 w-3" />
-                        ) : sourceStatus === 'unavailable' ? (
-                          <AlertTriangle className="h-3 w-3" />
-                        ) : (
-                          <ToggleLeft className="h-3 w-3" />
-                        )}
-                        {sourceStatus === 'enabled' ? 'Enabled' : sourceStatus === 'unavailable' ? 'Unavailable' : 'Disabled'}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {source.lastSyncStatus === 'success' ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />
-                      ) : source.lastSyncStatus === 'failure' ? (
-                        <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />
-                      ) : (
-                        <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`text-xs whitespace-nowrap ${
-                        source.lastSyncStatus === 'failure' ? 'text-red-600 dark:text-red-400 font-medium' :
-                        source.lastSyncStatus === 'success' ? 'text-green-700 dark:text-green-400' : ''
-                      }`}>
-                        {source.lastSyncAt ? relativeTime(source.lastSyncAt) : 'Never synced'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                      {syncCursor || '-'}
-                    </td>
-                    <td className="sticky right-0 z-[5] border-l bg-background transition-colors px-3 py-2.5 group-hover:bg-muted-30-solid group-data-[selected]:bg-primary-5-solid group-data-[error]:bg-error-row-solid">
-                      <div className="flex items-center gap-0.5">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          className="h-7 px-2 text-xs"
-                          disabled={isSourceBusy || source.config.authorEmails.length === 0}
-                          onClick={() => runSync(source.id)}
-                          title={source.config.authorEmails.length === 0 ? 'Configure emails first' : 'Sync'}
-                        >
-                          {isSyncing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 w-7 p-0"
-                          title={source.config.authorEmails.length === 0 ? 'Configure emails first' : 'Resync (fetch all history without duplicates)'}
-                          disabled={isSourceBusy || source.config.authorEmails.length === 0}
-                          onClick={() => runSync(source.id, { resync: true })}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                        </Button>
-                        {source.type === 'git-local' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 w-7 p-0"
-                            title="Manual fetch"
-                            aria-label="Manual fetch"
-                            disabled={isSourceBusy}
-                            onClick={() => handleFetch(source.id)}
-                          >
-                            {isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                          </Button>
-                        )}
-                        <Link href={`/collect/${source.id}`}>
-                          <Button size="sm" variant="outline" className="h-7 w-7 p-0">
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                        </Link>
-                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(source.id)}>
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </td>
+                    </th>
+                    <th className={styles.sourceCell} scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="name" label="Source" /></th>
+                    <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="type" label="Type" /></th>
+                    <th scope="col">Repository</th>
+                    <th scope="col">Branches</th>
+                    <th scope="col">Aliases</th>
+                    <th scope="col">Emails</th>
+                    <th className={styles.scopeCell} scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="projectScope" label="Project scope" /></th>
+                    <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="status" label="Status" /></th>
+                    <th scope="col">Sync result</th>
+                    <th scope="col"><SortHeader sortBy={sortBy} sortOrder={sortOrder} onSort={setSort} column="lastSyncAt" label="Last sync" /></th>
+                    <th scope="col">Synced through</th>
+                    <th className={styles.actionsCell} scope="col">Actions</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {sources.map(source => {
+                    const isSyncing = syncingIds.has(source.id)
+                    const isFetching = fetchingIds.has(source.id)
+                    const isSourceBusy = isSyncing || isFetching
+                    const isToggling = togglingIds.has(source.id)
+                    const isSelected = selectedIds.has(source.id)
+                    const sourceStatus = source.status || (source.enabled ? 'enabled' : 'disabled')
+                    const branchesTrunc = truncateList(getBranchNames(source.config))
+                    const aliasesTrunc = truncateList(source.config.aliases || [])
+                    const emailsTrunc = truncateList(source.config.authorEmails || [])
+                    const syncCursor = getSyncCursor(source.config)
+                    const hasSyncError = isSyncFailure(source.lastSyncStatus)
+                    const syncState = source.lastSyncStatus === 'success' ? 'success' : hasSyncError ? 'failure' : 'never'
+                    const statusTitle = sourceStatus === 'enabled' ? 'Click to disable' : sourceStatus === 'unavailable' ? 'Path unavailable; restore manually' : 'Click to enable'
+                    const syncDisabled = isSourceBusy || source.config.authorEmails.length === 0
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 px-1">
-          <span className="text-xs text-muted-foreground">
-            {total} total · Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
-              .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
-                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis')
-                acc.push(p)
-                return acc
-              }, [])
-              .map((p, i) =>
-                p === 'ellipsis' ? (
-                  <span key={`e${i}`} className="px-2 text-xs text-muted-foreground leading-7">…</span>
-                ) : (
-                  <Button
-                    key={p}
-                    size="sm"
-                    variant={p === page ? 'default' : 'outline'}
-                    className="h-7 w-7 p-0 text-xs"
-                    onClick={() => setPage(Number(p))}
-                  >
-                    {p}
-                  </Button>
-                )
-              )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+                    return (
+                      <tr
+                        key={source.id}
+                        data-selected={isSelected || undefined}
+                        data-error={hasSyncError || undefined}
+                      >
+                        <td className={styles.selectCell}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(source.id)}
+                            aria-label={`Select source ${source.name}`}
+                          />
+                        </td>
+                        <td className={styles.sourceCell}>
+                          <div className={styles.sourceIdentity}>
+                            <span className={styles.sourceId}>#{source.id}</span>
+                            <span className={styles.sourceName} title={source.name}>{source.name}</span>
+                          </div>
+                        </td>
+                        <td data-label="Type"><span className={styles.cellText}>{getSourceTypeLabel(source.type)}</span></td>
+                        <td data-label="Repository">
+                          <span className={`${styles.cellText} ${styles.pathText}`} title={source.type === 'git-local' ? source.config.owner : `${source.config.owner}/${source.config.repo}`}>
+                            {source.type === 'git-local' ? source.config.owner : `${source.config.owner}/${source.config.repo}`}
+                          </span>
+                        </td>
+                        <td data-label="Branches"><span className={styles.cellText} title={branchesTrunc.full}>{branchesTrunc.text}</span></td>
+                        <td data-label="Aliases"><span className={styles.cellText} title={aliasesTrunc.full}>{aliasesTrunc.text}</span></td>
+                        <td data-label="Emails"><span className={styles.cellText} title={emailsTrunc.full}>{emailsTrunc.text}</span></td>
+                        <td className={styles.scopeCell} data-label="Project scope">
+                          <span className={styles.scopeBadge} data-scope={source.projectScope}>
+                            {source.projectScope === 'work' ? <Briefcase size={12} aria-hidden="true" /> : <User size={12} aria-hidden="true" />}
+                            {source.projectScope === 'work' ? 'Work' : 'Personal'}
+                          </span>
+                        </td>
+                        <td data-label="Status">
+                          <button
+                            type="button"
+                            onClick={() => !isToggling && handleToggle(source.id, sourceStatus)}
+                            disabled={isToggling || sourceStatus === 'unavailable'}
+                            className={styles.statusBadge}
+                            data-status={sourceStatus}
+                            title={statusTitle}
+                            aria-label={`${source.name}: ${sourceStatus}. ${statusTitle}`}
+                          >
+                            {isToggling ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : sourceStatus === 'enabled' ? <ToggleRight size={14} aria-hidden="true" /> : sourceStatus === 'unavailable' ? <AlertTriangle size={13} aria-hidden="true" /> : <ToggleLeft size={14} aria-hidden="true" />}
+                            {sourceStatus === 'enabled' ? 'Enabled' : sourceStatus === 'unavailable' ? 'Unavailable' : 'Disabled'}
+                          </button>
+                        </td>
+                        <td data-label="Sync result">
+                          <span className={styles.syncState} data-state={syncState}>
+                            {syncState === 'success' ? <CheckCircle2 size={14} aria-hidden="true" /> : syncState === 'failure' ? <XCircle size={14} aria-hidden="true" /> : <Clock size={14} aria-hidden="true" />}
+                            {syncState === 'success' ? 'Success' : syncState === 'failure' ? 'Failed' : 'Not synced'}
+                          </span>
+                        </td>
+                        <td data-label="Last sync">
+                          <span className={styles.dateText} data-state={syncState === 'never' ? undefined : syncState}>
+                            {source.lastSyncAt ? relativeTime(source.lastSyncAt) : 'Never synced'}
+                          </span>
+                        </td>
+                        <td data-label="Synced through"><span className={styles.dateText}>{syncCursor || '-'}</span></td>
+                        <td className={styles.actionsCell}>
+                          <div className={styles.rowActions}>
+                            <button
+                              type="button"
+                              className={styles.actionButton}
+                              data-tone="primary"
+                              disabled={syncDisabled}
+                              onClick={() => runSync(source.id)}
+                              title={source.config.authorEmails.length === 0 ? 'Configure emails first' : 'Sync new commits'}
+                              aria-label={`Sync ${source.name}`}
+                            >
+                              {isSyncing ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <RefreshCw size={14} aria-hidden="true" />}
+                              <span className={styles.actionLabel}>Sync</span>
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.actionButton}
+                              title={source.config.authorEmails.length === 0 ? 'Configure emails first' : 'Resync (fetch all history without duplicates)'}
+                              aria-label={`Resync ${source.name}`}
+                              disabled={syncDisabled}
+                              onClick={() => runSync(source.id, { resync: true })}
+                            >
+                              <RotateCcw size={14} aria-hidden="true" />
+                              <span className={styles.actionLabel}>Resync</span>
+                            </button>
+                            {source.type === 'git-local' && (
+                              <button
+                                type="button"
+                                className={styles.actionButton}
+                                title="Manual fetch"
+                                aria-label={`Manual fetch for ${source.name}`}
+                                disabled={isSourceBusy}
+                                onClick={() => handleFetch(source.id)}
+                              >
+                                {isFetching ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Download size={14} aria-hidden="true" />}
+                                <span className={styles.actionLabel}>Fetch</span>
+                              </button>
+                            )}
+                            <Link href={`/collect/${source.id}`} className={styles.actionButton} title={`Edit ${source.name}`} aria-label={`Edit ${source.name}`}>
+                              <Edit size={14} aria-hidden="true" />
+                              <span className={styles.actionLabel}>Edit</span>
+                            </Link>
+                            <button
+                              type="button"
+                              className={styles.actionButton}
+                              data-tone="danger"
+                              title={`Delete ${source.name}`}
+                              aria-label={`Delete ${source.name}`}
+                              onClick={() => handleDelete(source.id)}
+                            >
+                              <Trash2 size={14} aria-hidden="true" />
+                              <span className={styles.actionLabel}>Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
 
-      {selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-background border rounded-lg shadow-lg px-4 py-3 flex items-center gap-4 z-50">
-          <span className="text-sm font-medium">
-            {selectedIds.size} selected
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleBulkUpdateScope('work')}
-              disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Set as work
-            </button>
-            <button
-              onClick={() => handleBulkUpdateScope('personal')}
-              disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Set as personal
-            </button>
-            <button
-              onClick={handleBulkDelete}
-              disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm bg-destructive/10 text-destructive rounded-md hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Delete
-            </button>
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              disabled={bulkUpdating}
-              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+          {totalPages > 1 && (
+            <nav className={styles.pagination} aria-label="Source pages">
+              <span>{total} total · Page {page} of {totalPages}</span>
+              <div className={styles.pageNumbers}>
+                <button
+                  type="button"
+                  className={styles.pageButton}
+                  aria-label="Previous source page"
+                  disabled={page <= 1}
+                  onClick={() => setPage(current => current - 1)}
+                >
+                  <ChevronLeft size={16} aria-hidden="true" />
+                </button>
+                {Array.from({ length: totalPages }, (_, index) => index + 1)
+                  .filter(pageNumber => pageNumber === 1 || pageNumber === totalPages || Math.abs(pageNumber - page) <= 2)
+                  .reduce<(number | 'ellipsis')[]>((acc, pageNumber, index, visiblePages) => {
+                    if (index > 0 && pageNumber - (visiblePages[index - 1] as number) > 1) acc.push('ellipsis')
+                    acc.push(pageNumber)
+                    return acc
+                  }, [])
+                  .map((pageNumber, index) =>
+                    pageNumber === 'ellipsis' ? (
+                      <span key={`ellipsis-${index}`} aria-hidden="true">…</span>
+                    ) : (
+                      <button
+                        type="button"
+                        key={pageNumber}
+                        className={styles.pageButton}
+                        aria-label={`Source page ${pageNumber}`}
+                        aria-current={pageNumber === page ? 'page' : undefined}
+                        onClick={() => setPage(pageNumber)}
+                      >
+                        {pageNumber}
+                      </button>
+                    ),
+                  )}
+                <button
+                  type="button"
+                  className={styles.pageButton}
+                  aria-label="Next source page"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(current => current + 1)}
+                >
+                  <ChevronRight size={16} aria-hidden="true" />
+                </button>
+              </div>
+            </nav>
+          )}
+
+          {selectedIds.size > 0 && (
+            <div className={styles.bulkBar} role="region" aria-label="Bulk source actions">
+              <span className={styles.bulkCount}>{selectedIds.size} selected</span>
+              <div className={styles.bulkActions}>
+                <button type="button" className={styles.primaryButton} onClick={() => handleBulkUpdateScope('work')} disabled={bulkUpdating}>Set as work</button>
+                <button type="button" className={styles.secondaryButton} onClick={() => handleBulkUpdateScope('personal')} disabled={bulkUpdating}>Set as personal</button>
+                <button type="button" className={`${styles.secondaryButton} ${styles.dangerButton}`} onClick={handleBulkDelete} disabled={bulkUpdating}>Delete</button>
+                <button type="button" className={`${styles.secondaryButton} ${styles.bulkCancel}`} onClick={() => setSelectedIds(new Set())} disabled={bulkUpdating}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </>
       )}
-    </>
+    </section>
   )
 }

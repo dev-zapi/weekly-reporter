@@ -34,7 +34,7 @@ const mockLocalSource = {
   },
 }
 
-describe('CollectSourceList search focus', () => {
+describe('CollectSourceList', () => {
   beforeEach(() => {
     sessionStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation((url: string | URL | Request) => {
@@ -116,5 +116,65 @@ describe('CollectSourceList search focus', () => {
 
     expect(await screen.findByTitle('Manual fetch')).toBeInTheDocument()
     expect(screen.getAllByTitle('Manual fetch')).toHaveLength(1)
+  })
+
+  it('shows stable source references and named record actions', async () => {
+    render(<CollectSourceList />)
+
+    expect(await screen.findByText('#1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Edit source-1' })).toHaveAttribute('href', '/collect/1')
+    expect(screen.getByRole('button', { name: 'Sync source-1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resync source-1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete source-1' })).toBeInTheDocument()
+  })
+
+  it('shows stored `failed` sync results and the all-branches cursor', async () => {
+    vi.mocked(global.fetch).mockImplementation((url: string | URL | Request) => {
+      const urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
+      if (urlString.includes('/api/collect/sources')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            sources: [{
+              ...mockSources[0],
+              lastSyncStatus: 'failed',
+              config: {
+                ...mockSources[0].config,
+                branches: undefined,
+                branchCursors: [
+                  { name: 'main', lastCommitTime: '2026-10-02T03:00:00.000Z' },
+                  { name: 'release', lastCommitTime: '2026-09-01T03:00:00.000Z' },
+                ],
+              },
+            }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          }),
+        } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+    })
+
+    const { container } = render(<CollectSourceList />)
+
+    await screen.findByText('#1')
+    const syncState = container.querySelector('tbody [data-state="failure"]')
+    expect(syncState).toHaveTextContent('Failed')
+    expect(container.querySelector('tbody tr')).toHaveAttribute('data-error', 'true')
+    // The all-branches cursor (config.branchCursors) feeds the Synced through column.
+    expect(screen.getByText(/Oct 2, 2026/)).toBeInTheDocument()
+  })
+
+  it('shows an explicit error with a retry action when loading fails', async () => {
+    vi.mocked(global.fetch).mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ error: 'Source index unavailable' }),
+    } as Response)
+
+    render(<CollectSourceList />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Source index unavailable')
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
   })
 })

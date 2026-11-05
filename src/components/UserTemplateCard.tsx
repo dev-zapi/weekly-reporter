@@ -1,9 +1,9 @@
 'use client'
 
-import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { Edit, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import type { Template } from '@/lib/db/schema'
+import styles from './library-configuration.module.css'
 
 interface UserTemplateCardProps {
   template: Template
@@ -13,47 +13,49 @@ interface UserTemplateCardProps {
 
 export function UserTemplateCard({ template, onUse, onDelete }: UserTemplateCardProps) {
   return (
-    <div className="border rounded-lg p-4 space-y-2">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <h3 className="font-medium text-lg">{template.name}</h3>
-          {template.description && (
-            <p className="text-sm text-muted-foreground">{template.description}</p>
-          )}
-          {template.tags && (
-            <div className="text-xs text-muted-foreground">
-              Tags: {template.tags}
-            </div>
-          )}
-          {template.sourceTemplateId && (
-            <div className="text-xs text-muted-foreground">
-              Source: {template.sourceTemplateId.startsWith('official-')
-                ? 'Official template'
-                : 'User template'}
-            </div>
-          )}
+    <article className={styles.recordRow}>
+      <span className={styles.recordId}>T{template.id}</span>
+      <div className={styles.recordBody}>
+        <div className={styles.recordTitleLine}>
+          <h2 className={styles.recordTitle}>{template.name}</h2>
+          <span className={styles.badge}>Personal</span>
         </div>
-        
-        <div className="flex items-center gap-2">
-          {onUse && (
-            <Button variant="outline" size="sm" onClick={() => onUse(template)}>
-              Use
-            </Button>
+        {template.description && (
+          <p className={styles.recordDescription}>{template.description}</p>
+        )}
+        <div className={styles.recordMeta}>
+          {template.tags && <span>Tags: {template.tags}</span>}
+          {template.sourceTemplateId && (
+            <span>
+              Source: {template.sourceTemplateId.startsWith('official-') ? 'Official template' : 'User template'}
+            </span>
           )}
-          <Link href={`/templates/${template.id}`}>
-            <Button variant="ghost" size="icon">
-              <Edit className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => onDelete(template.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
         </div>
       </div>
-    </div>
+      <div className={styles.recordActions} role="group" aria-label={`Actions for ${template.name}`}>
+        {onUse && (
+          <button type="button" className={styles.textButton} onClick={() => onUse(template)}>
+            Use
+          </button>
+        )}
+        <Link
+          href={`/templates/${template.id}`}
+          className={styles.iconButton}
+          aria-label={`Edit template ${template.name}`}
+          title="Edit template"
+        >
+          <Pencil size={15} aria-hidden="true" />
+        </Link>
+        <button
+          type="button"
+          className={`${styles.iconButton} ${styles.dangerButton}`}
+          aria-label={`Delete template ${template.name}`}
+          title="Delete template"
+          onClick={() => onDelete(template.id)}
+        >
+          <Trash2 size={15} aria-hidden="true" />
+        </button>
+      </div>
+    </article>
   )
 }

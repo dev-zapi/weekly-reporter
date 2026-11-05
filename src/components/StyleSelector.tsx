@@ -1,7 +1,6 @@
 'use client'
-import { apiFetch } from '@/lib/api-client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Select,
   SelectContent,
@@ -9,7 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { apiFetch } from '@/lib/api-client'
 import type { AIStyleRow } from '@/lib/db/schema'
+import css from './library-configuration.module.css'
 
 interface StyleSelectorProps {
   value?: string
@@ -27,23 +28,40 @@ export function StyleSelector({ value, onChange, templateId }: StyleSelectorProp
   const [styles, setStyles] = useState<StyleItem[]>([])
   const [templateStyle, setTemplateStyle] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [stylesLoading, setStylesLoading] = useState(true)
+  const [stylesError, setStylesError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // 加载风格列表
   useEffect(() => {
+    let cancelled = false
+
     apiFetch('/api/prompts/styles')
-      .then(res => res.json())
-      .then(data => {
-        if (data.styles) {
-          setStyles(data.styles.map((s: AIStyleRow) => ({
-            key: s.key,
-            label: s.label,
-            systemPrompt: s.systemPrompt,
-          })))
-        }
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load AI styles')
+        return response.json()
       })
-      .catch(err => console.error('Failed to fetch styles:', err))
-  }, [])
+      .then((data) => {
+        if (cancelled) return
+        setStyles((data.styles || []).map((style: AIStyleRow) => ({
+          key: style.key,
+          label: style.label,
+          systemPrompt: style.systemPrompt,
+        })))
+      })
+      .catch((error) => {
+        if (cancelled) return
+        console.error('Failed to fetch styles:', error)
+        setStylesError('AI styles could not be loaded. Retry to restore style selection.')
+      })
+      .finally(() => {
+        if (!cancelled) setStylesLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [reloadToken])
 
   useEffect(() => {
     if (templateId) {
@@ -51,22 +69,22 @@ export function StyleSelector({ value, onChange, templateId }: StyleSelectorProp
         abortControllerRef.current.abort()
       }
       abortControllerRef.current = new AbortController()
-      setLoading(true)
 
       const timeoutId = setTimeout(() => {
+        setLoading(true)
         apiFetch(`/api/templates/${templateId}`, {
           signal: abortControllerRef.current?.signal,
         })
-          .then(res => {
-            if (!res.ok) throw new Error('Failed to fetch template')
-            return res.json()
+          .then((response) => {
+            if (!response.ok) throw new Error('Failed to fetch template')
+            return response.json()
           })
-          .then(data => {
+          .then((data) => {
             if (data.template?.aiStyle) {
               setTemplateStyle(data.template.aiStyle)
             }
           })
-          .catch(error => {
+          .catch((error) => {
             if (error.name !== 'AbortError') {
               console.error('Failed to fetch template style:', error)
             }
@@ -87,40 +105,54 @@ export function StyleSelector({ value, onChange, templateId }: StyleSelectorProp
   }, [templateId])
 
   const currentValue = value || templateStyle || (styles[0]?.key ?? 'formal')
-  const currentStyle = styles.find(s => s.key === currentValue)
+  const currentStyle = styles.find((style) => style.key === currentValue)
   const currentLabel = currentStyle?.label ?? currentValue
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-foreground">
-          AI style
-        </label>
-        <span className="text-xs text-muted-foreground">
-          {currentLabel}
-        </span>
+    <div className={css.styleSelector}>
+      <div className={css.styleHeader}>
+        <span className={css.styleLabel}>AI style</span>
+        <span className={css.currentStyle}>{currentLabel}</span>
       </div>
       <Select
         value={currentValue}
-        onValueChange={(val) => onChange(val as string)}
-        disabled={loading || styles.length === 0}
+        onValueChange={(nextValue) => onChange(nextValue as string)}
+        disabled={loading || stylesLoading || styles.length === 0}
       >
-        <SelectTrigger className="w-full">
+        <SelectTrigger className={css.selectTrigger} aria-label="AI style">
           <SelectValue placeholder="Select an AI style" />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className={css.selectContent}>
           {styles.map((style) => (
-            <SelectItem key={style.key} value={style.key}>
-              <div className="flex flex-col gap-0.5">
-                <span className="font-medium">{style.label}</span>
-                <span className="text-xs text-muted-foreground truncate max-w-[200px]">
-                  {style.systemPrompt.slice(0, 40)}...
-                </span>
-              </div>
+            <SelectItem key={style.key} value={style.key} className={css.selectItem}>
+              <span className={css.styleOption}>
+                <span>{style.label}</span>
+                <span>{style.systemPrompt.slice(0, 40)}...</span>
+              </span>
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+      {stylesLoading && <span className={css.inlineStatus} role="status">Loading AI styles…</span>}
+      {stylesError && (
+        <div className={css.inlineError} role="alert">
+          <span>{stylesError}</span>
+          <button
+            type="button"
+            className={css.stateAction}
+            onClick={() => {
+              setStylesLoading(true)
+              setStylesError(null)
+              setReloadToken((token) => token + 1)
+            }}
+          >
+            Retry loading styles
+          </button>
+        </div>
+      )}
+      {!stylesLoading && !stylesError && styles.length === 0 && (
+        <span className={css.inlineStatus}>No AI styles are configured.</span>
+      )}
     </div>
   )
 }

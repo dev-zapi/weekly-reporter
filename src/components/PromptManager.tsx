@@ -1,14 +1,11 @@
 'use client'
-import { apiFetch, traceSuffix } from '@/lib/api-client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -16,16 +13,60 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Pencil, Trash2, Plus, Star, RotateCcw } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { apiFetch, traceSuffix } from '@/lib/api-client'
 import type { AIStyleRow, SystemPromptRow } from '@/lib/db/schema'
 import { useAIStyles } from './useAIStyles'
 import type { StyleFormData } from './useAIStyles'
+import styles from './library-configuration.module.css'
 
 const RANDOM_WORDS = [
   'nova', 'apex', 'zen', 'flux', 'core', 'sage', 'echo', 'pulse',
   'spark', 'wave', 'beam', 'dash', 'glow', 'prism', 'forge', 'rift',
   'swift', 'crisp', 'pure', 'bold', 'keen', 'vivid', 'calm', 'dusk',
 ]
+
+const DEFAULT_CHECK = `You are a weekly report writing assistant. Analyze the content below and provide improvement suggestions.
+
+Content:
+{{content}}
+
+{{#section}}Current section: {{section}}{{/section}}
+
+Analyze these aspects:
+1. Specific data and details
+2. Clear results and value
+3. Clear and concise wording
+4. Better ways to express the content
+
+Give specific, concise suggestions (no more than 20 words each).
+If the content is already strong, return an empty array [].`
+
+const DEFAULT_GENERATE = `你是周报终版生成助手。请严格依据原稿中的事实，按照模板要求输出 Markdown 周报。
+
+规则：
+- 只处理当前受众版本提供的原稿，不得引入其他版本的信息。
+- 可以重组、合并、概括和补全表达，但不得虚构项目、数字、结果、时间或计划。
+- 模板是格式规范，不要输出模板占位符、解释文字或代码围栏。
+- 原稿没有事实支撑的章节请省略，或明确写出暂无内容。
+- 只返回终版 Markdown 正文。`
+
+const SYSTEM_PROMPTS = [
+  {
+    key: 'check',
+    title: 'Writing suggestions prompt',
+    description: 'Checks report content in real time and provides suggestions.',
+    variables: ['{{content}}', '{{section}}'],
+    defaultText: DEFAULT_CHECK,
+  },
+  {
+    key: 'generate',
+    title: 'Final report generation prompt',
+    description: 'Generates the final report from the selected source draft, template, and AI style.',
+    variables: [],
+    defaultText: DEFAULT_GENERATE,
+  },
+] as const
 
 function randomWord(): string {
   return RANDOM_WORDS[Math.floor(Math.random() * RANDOM_WORDS.length)]
@@ -43,8 +84,7 @@ function emptyStyleForm(key = ''): StyleFormData {
   }
 }
 
-/** 生成新的随机 key */
-function regenerateKey(form: StyleFormData, setForm: (f: StyleFormData) => void) {
+function regenerateKey(form: StyleFormData, setForm: (form: StyleFormData) => void) {
   setForm({ ...form, key: randomWord() })
 }
 
@@ -52,43 +92,31 @@ export function PromptManager() {
   const [activeTab, setActiveTab] = useState<'styles' | 'system'>('styles')
 
   return (
-    <div>
-      <div className="flex gap-4 mb-6 border-b">
-        <button
-          className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'styles'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('styles')}
-        >
-          Style management
-        </button>
-        <button
-          className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
-            activeTab === 'system'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('system')}
-        >
-          System prompts
-        </button>
-      </div>
-
-      {activeTab === 'styles' ? <StyleTab /> : <SystemPromptTab />}
-    </div>
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => setActiveTab(value as 'styles' | 'system')}
+      className={styles.tabs}
+    >
+      <TabsList className={styles.tabsList} aria-label="Prompt configuration">
+        <TabsTrigger value="styles" className={styles.tabTrigger}>Style management</TabsTrigger>
+        <TabsTrigger value="system" className={styles.tabTrigger}>System prompts</TabsTrigger>
+      </TabsList>
+      <TabsContent value="styles" className={styles.tabContent}>
+        <StyleTab />
+      </TabsContent>
+      <TabsContent value="system" className={styles.tabContent}>
+        <SystemPromptTab />
+      </TabsContent>
+    </Tabs>
   )
 }
 
-/** ==================== 风格管理 Tab ==================== */
-
 function StyleTab() {
-  const { styles, loading, create, update, remove, setDefault } = useAIStyles()
+  const { styles: aiStyles, loading, error, retry, create, update, remove, setDefault } = useAIStyles()
   const [editing, setEditing] = useState<AIStyleRow | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  // Keep the server-rendered initial form deterministic. Random keys are only
-  // generated after the user opens the create dialog in the browser.
+  const [saving, setSaving] = useState(false)
+  // Random keys are generated only after the create dialog opens in the browser.
   const [form, setForm] = useState<StyleFormData>(() => emptyStyleForm())
   const [showAdvanced, setShowAdvanced] = useState(false)
 
@@ -114,21 +142,20 @@ function StyleTab() {
     setDialogOpen(true)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
     const payload = {
       ...form,
       detailLevel: form.detailLevel || undefined,
       resultOriented: form.resultOriented || undefined,
     } as StyleFormData
 
-    const ok = editing
-      ? await update(editing.id, payload)
-      : await create(payload)
-
-    if (ok) {
-      setDialogOpen(false)
+    setSaving(true)
+    try {
+      const ok = editing ? await update(editing.id, payload) : await create(payload)
+      if (ok) setDialogOpen(false)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -137,183 +164,222 @@ function StyleTab() {
     await remove(style.id)
   }
 
-  async function handleSetDefault(style: AIStyleRow) {
-    await setDefault(style.id)
+  if (loading) {
+    return (
+      <div className={styles.loadingState} role="status">
+        <span className={styles.loadingLine} aria-hidden="true" />
+        <strong>Loading AI styles…</strong>
+      </div>
+    )
   }
-
-  if (loading) return <div className="text-center py-8 text-muted-foreground">Loading...</div>
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-muted-foreground">
-          {styles.length} styles
-        </p>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="w-4 h-4 mr-1" />
+      <div className={styles.indexBar}>
+        <div className={styles.indexTitle}>
+          <h2>AI style index</h2>
+          <span className={styles.count}>{aiStyles.length} styles</span>
+        </div>
+        <button type="button" className={styles.primaryButton} onClick={openCreate}>
+          <Plus size={15} aria-hidden="true" />
           New style
-        </Button>
+        </button>
       </div>
 
-      {styles.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No styles yet. Click the button above to create one.
+      {error ? (
+        <div className={styles.errorState} role="alert">
+          <strong>AI styles could not be loaded</strong>
+          <p>{error}</p>
+          <button type="button" className={styles.stateAction} onClick={() => void retry()}>
+            Retry loading styles
+          </button>
+        </div>
+      ) : aiStyles.length === 0 ? (
+        <div className={styles.emptyState}>
+          <strong>No styles yet</strong>
+          <p>Create an AI style to define the voice and generation parameters available for reports.</p>
+          <button type="button" className={styles.secondaryButton} onClick={openCreate}>
+            <Plus size={15} aria-hidden="true" />
+            New style
+          </button>
         </div>
       ) : (
-        <div className="space-y-2">
-          {styles.map((style) => (
-            <div
-              key={style.id}
-              className="flex items-center justify-between p-4 rounded-lg border bg-card"
-            >
-              <div className="flex-1 min-w-0 mr-4">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{style.label}</span>
-                  <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{style.key}</code>
-                  {style.isDefault && (
-                    <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                      Default
-                    </span>
-                  )}
+        <div className={styles.recordList}>
+          {aiStyles.map((style) => (
+            <article key={style.id} className={styles.recordRow}>
+              <span className={styles.recordId}>S{style.id}</span>
+              <div className={styles.recordBody}>
+                <div className={styles.recordTitleLine}>
+                  <h3 className={styles.recordTitle}>{style.label}</h3>
+                  {style.isDefault && <span className={`${styles.badge} ${styles.defaultBadge}`}>Default</span>}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 truncate">
-                  {style.systemPrompt.slice(0, 60)}...
-                </p>
+                <div className={styles.recordMeta}>
+                  <span>Key: {style.key}</span>
+                  <span>Temperature: {style.temperature}</span>
+                </div>
+                <p className={styles.recordDescription}>{style.systemPrompt.slice(0, 100)}...</p>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className={styles.recordActions} role="group" aria-label={`Actions for ${style.label}`}>
                 {!style.isDefault && (
-                  <Button size="icon" variant="ghost" title="Set as default" onClick={() => handleSetDefault(style)}>
-                    <Star className="w-4 h-4" />
-                  </Button>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    aria-label={`Set ${style.label} as default`}
+                    title="Set as default"
+                    onClick={() => void setDefault(style.id)}
+                  >
+                    <Star size={15} aria-hidden="true" />
+                  </button>
                 )}
-                <Button size="icon" variant="ghost" onClick={() => openEdit(style)}>
-                  <Pencil className="w-4 h-4" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => handleDelete(style)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label={`Edit style ${style.label}`}
+                  title="Edit style"
+                  onClick={() => openEdit(style)}
+                >
+                  <Pencil size={15} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconButton} ${styles.dangerButton}`}
+                  aria-label={`Delete style ${style.label}`}
+                  title="Delete style"
+                  onClick={() => void handleDelete(style)}
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                </button>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
 
-      {/* New/edit dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto max-w-2xl">
+        <DialogContent className={styles.dialogContent}>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit style' : 'New style'}</DialogTitle>
+            <div className={styles.dialogTitleRow}>
+              <DialogTitle className={styles.dialogTitle}>{editing ? 'Edit style' : 'New style'}</DialogTitle>
+              {editing && <span className={styles.recordRef}>S{editing.id}</span>}
+            </div>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="skey">Identifier (key)</Label>
-                <div className="flex gap-1">
-                  <Input
+          <form onSubmit={handleSubmit} className={styles.dialogBody}>
+            <div className={styles.fieldGrid}>
+              <div className={styles.field}>
+                <Label htmlFor="skey" className={styles.fieldLabel}>Identifier (key)</Label>
+                <div className={styles.keyField}>
+                  <input
                     id="skey"
+                    className={styles.input}
                     value={form.key}
-                    onChange={(e) => setForm({ ...form, key: e.target.value })}
+                    onChange={(event) => setForm({ ...form, key: event.target.value })}
                     pattern="^[a-z][a-z0-9_\-]*$"
                     required
-                    className="font-mono text-sm flex-1"
                   />
-                  <Button
+                  <button
                     type="button"
-                    size="icon"
-                    variant="outline"
+                    className={styles.iconButton}
+                    aria-label="Generate random style identifier"
                     title="Generate randomly"
                     onClick={() => regenerateKey(form, setForm)}
                   >
-                    <RotateCcw className="w-4 h-4" />
-                  </Button>
+                    <RotateCcw size={15} aria-hidden="true" />
+                  </button>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="slabel">Name</Label>
-                <Input
+              <div className={styles.field}>
+                <Label htmlFor="slabel" className={styles.fieldLabel}>Name</Label>
+                <input
                   id="slabel"
+                  className={styles.input}
                   value={form.label}
-                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  onChange={(event) => setForm({ ...form, label: event.target.value })}
                   required
                   maxLength={50}
                 />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="sprompt">System Prompt</Label>
-              <Textarea
+            <div className={styles.field}>
+              <Label htmlFor="sprompt" className={styles.fieldLabel}>System Prompt</Label>
+              <textarea
                 id="sprompt"
+                className={styles.textarea}
                 value={form.systemPrompt}
-                onChange={(e) => setForm({ ...form, systemPrompt: e.target.value })}
+                onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
                 required
                 maxLength={5000}
-                className="font-mono text-sm min-h-[200px]"
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className={styles.checkboxRow}>
               <Checkbox
+                id="style-default"
                 checked={form.isDefault}
-                onCheckedChange={(v) => setForm({ ...form, isDefault: v })}
+                onCheckedChange={(checked) => setForm({ ...form, isDefault: checked })}
               />
-              <Label>Set as default style</Label>
+              <Label htmlFor="style-default" className={styles.fieldLabel}>Set as default style</Label>
             </div>
 
-            {/* Advanced parameters */}
-            <div>
+            <div className={styles.advanced}>
               <button
                 type="button"
-                className="text-sm text-muted-foreground hover:text-foreground"
+                className={styles.advancedTrigger}
+                aria-expanded={showAdvanced}
+                aria-controls="style-advanced-parameters"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
-                {showAdvanced ? '▾' : '▸'} Advanced parameters
+                {showAdvanced ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
+                Advanced parameters
               </button>
               {showAdvanced && (
-                <div className="mt-3 space-y-4 pl-2 border-l-2 border-muted">
-                  <div className="space-y-2">
-                    <Label>Temperature ({form.temperature})</Label>
+                <div id="style-advanced-parameters" className={styles.advancedPanel}>
+                  <div className={styles.field}>
+                    <Label htmlFor="style-temperature" className={styles.fieldLabel}>
+                      Temperature ({form.temperature})
+                    </Label>
                     <input
+                      id="style-temperature"
                       type="range"
                       min="0"
                       max="2"
                       step="0.1"
                       value={form.temperature}
-                      onChange={(e) => setForm({ ...form, temperature: parseFloat(e.target.value) })}
-                      className="w-full"
+                      onChange={(event) => setForm({ ...form, temperature: parseFloat(event.target.value) })}
+                      className={styles.range}
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs">Detail level</Label>
+                  <div className={styles.fieldGrid}>
+                    <div className={styles.field}>
+                      <span className={styles.fieldLabel}>Detail level</span>
                       <Select
                         value={form.detailLevel || 'medium'}
-                        onValueChange={(v) => setForm({ ...form, detailLevel: v as string })}
+                        onValueChange={(value) => setForm({ ...form, detailLevel: value as string })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={styles.selectTrigger} aria-label="Detail level">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Concise</SelectItem>
-                          <SelectItem value="medium">Balanced</SelectItem>
-                          <SelectItem value="high">Detailed</SelectItem>
+                        <SelectContent className={styles.selectContent}>
+                          <SelectItem value="low" className={styles.selectItem}>Concise</SelectItem>
+                          <SelectItem value="medium" className={styles.selectItem}>Balanced</SelectItem>
+                          <SelectItem value="high" className={styles.selectItem}>Detailed</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs">Result orientation</Label>
+                    <div className={styles.field}>
+                      <span className={styles.fieldLabel}>Result orientation</span>
                       <Select
                         value={form.resultOriented || 'medium'}
-                        onValueChange={(v) => setForm({ ...form, resultOriented: v as string })}
+                        onValueChange={(value) => setForm({ ...form, resultOriented: value as string })}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className={styles.selectTrigger} aria-label="Result orientation">
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
+                        <SelectContent className={styles.selectContent}>
+                          <SelectItem value="low" className={styles.selectItem}>Low</SelectItem>
+                          <SelectItem value="medium" className={styles.selectItem}>Medium</SelectItem>
+                          <SelectItem value="high" className={styles.selectItem}>High</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -322,12 +388,19 @@ function StyleTab() {
               )}
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+            <DialogFooter className={styles.dialogFooter}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                onClick={() => setDialogOpen(false)}
+                disabled={saving}
+              >
                 Cancel
-              </Button>
-              <Button type="submit">{editing ? 'Save' : 'Create'}</Button>
-            </div>
+              </button>
+              <button type="submit" className={styles.primaryButton} disabled={saving}>
+                {saving ? 'Saving…' : editing ? 'Save' : 'Create'}
+              </button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -335,58 +408,37 @@ function StyleTab() {
   )
 }
 
-/** ==================== 系统提示词 Tab ==================== */
-
 function SystemPromptTab() {
   const [prompts, setPrompts] = useState<SystemPromptRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
 
-  const DEFAULT_CHECK = `You are a weekly report writing assistant. Analyze the content below and provide improvement suggestions.
+  useEffect(() => {
+    let cancelled = false
 
-Content:
-{{content}}
+    void (async () => {
+      try {
+        const response = await apiFetch('/api/prompts/system')
+        if (!response.ok) throw new Error('Failed to load system prompts')
+        const data = await response.json()
+        if (!cancelled) setPrompts(data.prompts || [])
+      } catch {
+        if (cancelled) return
+        setLoadError('System prompts could not be loaded. Retry to refresh the prompt records.')
+        toast.error('Failed to load system prompts')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
 
-{{#section}}Current section: {{section}}{{/section}}
-
-Analyze these aspects:
-1. Specific data and details
-2. Clear results and value
-3. Clear and concise wording
-4. Better ways to express the content
-
-Give specific, concise suggestions (no more than 20 words each).
-If the content is already strong, return an empty array [].`
-
-  const DEFAULT_SCORE = `You are a weekly report scoring expert. Score the report below and provide suggestions.
-
-Report content:
-{{content}}
-
-Score these dimensions (0-100):
-1. structure: whether all sections are complete
-2. content: whether the report includes concrete details and data
-3. value: whether results and contributions are emphasized
-
-Return:
-1. A score for each dimension
-2. Specific improvement suggestions (no more than 30 words each)
-3. An optional rewrite example`
-
-  async function fetchPrompts() {
-    try {
-      const res = await apiFetch('/api/prompts/system')
-      const data = await res.json()
-      setPrompts(data.prompts || [])
-    } catch {
-      toast.error('Failed to load system prompts')
-    } finally {
-      setLoading(false)
+    return () => {
+      cancelled = true
     }
-  }
-
-  useEffect(() => { fetchPrompts() }, [])
+  }, [reloadToken])
 
   function startEdit(key: string, currentText: string) {
     setEditingKey(key)
@@ -399,137 +451,154 @@ Return:
   }
 
   async function saveEdit(key: string) {
+    if (savingKey) return
+    setSavingKey(key)
     try {
-      const res = await apiFetch('/api/prompts/system', {
+      const response = await apiFetch('/api/prompts/system', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, promptText: editText }),
       })
-      if (res.ok) {
+      if (response.ok) {
         toast.success('Prompt updated')
         setEditingKey(null)
-        fetchPrompts()
+        setLoading(true)
+        setLoadError(null)
+        setReloadToken((token) => token + 1)
       } else {
-        const err = await res.json()
-        toast.error((err.error || 'Update failed') + traceSuffix(res))
+        const error = await response.json()
+        toast.error((error.error || 'Update failed') + traceSuffix(response))
       }
     } catch {
       toast.error('Update failed')
+    } finally {
+      setSavingKey(null)
     }
   }
 
-  function resetToDefault(key: string) {
-    const def = key === 'check' ? DEFAULT_CHECK : DEFAULT_SCORE
-    setEditText(def)
+  if (loading) {
+    return (
+      <div className={styles.loadingState} role="status">
+        <span className={styles.loadingLine} aria-hidden="true" />
+        <strong>Loading system prompts…</strong>
+      </div>
+    )
   }
 
-  function getPromptByKey(key: string) {
-    return prompts.find((p) => p.key === key)
+  if (loadError) {
+    return (
+      <div className={styles.errorState} role="alert">
+        <strong>System prompts could not be loaded</strong>
+        <p>{loadError}</p>
+        <button
+          type="button"
+          className={styles.stateAction}
+          onClick={() => {
+            setLoading(true)
+            setLoadError(null)
+            setReloadToken((token) => token + 1)
+          }}
+        >
+          Retry loading prompts
+        </button>
+      </div>
+    )
   }
-
-  if (loading) return <div className="text-center py-8 text-muted-foreground">Loading...</div>
-
-  const checkPrompt = getPromptByKey('check')
-  const scorePrompt = getPromptByKey('score')
 
   return (
-    <div className="space-y-6">
-      {/* 写作建议 */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-medium">Writing suggestions prompt</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Checks report content in real time and provides suggestions. Variables:
-              <code className="bg-muted px-1 rounded">{'{{content}}'}</code>
-              <code className="bg-muted px-1 rounded ml-1">{'{{section}}'}</code>
-            </p>
-          </div>
-          {editingKey !== 'check' && (
-            <Button size="sm" variant="outline" onClick={() => startEdit('check', checkPrompt?.promptText || DEFAULT_CHECK)}>
-              <Pencil className="w-4 h-4 mr-1" />
-              Edit
-            </Button>
-          )}
-        </div>
+    <div className={styles.systemList}>
+      {SYSTEM_PROMPTS.map((prompt) => {
+        const savedPrompt = prompts.find((item) => item.key === prompt.key)
+        const isEditing = editingKey === prompt.key
 
-        {editingKey === 'check' ? (
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => resetToDefault('check')}
+        return (
+          <section key={prompt.key} className={styles.systemPanel} aria-labelledby={`prompt-${prompt.key}`}>
+            <div className={styles.systemHeader}>
+              <span className={styles.recordId}>{prompt.key}</span>
+              <div className={styles.systemHeading}>
+                <h2 id={`prompt-${prompt.key}`}>{prompt.title}</h2>
+                <p>
+                  {prompt.description}
+                  {prompt.variables.length > 0 && (
+                    <>
+                      {' '}Variables:
+                      <span className={styles.variables}>
+                        {prompt.variables.map((variable) => <code key={variable}>{variable}</code>)}
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+              {!isEditing && (
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => startEdit(prompt.key, savedPrompt?.promptText || prompt.defaultText)}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit
+                </button>
+              )}
+            </div>
+
+            {isEditing ? (
+              <div className={styles.dialogBody}>
+                <div>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setEditText(prompt.defaultText)}
+                    disabled={savingKey === prompt.key}
+                  >
+                    <RotateCcw size={14} aria-hidden="true" />
+                    Reset to default
+                  </button>
+                </div>
+                <div className={styles.field}>
+                  <Label htmlFor={`prompt-text-${prompt.key}`} className={styles.fieldLabel}>
+                    {prompt.title} text
+                  </Label>
+                  <textarea
+                    id={`prompt-text-${prompt.key}`}
+                    className={`${styles.textarea} ${styles.promptEditor}`}
+                    value={editText}
+                    onChange={(event) => setEditText(event.target.value)}
+                    maxLength={10000}
+                    disabled={savingKey === prompt.key}
+                  />
+                </div>
+                <div className={styles.formActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={cancelEdit}
+                    disabled={savingKey === prompt.key}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    onClick={() => void saveEdit(prompt.key)}
+                    disabled={savingKey === prompt.key}
+                  >
+                    {savingKey === prompt.key ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <pre
+                className={styles.promptPreview}
+                tabIndex={0}
+                role="region"
+                aria-label={`${prompt.title} preview`}
               >
-                <RotateCcw className="w-4 h-4 mr-1" />
-                Reset to default
-              </Button>
-            </div>
-            <Textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              maxLength={10000}
-              className="font-mono text-sm min-h-[400px]"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={cancelEdit}>Cancel</Button>
-              <Button size="sm" onClick={() => saveEdit('check')}>Save</Button>
-            </div>
-          </div>
-        ) : (
-          <pre className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded p-3 max-h-48 overflow-y-auto">
-            {checkPrompt?.promptText || 'Loading...'}
-          </pre>
-        )}
-      </div>
-
-      {/* 评分提示词 */}
-      <div className="rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h3 className="font-medium">Report scoring prompt</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Scores complete reports across multiple dimensions. Variables:
-              <code className="bg-muted px-1 rounded">{'{{content}}'}</code>
-            </p>
-          </div>
-          {editingKey !== 'score' && (
-            <Button size="sm" variant="outline" onClick={() => startEdit('score', scorePrompt?.promptText || DEFAULT_SCORE)}>
-              <Pencil className="w-4 h-4 mr-1" />
-              Edit
-            </Button>
-          )}
-        </div>
-
-        {editingKey === 'score' ? (
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => resetToDefault('score')}
-              >
-                <RotateCcw className="w-4 h-4 mr-1" />
-                Reset to default
-              </Button>
-            </div>
-            <Textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              maxLength={10000}
-              className="font-mono text-sm min-h-[350px]"
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" size="sm" onClick={cancelEdit}>Cancel</Button>
-              <Button size="sm" onClick={() => saveEdit('score')}>Save</Button>
-            </div>
-          </div>
-        ) : (
-          <pre className="text-sm text-muted-foreground whitespace-pre-wrap bg-muted/50 rounded p-3 max-h-48 overflow-y-auto">
-            {scorePrompt?.promptText || 'Loading...'}
-          </pre>
-        )}
-      </div>
+                {savedPrompt?.promptText || 'No saved prompt. Select Edit to start from the default.'}
+              </pre>
+            )}
+          </section>
+        )
+      })}
     </div>
   )
 }

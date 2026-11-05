@@ -2,7 +2,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { Button } from '@/components/ui/button'
 import { CollectSourceList } from '@/components/CollectSourceList'
 import { ScanReposDialog } from '@/components/ScanReposDialog'
 import { SyncResultsCard } from '@/components/SyncResultsCard'
@@ -12,6 +11,7 @@ import {
 } from '@/components/SyncAllSources'
 import type { SyncResult } from '@/lib/collect/sync'
 import { ArrowLeft, Plus, FolderGit2 } from 'lucide-react'
+import styles from '@/components/collection-sources.module.css'
 
 export default function CollectPage() {
   const [scanDialogOpen, setScanDialogOpen] = useState(false)
@@ -35,51 +35,65 @@ export default function CollectPage() {
     observedCompletionVersionRef.current = completionVersion
     refreshFnRef.current?.()
   }, [completionVersion])
-  
+
   return (
-    <div className="container mx-auto py-6 px-4 max-w-7xl">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">Source Management</h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <CollectPageSyncButton
-            onStart={() => setSyncResults(null)}
-            onResults={setSyncResults}
-          />
-          <Button variant="outline" disabled={isSyncing} onClick={() => setScanDialogOpen(true)}>
-            <FolderGit2 className="h-4 w-4 mr-2" />
-            Scan directory
-          </Button>
-          <Link href="/collect/new">
-            <Button disabled={isSyncing}>
-              <Plus className="h-4 w-4 mr-2" />
+    <div className={styles.surface}>
+      <div className={styles.primary}>
+        <header className={styles.pageHeading}>
+          <div className={styles.headingText}>
+            <h1>Collection sources</h1>
+            <p className={styles.description}>
+              Manage Git repositories, author identities, project scope, and the branch cursors used to collect work evidence.
+            </p>
+          </div>
+          <div className={styles.pageActions}>
+            <Link href="/" className={styles.secondaryButton}>
+              <ArrowLeft size={16} aria-hidden="true" />
+              Timeline
+            </Link>
+            <CollectPageSyncButton
+              onStart={() => setSyncResults(null)}
+              onResults={setSyncResults}
+            />
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              disabled={isSyncing}
+              onClick={() => setScanDialogOpen(true)}
+            >
+              <FolderGit2 size={16} aria-hidden="true" />
+              Scan directory
+            </button>
+            <Link
+              href="/collect/new"
+              className={styles.primaryButton}
+              aria-disabled={isSyncing || undefined}
+              tabIndex={isSyncing ? -1 : undefined}
+              onClick={event => {
+              if (isSyncing) event.preventDefault()
+            }}>
+              <Plus size={16} aria-hidden="true" />
               New source
-            </Button>
-          </Link>
-        </div>
-      </div>
+            </Link>
+          </div>
+        </header>
 
-      {syncResults && (
-        <SyncResultsCard
-          results={syncResults}
-          onClose={() => setSyncResults(null)}
-          onSourceChanged={() => refreshFnRef.current?.()}
+        {syncResults && (
+          <SyncResultsCard
+            results={syncResults}
+            onClose={() => setSyncResults(null)}
+            onSourceChanged={() => refreshFnRef.current?.()}
+          />
+        )}
+
+        <CollectSourceList onRefresh={handleRefreshReady} />
+
+        <ScanReposDialog
+          open={scanDialogOpen}
+          onClose={() => setScanDialogOpen(false)}
+          onSuccess={handleScanSuccess}
         />
-      )}
-
-      <CollectSourceList onRefresh={handleRefreshReady} />
-      
-      <ScanReposDialog
-        open={scanDialogOpen}
-        onClose={() => setScanDialogOpen(false)}
-        onSuccess={handleScanSuccess}
-      />
+      </div>
     </div>
   )
 }

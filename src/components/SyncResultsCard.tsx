@@ -3,15 +3,6 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState } from 'react'
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardAction,
-} from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -21,9 +12,9 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import type { SyncResult } from '@/lib/collect/sync'
 import { toast } from 'sonner'
+import styles from './collection-sources.module.css'
 
 interface SyncResultsCardProps {
   results: SyncResult[]
@@ -36,17 +27,14 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
   const [deletingBranches, setDeletingBranches] = useState<Set<string>>(new Set())
   const [localResults, setLocalResults] = useState<SyncResult[]>(results)
 
-  const successCount = localResults.filter(r => r.status === 'success').length
-  const failedCount = localResults.filter(r => r.status === 'failed').length
+  const successCount = localResults.filter(result => result.status === 'success').length
+  const failedCount = localResults.filter(result => result.status === 'failed').length
 
   const toggleError = (sourceId: number) => {
-    setExpandedErrors(prev => {
-      const next = new Set(prev)
-      if (next.has(sourceId)) {
-        next.delete(sourceId)
-      } else {
-        next.add(sourceId)
-      }
+    setExpandedErrors(previous => {
+      const next = new Set(previous)
+      if (next.has(sourceId)) next.delete(sourceId)
+      else next.add(sourceId)
       return next
     })
   }
@@ -55,7 +43,7 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
     if (!confirm(`Remove branch ${branchName} from this source?`)) return
 
     const key = `${sourceId}-${branchName}`
-    setDeletingBranches(prev => new Set(prev).add(key))
+    setDeletingBranches(previous => new Set(previous).add(key))
 
     try {
       const res = await apiFetch(`/api/collect/sources/${sourceId}`, {
@@ -69,29 +57,23 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
         throw new Error((data.error || 'Failed to remove branch') + traceSuffix(res))
       }
 
-      // 从本地结果中移除该分支
-      setLocalResults(prev =>
-        prev.map(result => {
+      setLocalResults(previous =>
+        previous.map(result => {
           if (result.sourceId !== sourceId || !result.branches) return result
-
-          const updatedBranches = result.branches.filter(b => b.name !== branchName)
-
           return {
             ...result,
-            branches: updatedBranches,
+            branches: result.branches.filter(branch => branch.name !== branchName),
           }
-        })
+        }),
       )
 
-      // 通知父组件刷新列表
       onSourceChanged?.()
-
       toast.success(`Branch ${branchName} removed`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to remove branch')
     } finally {
-      setDeletingBranches(prev => {
-        const next = new Set(prev)
+      setDeletingBranches(previous => {
+        const next = new Set(previous)
         next.delete(key)
         return next
       })
@@ -99,47 +81,32 @@ export function SyncResultsCard({ results, onClose, onSourceChanged }: SyncResul
   }
 
   return (
-    <Card className="mb-6">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-3">
-          <span>Sync results</span>
-          <div className="flex gap-2">
-            <Badge variant="default" className="bg-green-600">
-              {successCount} succeeded
-            </Badge>
-            <Badge
-              variant={failedCount > 0 ? 'destructive' : 'secondary'}
-            >
-              {failedCount} failed
-            </Badge>
+    <section className={styles.syncResults} aria-labelledby="sync-results-heading">
+      <div className={styles.syncHeader}>
+        <div className={styles.syncTitle}>
+          <h2 id="sync-results-heading">Sync results</h2>
+          <div className={styles.syncSummary} aria-label={`${successCount} succeeded, ${failedCount} failed`}>
+            <span className={styles.statusCount} data-tone="success">{successCount} succeeded</span>
+            <span className={styles.statusCount} data-tone={failedCount > 0 ? 'failed' : 'neutral'}>{failedCount} failed</span>
           </div>
-        </CardTitle>
-        <CardAction>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="h-8 w-8"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {localResults.map(result => (
-            <SyncResultRow
-              key={result.sourceId}
-              result={result}
-              expanded={expandedErrors.has(result.sourceId)}
-              onToggle={() => toggleError(result.sourceId)}
-              deletingBranches={deletingBranches}
-              onDeleteBranch={handleDeleteBranch}
-            />
-          ))}
         </div>
-      </CardContent>
-    </Card>
+        <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Close sync results" title="Close sync results">
+          <X size={15} aria-hidden="true" />
+        </button>
+      </div>
+      <div className={styles.resultList}>
+        {localResults.map(result => (
+          <SyncResultRow
+            key={result.sourceId}
+            result={result}
+            expanded={expandedErrors.has(result.sourceId)}
+            onToggle={() => toggleError(result.sourceId)}
+            deletingBranches={deletingBranches}
+            onDeleteBranch={handleDeleteBranch}
+          />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -153,41 +120,37 @@ interface SyncResultRowProps {
 
 function SyncResultRow({ result, expanded, onToggle, deletingBranches, onDeleteBranch }: SyncResultRowProps) {
   const { status, sourceName, commitsCount, eventsCount, error, warnings, branches } = result
+  const title = (
+    <div className={styles.resultTitle}>
+      <span className={styles.sourceId}>#{result.sourceId}</span>
+      <span>{sourceName}</span>
+    </div>
+  )
 
   if (status === 'failed') {
-    const isLongError = error && error.length > 100
+    const isLongError = Boolean(error && error.length > 100)
+    const errorId = `sync-error-${result.sourceId}`
     return (
-      <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-        <XCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm">{sourceName}</div>
+      <div className={styles.resultRow} data-status="failed">
+        <XCircle size={18} className={styles.resultIcon} aria-hidden="true" />
+        <div className={styles.resultBody}>
+          {title}
           {error && (
-            <div className="mt-1">
-              <div
-                className={cn(
-                  'text-sm text-muted-foreground break-words',
-                  !expanded && isLongError && 'line-clamp-2'
-                )}
-              >
+            <div>
+              <div id={errorId} className={`${styles.resultCopy} ${!expanded && isLongError ? styles.errorClamped : ''}`} role="alert">
                 {error}
               </div>
               {isLongError && (
-                <Button
-                  variant="ghost"
-                  size="sm"
+                <button
+                  type="button"
+                  className={styles.textButton}
                   onClick={onToggle}
-                  className="h-6 px-2 mt-1 text-xs"
+                  aria-expanded={expanded}
+                  aria-controls={errorId}
                 >
-                  {expanded ? (
-                    <>
-                      Collapse <ChevronUp className="h-3 w-3 ml-1" />
-                    </>
-                  ) : (
-                    <>
-                      Expand <ChevronDown className="h-3 w-3 ml-1" />
-                    </>
-                  )}
-                </Button>
+                  {expanded ? 'Collapse' : 'Expand'}
+                  {expanded ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
+                </button>
               )}
             </div>
           )}
@@ -196,73 +159,44 @@ function SyncResultRow({ result, expanded, onToggle, deletingBranches, onDeleteB
     )
   }
 
-  // 检查是否有失败的分支需要展示明细
-  const hasFailedBranches = branches && branches.some(b => b.status === 'failed')
-  // 单分支源不展示分支明细
-  const isMultiBranch = branches && branches.length > 1 && branches.some(b => b.name)
+  const hasFailedBranches = branches && branches.some(branch => branch.status === 'failed')
+  const isMultiBranch = branches && branches.length > 1 && branches.some(branch => branch.name)
 
   if (hasFailedBranches && isMultiBranch) {
     return (
-      <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-900/30">
-        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm">{sourceName}</div>
-          <div className="text-sm text-muted-foreground mt-1">
-            Sync succeeded, but some branches failed
-          </div>
-          <div className="mt-2 space-y-1.5">
-            {branches.map((branch) => {
+      <div className={styles.resultRow} data-status="warning">
+        <AlertTriangle size={18} className={styles.resultIcon} aria-hidden="true" />
+        <div className={styles.resultBody}>
+          {title}
+          <p className={styles.resultCopy}>Sync succeeded, but some branches failed</p>
+          <div className={styles.branchList}>
+            {branches.map(branch => {
               const branchKey = `${result.sourceId}-${branch.name}`
               const isDeleting = deletingBranches.has(branchKey)
-
               return (
-                <div
-                  key={branch.name}
-                  className={cn(
-                    'flex items-start gap-2 text-xs rounded px-2 py-1.5',
-                    branch.status === 'failed'
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400'
-                  )}
-                >
-                  {branch.status === 'success' ? (
-                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  ) : (
-                    <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium">{branch.name}</span>
-                    {branch.status === 'success' ? (
-                      <span className="ml-2 text-muted-foreground">
-                        {branch.commitsCount} commits
-                      </span>
-                    ) : (
-                      <span className="ml-2 break-words">{branch.error}</span>
-                    )}
+                <div key={branch.name} className={styles.branchResult} data-status={branch.status}>
+                  {branch.status === 'success' ? <CheckCircle2 size={14} aria-hidden="true" /> : <XCircle size={14} aria-hidden="true" />}
+                  <div>
+                    <strong>{branch.name}</strong>{' '}
+                    {branch.status === 'success' ? <span>{branch.commitsCount} commits</span> : <span>{branch.error}</span>}
                   </div>
                   {branch.status === 'failed' && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5 shrink-0 hover:text-destructive"
+                    <button
+                      type="button"
+                      className={styles.iconButton}
                       onClick={() => onDeleteBranch(result.sourceId, branch.name)}
                       disabled={isDeleting}
-                      title="Remove this branch"
+                      title={`Remove branch ${branch.name}`}
+                      aria-label={`Remove branch ${branch.name}`}
                     >
-                      {isDeleting ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-3 w-3" />
-                      )}
-                    </Button>
+                      {isDeleting ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Trash2 size={13} aria-hidden="true" />}
+                    </button>
                   )}
                 </div>
               )
             })}
           </div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            commits: {commitsCount}, events: {eventsCount}
-          </div>
+          <p className={styles.resultCounts}>commits: {commitsCount}, events: {eventsCount}</p>
         </div>
       </div>
     )
@@ -270,40 +204,25 @@ function SyncResultRow({ result, expanded, onToggle, deletingBranches, onDeleteB
 
   if (warnings && warnings.length > 0) {
     return (
-      <div className="flex items-start gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200 dark:bg-yellow-950/20 dark:border-yellow-900/30">
-        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm">{sourceName}</div>
-          <div className="text-sm text-muted-foreground mt-1">
-            Sync succeeded, but some paths failed
-          </div>
-          <ul className="mt-2 space-y-1">
-            {warnings.map((warning, idx) => (
-              <li
-                key={idx}
-                className="text-xs text-muted-foreground break-words"
-              >
-                • {warning}
-              </li>
-            ))}
+      <div className={styles.resultRow} data-status="warning">
+        <AlertTriangle size={18} className={styles.resultIcon} aria-hidden="true" />
+        <div className={styles.resultBody}>
+          {title}
+          <p className={styles.resultCopy}>Sync succeeded, but some paths failed</p>
+          <ul className={styles.warningList}>
+            {warnings.map((warning, index) => <li key={index}>{warning}</li>)}
           </ul>
-          <div className="mt-2 text-xs text-muted-foreground">
-            commits: {commitsCount}, events: {eventsCount}
-          </div>
+          <p className={styles.resultCounts}>commits: {commitsCount}, events: {eventsCount}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
-      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="font-medium text-sm">{sourceName}</div>
-      </div>
-      <div className="text-xs text-muted-foreground">
-        commits: {commitsCount}, events: {eventsCount}
-      </div>
+    <div className={styles.resultRow} data-status="success">
+      <CheckCircle2 size={18} className={styles.resultIcon} aria-hidden="true" />
+      <div className={styles.resultBody}>{title}</div>
+      <div className={styles.resultCounts}>commits: {commitsCount}, events: {eventsCount}</div>
     </div>
   )
 }

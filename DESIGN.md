@@ -132,7 +132,7 @@ components:
 
 Numbered Evidence is a compact personal workbench, not a decorative report editor. Navy frames the workspace, ice blue separates work areas from near-white records, and cobalt makes references and selected paths visible. Dense rows, stable IDs, fixed readiness cells, and one aligned evidence trace make the path from captured work to reviewed reporting inspectable.
 
-This document records the shared visual world of the shipped Numbered Evidence production UI: the shared shell plus the Timeline, Plans, Reports, and report workspace surfaces, with the remaining Library and configuration pages inheriting that shell. They implement the user-directed C hybrid composition: B’s 248px period sidebar combined with C’s split body, persistent context, and report-first review. The approved hybrid is now the production system; A and B survive only as historical prototype alternates, and the development-only `/prototype` switcher is not part of production.
+This document records the shared visual world of the shipped Numbered Evidence production UI: the shared shell, the primary Timeline, Plans, Reports, and report workspace surfaces, and the migrated secondary surfaces — Library and configuration (Templates and Prompts), Collection sources, Security and sign-in, and the report creation entry. The primary surfaces implement the user-directed C hybrid composition: B’s 248px period sidebar combined with C’s split body, persistent context, and report-first review. The approved hybrid is now the production system; A and B survive only as historical prototype alternates, and the development-only `/prototype` switcher is not part of production.
 
 **Key Characteristics:**
 - Stable `@id`, `%id`, and `Rid` references remain visible beside content.
@@ -140,6 +140,40 @@ This document records the shared visual world of the shipped Numbered Evidence p
 - Compact controls, tabular numerals, thin dividers, and small radii prioritize scanning.
 - Navy is structural; cobalt marks action, selection, citations, and trace alignment.
 - Source draft, candidate final, and human adoption remain visibly distinct.
+
+## Surface Coverage
+
+The primary surfaces remain Timeline, Plans, Reports, and the report workspace. Four secondary surface families have completed the Numbered Evidence migration and now express the same world rather than merely inheriting the shell. All of them are fixed-light (`color-scheme: light`), inherit the Geist stack, and honor the shared selection, focus, status, and reduced-motion rules.
+
+### Library and Configuration — Templates and Prompts
+Routes: `/templates`, `/templates/new`, `/templates/[id]`, `/prompts`.
+- **Ground:** Template management and Prompt management use the near-white paper canvas with 30px 28px padding and a title-first heading; the description stays at body size and 70ch.
+- **Records:** Templates and prompts are dense white full-width records on paper, led by a cobalt-ink `recordId` reference (the official template id, `T<id>` for personal templates, `S<id>` for AI styles, and the prompt key), a title and description, and a trailing scope/state badge plus text or icon actions. Official and personal templates stay visibly distinct through a worded badge, never hue alone.
+- **Tabs:** Official/Personal template tabs and the system-prompt tabs use the shared tab language with tabular counts; inactive tabs are white/slate and the active tab is navy/white.
+- **Editing:** Template form, rich-text content editor, prompt manager, and AI style selector are white panels on the paper ground with the standard 42px inputs, gently squared controls, cobalt caret, and 3px `#74a2fa` focus outline. Prompt previews scroll inside their field; the system prompt tabs cover the live `check` and `generate` keys only, and a prompt shows its variable block only when variables exist.
+- **Dialogs:** View, clone, and save-as dialogs reuse the shared white dialog surface with a navy title, hairline boundary, and fixed-light form controls.
+
+### Collection Sources
+Routes: `/collect`, `/collect/new`, `/collect/[id]`.
+- **Ground:** The collection workspace uses the shared frame ground (`#e2ebf4`) as its outer surface and a paper primary column with 30px 28px padding, a title-first heading, a 70ch description, and page actions aligned to the trailing edge.
+- **Records:** Sources render as dense white table rows on desktop: a cobalt-ink numbered source reference, source name and identity, repository/path, author count, branch cursor, a worded status badge, and trailing actions. The Actions column is sticky on desktop; below 780px the table becomes labeled card records in one column, with the Actions cell as a non-sticky card footer.
+- **Scope:** Project-scope badges use short labels ("Work", "Personal") with a leading icon and a reserved minimum width so words never clip against the sticky Actions edge.
+- **Forms and dialogs:** The create/edit source form uses white form panels on the frame ground with a field grid, path suggestions, branch tags, scope radios, and inline validation. Scan-repository and author-picker dialogs follow the shared dialog pattern, including staged Escape handling.
+- **Feedback:** Sync results appear as inline result rows with explicit counts and worded success/failure state; loading uses the cobalt pulse line and errors use the red alert field with a retry action.
+
+### Security and Sign-in
+Routes: `/security`, `/login`.
+- **Security workspace:** Frame ground behind white record panels, title-first heading, and two tabs — Personal access tokens and Audit log — with tabular counts.
+- **PAT records:** Numbered white records led by a cobalt `#id`, with token name, a worded status badge (Active/Expired/Revoked), and prefix, created, last-used, and expiry metadata in tabular numerals. Copy and Revoke are text actions; revocation uses an AlertDialog with a dimmed backdrop and a navy-titled white popup whose animation collapses under reduced motion.
+- **Audit records:** Dense white rows carrying agent, working directory, User-Agent, and timestamp, with pagination and filter controls that keep their query parameters.
+- **Login:** A standalone fixed-light gate outside the application shell: frame ground, one centered white panel capped at 440px with a 2px navy top rule, title-first body in Geist, cobalt input caret, visible focus, and an explicit inline error alert. No shell navigation is rendered on this route.
+
+### Report Creation Entry
+Routes: `/new`; `/edit/[id]` remains the thin editable wrapper around the already-migrated report workspace.
+- **Composition:** A paper primary column with 30px 28px padding and a persistent 350px frame-ground settings rail, title-first, with no body-level top bar. The rail carries the week control, required title field, creation note, and Create/Cancel actions. The rail narrows to 300px at 1100px and stacks beneath the primary content at 780px.
+- **Audience:** Two equal Leadership/Personal tabs with explicit evidence-scope labels; active is navy/white. The read-only source-draft preview keeps muted theme ink on its field and wraps long tokens.
+- **States:** Explicit loading (cobalt pulse line), dashed empty preview with recovery guidance, worded ready/error status, and a red inline title-validation field linked through `aria-invalid` and `aria-describedby`.
+- **Responsive:** Settings step to a two-column grid at 960px, stack at 780px, and the page holds at the 320px minimum without horizontal overflow.
 
 ## Colors
 
