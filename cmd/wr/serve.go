@@ -24,7 +24,6 @@ import (
 const (
 	defaultPort     = "6868"
 	defaultHostname = "0.0.0.0"
-	appDirName      = "weekly-reporter"
 )
 
 // config 是 serve 的运行时配置。全部来自环境变量，语义与 TS 侧同名同值（蓝图 §2.6）：
@@ -40,18 +39,13 @@ type config struct {
 }
 
 func loadConfig() (config, error) {
-	home, err := os.UserHomeDir()
+	dataDir, err := appDataDir()
 	if err != nil {
 		return config{}, fmt.Errorf("resolve home directory: %w", err)
 	}
-
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		dataHome = filepath.Join(home, ".local", "share")
-	}
-	configHome := os.Getenv("XDG_CONFIG_HOME")
-	if configHome == "" {
-		configHome = filepath.Join(home, ".config")
+	configDir, err := appConfigDir()
+	if err != nil {
+		return config{}, fmt.Errorf("resolve home directory: %w", err)
 	}
 
 	port := os.Getenv("PORT")
@@ -63,8 +57,6 @@ func loadConfig() (config, error) {
 		hostname = defaultHostname
 	}
 
-	dataDir := filepath.Join(dataHome, appDirName)
-	configDir := filepath.Join(configHome, appDirName)
 	return config{
 		// 严格等于 "1"：与 isAuthDisabled() 一致，其它值不放行。
 		AuthDisabled: os.Getenv("WR_AUTH_DISABLED") == "1",

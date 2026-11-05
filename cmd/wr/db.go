@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	_ "modernc.org/sqlite"
-
+	"github.com/dev-zapi/weekly-reporter/internal/db"
 	"github.com/dev-zapi/weekly-reporter/internal/migrate"
 )
 
@@ -60,23 +58,23 @@ func runDBMigrate(stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// 与 better-sqlite3 默认对齐（ADR-0025）。事务锁由 Migrate 显式 BEGIN IMMEDIATE
-	// 管理（research §7.3），不在 DSN 上重复配 _txlock。
-	dsn := "file:" + dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
-	db, err := sql.Open("sqlite", dsn)
+	// 连接参数（foreign_keys / busy_timeout）由 internal/db.Open 统一提供，与 serve
+	// 共用同一条 DSN（ADR-0025）。事务锁由 Migrate 显式 BEGIN IMMEDIATE 管理
+	// （research §7.3），不在 DSN 上重复配 _txlock。
+	conn, err := db.Open(dbPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "打开数据库失败: %v\n", err)
 		return 1
 	}
-	defer db.Close()
-	db.SetMaxOpenConns(1)
+	defer conn.Close()
+	conn.SetMaxOpenConns(1)
 
-	if err := db.Ping(); err != nil {
+	if err := conn.Ping(); err != nil {
 		fmt.Fprintf(stderr, "连接数据库失败: %v\n", err)
 		return 1
 	}
 
-	applied, err := corpus.Migrate(context.Background(), db)
+	applied, err := corpus.Migrate(context.Background(), conn)
 	if err != nil {
 		if errors.Is(err, migrate.ErrLedgerMismatch) {
 			fmt.Fprintf(stderr, "账本校验失败，拒绝迁移: %v\n", err)
@@ -92,21 +90,4 @@ func runDBMigrate(stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "applied %d migration(s); 账本现为 %d/%d\n", applied, corpus.Len(), corpus.Len())
 	}
 	return 0
-}
-
-// databasePath 解析默认数据库路径，语义对齐 src/lib/paths.ts：
-// $XDG_DATA_HOME（缺省 ~/.local/share）/weekly-reporter/reports.db。
-//
-// 注：B0 骨架票（#97）的 serve 也会读同一组 env；若集成时它提供统一的 paths
-// 包，可把这里换成对它的复用，行为不变。
-func databasePath() (string, error) {
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dataHome = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(dataHome, "weekly-reporter", "reports.db"), nil
 }
