@@ -229,7 +229,10 @@ func TestAuditClampsLimit(t *testing.T) {
 		"/api/audit?limit=1000": 200,
 		"/api/audit?limit=200":  200,
 		"/api/audit?limit=1":    1,
-		// NaN 路径：非数字回落到默认 50。
+		// 票内口径：非数字按默认值路径处理（默认 50）。
+		// 注意 route.ts 对纯 NaN 的实际可观测行为是省略 LIMIT 并在 JSON 里回
+		// null（drizzle 收到 NaN 时丢掉该子句）；该分支未被 vitest 覆盖，按票
+		// 的「默认值路径」实现，差异登记在 openQuestions。
 		"/api/audit?limit=abc": 50,
 		// parseInt 语义：前导数字有效，尾部垃圾忽略。
 		"/api/audit?limit=2abc": 2,
