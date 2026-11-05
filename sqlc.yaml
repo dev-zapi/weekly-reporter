@@ -1,0 +1,63 @@
+version: "2"
+# sqlc 配置（ADR-0025 配方）。schema 输入是 cmd/schema-dump 产出的最终态，
+# 不是 drizzle/ 语料：sqlc 的 SQLite 解析器吃不下 ALTER TABLE / 反引号 / DML。
+sql:
+  - engine: "sqlite"
+    schema: "internal/db/schema.sql"
+    queries: "internal/db/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        emit_json_tags: true
+        emit_empty_slices: true
+        # 可空列默认生成 *T 而不是 sql.NullXxx；本仓扫描路径只认指针形态。
+        emit_pointers_for_null_types: true
+        overrides:
+          # JSON 文本列：11 个 mode:'json' 列全部按键 override，避免生成裸 string
+          # 让仓储层无谓地二次转换。可空 7 列必须 pointer: true —— emit_pointers_for_null_types
+          # 对显式 go_type 不生效，字符串写法会生成非指针 json.RawMessage，扫 NULL 直接报错。
+          - column: "report_variants.structure_completeness_rule"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "report_event_snapshots.metadata"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "generation_message_parts.data"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "generation_proposals.plan_state"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "generation_proposals.public_summary"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "raw_events.metadata"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          - column: "ai_config.model_list_cache"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"
+              pointer: true
+          # NOT NULL 的 JSON 列用非指针，NULL 不可能出现。
+          - column: "generation_proposals.summary"
+            go_type: "encoding/json.RawMessage"
+          - column: "generation_query_snapshots.parameters"
+            go_type: "encoding/json.RawMessage"
+          - column: "generation_query_snapshots.result"
+            go_type: "encoding/json.RawMessage"
+          - column: "collect_sources.config"
+            go_type: "encoding/json.RawMessage"
