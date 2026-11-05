@@ -77,7 +77,7 @@ func TestListPATsReturnsMetadataWithoutTokenHash(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	pats := decodePats(t, rec.Body.Bytes())
-	if len(pats) != 3 { // includes auth-pat
+	if len(pats) != 3 { // 含 auth-pat
 		t.Fatalf("pats = %d, want 3 (%v)", len(pats), pats)
 	}
 
@@ -225,7 +225,7 @@ func TestCreatePATStoresHashNotPlaintext(t *testing.T) {
 	if row.TokenHash == created.Token {
 		t.Fatalf("token_hash must not equal the plaintext")
 	}
-	if len(row.TokenHash) != 64 { // SHA-256 hex = 64 chars
+	if len(row.TokenHash) != 64 { // SHA-256 十六进制 = 64 字符
 		t.Fatalf("token_hash length = %d, want 64", len(row.TokenHash))
 	}
 	if row.TokenHash != auth.HashToken(created.Token) {

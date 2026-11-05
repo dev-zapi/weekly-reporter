@@ -1,10 +1,9 @@
-// Package dbtest opens throwaway SQLite databases with the production schema
-// applied, for tests that need real SQL instead of a mock.
+// Package dbtest 提供一批用完即弃的 SQLite 库，已套用生产 schema，给需要真实
+// SQL（而不是 mock）的测试用。
 //
-// The schema is internal/db/schema.sql — the read-only merged view of the
-// drizzle corpus (ADR-0025), so a test database is structurally identical to a
-// deployed one. A temp *file* is used rather than :memory: on purpose: the DSN
-// pragmas (foreign_keys, busy_timeout) only exist on a real connection.
+// schema 取 internal/db/schema.sql——drizzle 语料的只读合并视图（ADR-0025），
+// 因此测试库与线上库结构完全一致。这里刻意用临时文件而不是 :memory:：
+// DSN 上的 pragma（foreign_keys、busy_timeout）只在真实连接上生效。
 package dbtest
 
 import (
@@ -18,8 +17,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
 
-// New returns a database in t.TempDir() with schema.sql applied and closed on
-// cleanup.
+// New 返回一个建在 t.TempDir() 里、已套用 schema.sql 的库，测试结束时关闭。
 func New(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -33,9 +31,8 @@ func New(t *testing.T) *sql.DB {
 	return conn
 }
 
-// applySchema replays the consolidated schema one statement at a time. Splitting
-// on ";" matches the existing internal/db tests: schema.sql is generated DDL with
-// no semicolons inside literals.
+// applySchema 逐条重放合并后的 schema。按 ";" 切分与 internal/db 现有测试一致：
+// schema.sql 是脚本生成的 DDL，字面量里不含分号。
 func applySchema(t *testing.T, conn *sql.DB) {
 	t.Helper()
 

@@ -93,7 +93,7 @@ func TestAuditReturnsPaginatedRecordsNewestFirst(t *testing.T) {
 		t.Fatalf("total = %d, want 2", resp.Total)
 	}
 
-	// Newest first.
+	// 新→旧。
 	first, second := resp.Records[0].PatName, resp.Records[1].PatName
 	if first == nil || *first != "pat-2" {
 		t.Fatalf("records[0].patName = %v, want pat-2", first)

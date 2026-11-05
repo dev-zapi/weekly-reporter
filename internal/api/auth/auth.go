@@ -1,7 +1,6 @@
-// Package auth mounts the authentication domain routes (`/api/auth/**`) on the
-// chi /api subrouter. Behavior is a 1:1 port of src/app/api/auth/**/route.ts;
-// authentication, auditing and trace headers are the middleware's job (internal/auth
-// and internal/trace), so these handlers never re-authenticate.
+// Package auth 把认证域路由（`/api/auth/**`）挂到 chi 的 /api 子路由上。
+// 行为逐条对照 src/app/api/auth/**/route.ts；鉴权、审计与 trace 响应头由中间件
+// 负责（internal/auth 与 internal/trace），所以这些 handler 不再重复鉴权。
 package auth
 
 import (

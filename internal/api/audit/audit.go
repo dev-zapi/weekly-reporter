@@ -1,5 +1,5 @@
-// Package audit mounts the audit domain route (`GET /api/audit`) on the chi
-// /api subrouter. Behavior is a 1:1 port of src/app/api/audit/route.ts.
+// Package audit 把审计域路由（`GET /api/audit`）挂到 chi 的 /api 子路由上。
+// 行为逐条对照 src/app/api/audit/route.ts。
 package audit
 
 import (
