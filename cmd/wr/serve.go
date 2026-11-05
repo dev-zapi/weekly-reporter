@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/buildinfo"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/migrate"
 	"github.com/dev-zapi/weekly-reporter/web"
 )
 
@@ -99,12 +101,12 @@ func runServe(args []string) error {
 	// 单连接：SQLite 写串行是既有行为，连接池多开只会把写冲突变成 SQLITE_BUSY。
 	conn.SetMaxOpenConns(1)
 
-	// ---- 账本校验挂点（由 B0 迁移器票接线）----
-	// 目标语义（ADR-0026）：只读校验 __drizzle_migrations 的已应用集合等于冻结头部
-	// （41/41），容忍历史怪癖；校验失败 fail closed 拒启，绝不执行迁移 SQL。
-	// 显式迁移只在 `wr db migrate`。接线前这里不读库。
-	if err := validateLedger(conn, cfg.DBPath); err != nil {
-		return err
+	// ---- 账本校验（ADR-0026，蓝图 §4 启动序列）----
+	// 读 env 之后、挂路由与 embed 之前：只读校验 __drizzle_migrations 的已应用集合
+	// 等于冻结头部（41/41），容忍历史怪癖；失败 fail closed 拒启，绝不执行迁移 SQL。
+	// 显式迁移只在 `wr db migrate`。
+	if err := validateLedger(conn); err != nil {
+		return fmt.Errorf("migration ledger verification failed: %w", err)
 	}
 	// ---------------------------------------------
 
@@ -134,8 +136,8 @@ func runServe(args []string) error {
 	return nil
 }
 
-// validateLedger 是迁移器票（#98）的接线点，B0 阶段为不做事的占位。
-// 保留成独立函数而不是内联注释，接线时只改函数体、不动启动序列。
-func validateLedger(_ *sql.DB, _ string) error {
-	return nil
+// validateLedger 是 serve 启动路径的账本接线点（#98 提供 internal/migrate）。
+// 独立函数保留启动序列的形状：接线只改函数体、不动调用位置。
+func validateLedger(conn *sql.DB) error {
+	return migrate.Verify(context.Background(), conn)
 }

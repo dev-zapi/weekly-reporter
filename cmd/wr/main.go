@@ -1,7 +1,7 @@
 // Command wr 是迁移后的单二进制入口（ADR-0025）。
 //
-// B0 只有 serve 子命令骨架；`wr db migrate|new` 由 B0 迁移器票（#98）接线，
-// 本票不 import internal/migrate，避免两个实现互相耦合。
+// B0 子命令：serve（#97 骨架）与 db migrate（#98 迁移器）。
+// `wr db new` 是切换后项，不在 B0。
 package main
 
 import (
@@ -21,6 +21,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, "wr serve:", err)
 			os.Exit(1)
 		}
+	case "db":
+		os.Exit(runDB(os.Args[2:]))
 	default:
 		usage()
 		os.Exit(2)
@@ -29,4 +31,5 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "usage: wr serve")
+	fmt.Fprintln(os.Stderr, "       wr db migrate")
 }
