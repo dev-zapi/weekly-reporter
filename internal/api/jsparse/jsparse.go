@@ -15,6 +15,17 @@ import "math"
 // 溢出（例如 20 位数字）在 JS 里是有限浮点数、查库必然查不到，这里饱和到
 // MaxInt64，最终落到与 TS 相同的 404 / 空列表 / 默认值分支，不引入额外分支。
 func ParseInt(value string) (int64, bool) {
+	n, ok, _ := ParseIntWithOverflow(value)
+	return n, ok
+}
+
+// ParseIntWithOverflow 在 ParseInt 之上多报一个信号：JS 的 double 结果已到 2^63。
+//
+// parseInt 先把精确整数舍入到 double，数学值 ≥ 2^63-512 时结果就是 2^63。route.ts
+// 把这个数绑进 SQLite 的 LIMIT/OFFSET 会 datatype mismatch（drizzle 按 REAL 绑定），
+// 整条查询报错 → 500 FETCH_ERROR。只饱和到 MaxInt64 会让这一档静默变成「空列表
+// 200」，与冻结状态码不符，所以调用方需要这个区分。
+func ParseIntWithOverflow(value string) (n int64, ok, overflow bool) {
 	i := 0
 	// parseInt 会跳过前导空白。
 	for i < len(value) && isJSSpace(value[i]) {
@@ -33,7 +44,6 @@ func ParseInt(value string) (int64, bool) {
 		i += 2
 	}
 
-	var n int64
 	digits := 0
 	for i < len(value) {
 		d, ok := digitValue(value[i], radix)
@@ -49,12 +59,15 @@ func ParseInt(value string) (int64, bool) {
 		i++
 	}
 	if digits == 0 {
-		return 0, false
+		return 0, false, false
 	}
+	// [2^62, 2^63) 区间 double 的间距是 1024，2^63-512 舍入到 2^63。
+	const doubleOverflowThreshold = math.MaxInt64 - 511 // = 2^63 - 512
+	overflow = n >= doubleOverflowThreshold
 	if negative {
-		return -n, true
+		return -n, true, overflow
 	}
-	return n, true
+	return n, true, overflow
 }
 
 // isJSSpace 覆盖 JS 会跳过的 ASCII 空白。非 ASCII 空白（如 U+00A0）在路径 / 查询

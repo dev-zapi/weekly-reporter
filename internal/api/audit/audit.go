@@ -49,6 +49,21 @@ type record struct {
 //   - limit clamp 到 [1,200]，缺省 50；offset 不设上限，缺省 0（负数归 0）；
 //   - 排序 createdAt desc, id desc（同毫秒的多行仍按写入顺序倒序）；
 //   - 响应 {records, total, limit, offset}。
+//
+// 非数字 limit / offset 走 route.ts 的 NaN 分支，不按默认值处理——票面写明
+// 「行为以现有 route.ts 为唯一事实源」，蓝图 §2.1 又冻结了响应形状与状态码：
+//
+//	parseInt 失败得到 NaN，而 NaN 能穿过 Math.max / Math.min（结果仍是 NaN）；
+//	drizzle 的 buildLimit 只在 `limit >= 0` 时拼 LIMIT、offset 只在真值时拼
+//	OFFSET，于是 NaN 让对应子句整体消失，JSON.stringify(NaN) 又把回显字段变成
+//	null。三个可观测结果（已对 drizzle-orm 0.45.2 + better-sqlite3 复现）：
+//
+//	?limit=abc          → 200，无 LIMIT（返回全部行），"limit":null
+//	?offset=abc         → 200，无 OFFSET，"offset":null
+//	?limit=abc&offset=1 → 只剩 "offset 1" 子句，SQLite 语法错误 → 500 FETCH_ERROR
+//
+// 照抄这个副作用的理由：它是冻结契约的一部分，不是本移植可以顺手「修好」的
+// 自由度；要改成默认 50/0 得先改票面与蓝图，属于设计决策而非施工。
 func listHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
@@ -68,32 +83,32 @@ func listHandler(deps Deps) http.HandlerFunc {
 			params.Outcome = v
 		}
 
-		limit := int64(defaultLimit)
-		if v := query.Get("limit"); v != "" {
-			if n, ok := jsparse.ParseInt(v); ok {
-				limit = n
-			}
-		}
-		if limit < minLimit {
-			limit = minLimit
-		}
-		if limit > maxLimit {
-			limit = maxLimit
-		}
+		limit, limitOK := parseLimit(query.Get("limit"))
+		offset, offsetOK, offsetOverflow := parseOffset(query.Get("offset"))
 
-		offset := int64(0)
-		if v := query.Get("offset"); v != "" {
-			if n, ok := jsparse.ParseInt(v); ok {
-				offset = n
-			}
-		}
-		if offset < 0 {
-			offset = 0
+		// route.ts 的非法 SQL 分支：LIMIT 被丢掉但 OFFSET 为真值时，drizzle 拼出的
+		// 语句没有 LIMIT 却带 OFFSET，SQLite 直接报语法错误，被 route.ts 的 catch
+		// 变成 500 FETCH_ERROR。按同一可观测结果返回，不去执行那条坏语句。
+		//
+		// offsetOverflow 走同一分支：offset 的数学值 ≥ 2^63-512 时 JS 得到 2^63，
+		// 绑进 SQLite 是 datatype mismatch——同一条「坏 SQL → 500」路径。
+		if (!limitOK && offsetOK && offset > 0) || offsetOverflow {
+			log.Printf("Error fetching audit log: unusable pagination clause (limit ok=%t, offset=%d)", limitOK, offset)
+			respond.Error(w, http.StatusInternalServerError, "Failed to fetch audit log", "FETCH_ERROR")
+			return
 		}
 
 		ctx := r.Context()
-		params.Limit = limit
-		params.Offset = offset
+		// LIMIT -1 在 SQLite 里等价于「不设上限」，正是 NaN 时丢掉 LIMIT 子句的效果；
+		// 省略 OFFSET 与 OFFSET 0 等价（NaN 与 0 在 drizzle 里都不拼子句）。
+		params.Limit = -1
+		if limitOK {
+			params.Limit = limit
+		}
+		params.Offset = 0
+		if offsetOK {
+			params.Offset = offset
+		}
 		rows, err := deps.Queries.ListAuditLogs(ctx, params)
 		if err != nil {
 			log.Printf("Error fetching audit log: %v", err)
@@ -130,11 +145,60 @@ func listHandler(deps Deps) http.HandlerFunc {
 			})
 		}
 
+		// JSON 回显：NaN 在 JSON.stringify 里变 null，所以 limit/offset 必须可空。
+		var limitJSON, offsetJSON *int64
+		if limitOK {
+			limitJSON = &limit
+		}
+		if offsetOK {
+			offsetJSON = &offset
+		}
+
 		respond.JSON(w, http.StatusOK, struct {
 			Records []record `json:"records"`
 			Total   int64    `json:"total"`
-			Limit   int64    `json:"limit"`
-			Offset  int64    `json:"offset"`
-		}{Records: records, Total: total, Limit: limit, Offset: offset})
+			Limit   *int64   `json:"limit"`
+			Offset  *int64   `json:"offset"`
+		}{Records: records, Total: total, Limit: limitJSON, Offset: offsetJSON})
 	}
+}
+
+// parseLimit 复刻 route.ts 的
+//
+//	Math.min(Math.max(parseInt(sp.get('limit') || '50'), 1), 200)
+//
+// ok=false 表示 JS 的 NaN（parseInt 没读到数字）：Math.max / Math.min 不吞 NaN，
+// 所以 clamp 在这里必须让位。缺省与空串都走默认值——`|| '50'` 把空串当假值。
+func parseLimit(raw string) (int64, bool) {
+	if raw == "" {
+		return defaultLimit, true
+	}
+	n, ok := jsparse.ParseInt(raw)
+	if !ok {
+		return 0, false
+	}
+	if n < minLimit {
+		n = minLimit
+	}
+	if n > maxLimit {
+		n = maxLimit
+	}
+	return n, true
+}
+
+// parseOffset 复刻 `Math.max(parseInt(sp.get('offset') || '0'), 0)`。ok=false 是 NaN；
+// overflow 表示 JS 的 double 结果已到 2^63，绑定进 SQLite 必然 datatype mismatch。
+// 负向溢出被 Math.max 归 0，不会进 OFFSET 子句，因而不报 overflow。
+func parseOffset(raw string) (n int64, ok, overflow bool) {
+	if raw == "" {
+		return 0, true, false
+	}
+	n, ok, overflow = jsparse.ParseIntWithOverflow(raw)
+	if !ok {
+		return 0, false, false
+	}
+	if n < 0 {
+		return 0, true, false
+	}
+	return n, true, overflow
 }

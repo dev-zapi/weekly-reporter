@@ -24,9 +24,29 @@ type auditResponse struct {
 		CallerCwd     *string `json:"callerCwd"`
 		Outcome       string  `json:"outcome"`
 	} `json:"records"`
-	Total  int64 `json:"total"`
-	Limit  int64 `json:"limit"`
-	Offset int64 `json:"offset"`
+	Total  int64  `json:"total"`
+	Limit  *int64 `json:"limit"`
+	Offset *int64 `json:"offset"`
+}
+
+// intPtr 让「回显数字」的表驱动用例可以直接写字面量。
+func intPtr(v int64) *int64 { return &v }
+
+// assertEcho 断言可空的分页回显字段：want=nil 表示 route.ts 的 NaN → JSON null。
+func assertEcho(t *testing.T, field string, got, want *int64) {
+	t.Helper()
+	if want == nil {
+		if got != nil {
+			t.Fatalf("%s = %d, want null", field, *got)
+		}
+		return
+	}
+	if got == nil {
+		t.Fatalf("%s = null, want %d", field, *want)
+	}
+	if *got != *want {
+		t.Fatalf("%s = %d, want %d", field, *got, *want)
+	}
 }
 
 func decodeAudit(t *testing.T, body []byte) auditResponse {
@@ -69,9 +89,8 @@ func TestAuditReturnsEmptyArrayWhenNoRecords(t *testing.T) {
 	if resp.Total != 0 {
 		t.Fatalf("total = %d, want 0", resp.Total)
 	}
-	if resp.Limit != 50 || resp.Offset != 0 {
-		t.Fatalf("limit/offset = %d/%d, want 50/0 defaults", resp.Limit, resp.Offset)
-	}
+	assertEcho(t, "limit", resp.Limit, intPtr(50))
+	assertEcho(t, "offset", resp.Offset, intPtr(0))
 }
 
 func TestAuditReturnsPaginatedRecordsNewestFirst(t *testing.T) {
@@ -216,70 +235,155 @@ func TestAuditSupportsLimitAndOffset(t *testing.T) {
 	if resp.Total != 5 {
 		t.Fatalf("total = %d, want 5", resp.Total)
 	}
-	if resp.Limit != 2 || resp.Offset != 1 {
-		t.Fatalf("limit/offset = %d/%d, want 2/1 echoed back", resp.Limit, resp.Offset)
-	}
+	assertEcho(t, "limit", resp.Limit, intPtr(2))
+	assertEcho(t, "offset", resp.Offset, intPtr(1))
 }
 
 // 票内点名：limit clamp 到 [1,200]。
+// 非数字（parseInt → NaN）不按默认值处理：route.ts 会丢掉 LIMIT 子句，回显 null
+// （见 TestAuditNonNumericPaginationMirrorsRouteTS 的完整矩阵）。
 func TestAuditClampsLimit(t *testing.T) {
-	cases := map[string]int64{
-		"/api/audit?limit=0":    1,
-		"/api/audit?limit=-5":   1,
-		"/api/audit?limit=1000": 200,
-		"/api/audit?limit=200":  200,
-		"/api/audit?limit=1":    1,
-		// 票内口径：非数字按默认值路径处理（默认 50）。
-		// 注意 route.ts 对纯 NaN 的实际可观测行为是省略 LIMIT 并在 JSON 里回
-		// null（drizzle 收到 NaN 时丢掉该子句）；该分支未被 vitest 覆盖，按票
-		// 的「默认值路径」实现，差异登记在 openQuestions。
-		"/api/audit?limit=abc": 50,
+	cases := []struct {
+		path string
+		want *int64
+	}{
+		{"/api/audit?limit=0", intPtr(1)},
+		{"/api/audit?limit=-5", intPtr(1)},
+		{"/api/audit?limit=1000", intPtr(200)},
+		{"/api/audit?limit=200", intPtr(200)},
+		{"/api/audit?limit=1", intPtr(1)},
+		{"/api/audit?limit=abc", nil},
 		// parseInt 语义：前导数字有效，尾部垃圾忽略。
-		"/api/audit?limit=2abc": 2,
-		"/api/audit":            50,
+		{"/api/audit?limit=2abc", intPtr(2)},
+		{"/api/audit", intPtr(50)},
 	}
-	for path, want := range cases {
-		t.Run(path, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
 			h := newHarness(t)
 			authPAT := h.createPAT("auth-pat")
 			h.seedAudit("pat-1", 200, "success", 1_700_000_000_000)
 
-			rec := h.do(path, authPAT.Token)
+			rec := h.do(tc.path, authPAT.Token)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d", rec.Code)
 			}
 			resp := decodeAudit(t, rec.Body.Bytes())
-			if resp.Limit != want {
-				t.Fatalf("limit = %d, want %d", resp.Limit, want)
-			}
+			assertEcho(t, "limit", resp.Limit, tc.want)
 		})
 	}
 }
 
 // 票内点名：offset 的下界是 0（负值归 0），默认 0。
 func TestAuditClampsOffsetToAtLeastZero(t *testing.T) {
-	cases := map[string]int64{
-		"/api/audit?offset=-1":   0,
-		"/api/audit?offset=abc":  0,
-		"/api/audit?offset=3":    3,
-		"/api/audit?offset=0":    0,
-		"/api/audit?offset=3abc": 3,
+	cases := []struct {
+		path string
+		want *int64
+	}{
+		{"/api/audit?offset=-1", intPtr(0)},
+		{"/api/audit?offset=abc", nil},
+		{"/api/audit?offset=3", intPtr(3)},
+		{"/api/audit?offset=0", intPtr(0)},
+		{"/api/audit?offset=3abc", intPtr(3)},
 	}
-	for path, want := range cases {
-		t.Run(path, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
 			h := newHarness(t)
 			authPAT := h.createPAT("auth-pat")
 			h.seedAudit("pat-1", 200, "success", 1_700_000_000_000)
 
-			rec := h.do(path, authPAT.Token)
+			rec := h.do(tc.path, authPAT.Token)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("status = %d", rec.Code)
 			}
 			resp := decodeAudit(t, rec.Body.Bytes())
-			if resp.Offset != want {
-				t.Fatalf("offset = %d, want %d", resp.Offset, want)
-			}
+			assertEcho(t, "offset", resp.Offset, tc.want)
 		})
+	}
+}
+
+// 非数字 limit / offset 的可观测行为逐条对照 route.ts（drizzle NaN 副作用）：
+// LIMIT/OFFSET 子句消失、回显字段为 null；只有 OFFSET 而无 LIMIT 时 SQL 语法
+// 错误 → 500 FETCH_ERROR。票面写明 route.ts 是唯一事实源，蓝图 §2.1 冻结了
+// 响应形状与状态码，所以这些不是「可以修好」的空间。
+func TestAuditNonNumericPaginationMirrorsRouteTS(t *testing.T) {
+	cases := []struct {
+		path        string
+		wantStatus  int
+		wantLimit   *int64
+		wantOffset  *int64
+		wantRecords int
+	}{
+		// LIMIT 被丢掉 → 返回全部 5 行（若按默认 50 实现，这一条无法区分，另外
+		// 用下面的 60 行用例钉住「子句真的消失」）。
+		{"/api/audit?limit=abc", http.StatusOK, nil, intPtr(0), 5},
+		{"/api/audit?limit=abc&offset=abc", http.StatusOK, nil, nil, 5},
+		{"/api/audit?limit=abc&offset=0", http.StatusOK, nil, intPtr(0), 5},
+		{"/api/audit?limit=abc&offset=-5", http.StatusOK, nil, intPtr(0), 5},
+		// OFFSET 被丢掉，LIMIT 照常生效。
+		{"/api/audit?offset=abc", http.StatusOK, intPtr(50), nil, 5},
+		{"/api/audit?offset=abc&limit=2", http.StatusOK, intPtr(2), nil, 2},
+		// OFFSET 生效但 LIMIT 缺失 → drizzle 拼出 `... offset 1` → 语法错误 → 500。
+		{"/api/audit?limit=abc&offset=1", http.StatusInternalServerError, nil, nil, 0},
+		{"/api/audit?limit=abc&offset=3abc", http.StatusInternalServerError, nil, nil, 0},
+		// offset 的数学值 ≥ 2^63-512 时 parseInt 的结果是 2^63，drizzle 按 REAL 绑定
+		// → datatype mismatch → 同一条 500 路径。
+		{"/api/audit?offset=99999999999999999999", http.StatusInternalServerError, nil, nil, 0},
+		{"/api/audit?offset=9223372036854775807", http.StatusInternalServerError, nil, nil, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			h := newHarness(t)
+			authPAT := h.createPAT("auth-pat")
+			for i := 0; i < 5; i++ {
+				h.seedAudit("pat-1", 200, "success", int64(1_700_000_000_000+i))
+			}
+
+			rec := h.do(tc.path, authPAT.Token)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+			if tc.wantStatus == http.StatusInternalServerError {
+				if !strings.Contains(rec.Body.String(), `"code":"FETCH_ERROR"`) {
+					t.Fatalf("body = %s, want FETCH_ERROR", rec.Body.String())
+				}
+				return
+			}
+			resp := decodeAudit(t, rec.Body.Bytes())
+			if len(resp.Records) != tc.wantRecords {
+				t.Fatalf("records = %d, want %d", len(resp.Records), tc.wantRecords)
+			}
+			assertEcho(t, "limit", resp.Limit, tc.wantLimit)
+			assertEcho(t, "offset", resp.Offset, tc.wantOffset)
+		})
+	}
+}
+
+// NaN limit 必须真的丢掉 LIMIT 子句（而不是退回默认 50）：60 行数据下返回 60 行。
+func TestAuditNonNumericLimitDropsLimitClause(t *testing.T) {
+	h := newHarness(t)
+	authPAT := h.createPAT("auth-pat")
+	for i := 0; i < 60; i++ {
+		h.seedAudit("pat-1", 200, "success", int64(1_700_000_000_000+i))
+	}
+
+	rec := h.do("/api/audit?limit=abc", authPAT.Token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	resp := decodeAudit(t, rec.Body.Bytes())
+	if len(resp.Records) != 60 {
+		t.Fatalf("records = %d, want 60 (LIMIT clause must be dropped)", len(resp.Records))
+	}
+	if resp.Total != 60 {
+		t.Fatalf("total = %d, want 60", resp.Total)
+	}
+	assertEcho(t, "limit", resp.Limit, nil)
+	assertEcho(t, "offset", resp.Offset, intPtr(0))
+
+	// 默认路径仍然只取 50 行——两条路径必须真的不同。
+	def := h.do("/api/audit", authPAT.Token)
+	if got := len(decodeAudit(t, def.Body.Bytes()).Records); got != 50 {
+		t.Fatalf("default records = %d, want 50", got)
 	}
 }
 

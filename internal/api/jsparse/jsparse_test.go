@@ -56,3 +56,36 @@ func TestParseIntSaturatesOnOverflow(t *testing.T) {
 		t.Fatalf("got = %d, want MaxInt64", got)
 	}
 }
+
+// double 舍入边界：数学值 ≥ 2^63-512 时 parseInt 的结果是 2^63，绑进 SQLite 的
+// LIMIT/OFFSET 会 datatype mismatch（route.ts 因此回 500）。阈值两侧各取一例。
+func TestParseIntWithOverflowFlagsDoubleRounding(t *testing.T) {
+	cases := []struct {
+		in       string
+		want     int64
+		overflow bool
+	}{
+		{"9223372036854775295", 9223372036854775295, false}, // 2^63-513，舍入到 2^63-1024
+		{"9223372036854775296", 9223372036854775296, true},  // 2^63-512，舍入到 2^63
+		{"9223372036854775807", math.MaxInt64, true},
+		{"9223372036854775808", math.MaxInt64, true},
+		{"99999999999999999999", math.MaxInt64, true},
+		{"1", 1, false},
+		{"-9223372036854775807", -math.MaxInt64, true},
+		{"-1", -1, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, ok, overflow := ParseIntWithOverflow(tc.in)
+			if !ok {
+				t.Fatalf("ok = false, want true")
+			}
+			if got != tc.want {
+				t.Fatalf("got = %d, want %d", got, tc.want)
+			}
+			if overflow != tc.overflow {
+				t.Fatalf("overflow = %t, want %t", overflow, tc.overflow)
+			}
+		})
+	}
+}
