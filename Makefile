@@ -1,11 +1,18 @@
 SHELL := /bin/bash
-.PHONY: dev build start stop restart status install uninstall clean test lint migrate help
+.PHONY: help dev web build build-next test test-go lint migrate schema sqlc check-schema install uninstall start stop restart status logs clean
 
 SERVICE_NAME=weekly-reporter
 SERVICE_FILE=$(SERVICE_NAME).service
 SYSTEMD_USER_DIR=$(HOME)/.config/systemd/user
 DEFAULT_PORT=6868
 DEFAULT_HOSTNAME=0.0.0.0
+
+MODULE=github.com/dev-zapi/weekly-reporter
+BIN=bin/wr
+COMMIT_HASH?=$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+BUILD_TIME?=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+# -X 只能写包级 string；与 internal/buildinfo 的两个变量一一对应。
+LDFLAGS=-X $(MODULE)/internal/buildinfo.CommitHash=$(COMMIT_HASH) -X $(MODULE)/internal/buildinfo.BuildTime=$(BUILD_TIME)
 
 help:
 	@echo "Weekly Reporter - Makefile Commands"
@@ -14,20 +21,25 @@ help:
 	@echo "  make <command>"
 	@echo ""
 	@echo "Commands:"
-	@echo "  dev        Start development server"
-	@echo "  build      Build for production"
-	@echo "  install    Install systemd user service (default: port=$(DEFAULT_PORT), host=$(DEFAULT_HOSTNAME))"
-	@echo "  uninstall  Uninstall systemd user service"
-	@echo "  start      Start systemd user service"
-	@echo "  stop       Stop systemd user service"
-	@echo "  restart    Restart systemd user service"
-	@echo "  status     Show service status"
-	@echo "  logs       Show service logs"
-	@echo "  test       Run tests"
-	@echo "  lint       Run linter"
-	@echo "  migrate    Generate database migration"
-	@echo "  clean      Clean build artifacts"
-	@echo "  help       Show this help message"
+	@echo "  dev          Start development server (next dev, unchanged)"
+	@echo "  build        Build the Go single binary $(BIN) (vite -> embed -> go build)"
+	@echo "  build-next   Build the Next.js production bundle (npm run build, kept until cutover)"
+	@echo "  install      Install systemd user service (default: port=$(DEFAULT_PORT), host=$(DEFAULT_HOSTNAME))"
+	@echo "  uninstall    Uninstall systemd user service"
+	@echo "  start        Start systemd user service"
+	@echo "  stop         Stop systemd user service"
+	@echo "  restart      Restart systemd user service"
+	@echo "  status       Show service status"
+	@echo "  logs         Show service logs"
+	@echo "  test         Run vitest (client side)"
+	@echo "  test-go      Run Go tests"
+	@echo "  lint         Run linter"
+	@echo "  migrate      Generate database migration (drizzle-kit)"
+	@echo "  schema       Regenerate internal/db/schema.sql from drizzle/ (never hand-edited)"
+	@echo "  sqlc         Regenerate internal/db from sqlc.yaml"
+	@echo "  check-schema Fail if internal/db/schema.sql is out of date"
+	@echo "  clean        Clean build artifacts"
+	@echo "  help         Show this help message"
 	@echo ""
 	@echo "Configuration (.env.production):"
 	@echo "  PORT=6868          - Server port"
@@ -36,10 +48,29 @@ help:
 dev:
 	source ~/.nvm/nvm.sh && npm run dev
 
-build:
+# 唯一构建入口（ADR-0025 / ADR-0029）：前端产物 -> go:embed -> go build。
+# B0 阶段 vite 位置是占位：web/dist/index.html 已签入，SPA 构建在 B7 接入，
+# web/ 在本票不得引入任何 vite 包（红线）。placeholder 缺失直接报错，
+# 避免产出没有 SPA 的二进制。
+web:
+	@test -f web/dist/index.html || { \
+		echo "web/dist is missing: B0 expects the checked-in placeholder (SPA build lands in B7)"; \
+		exit 1; \
+	}
+	@echo "web: B0 placeholder in place (web/dist/index.html)"
+
+build: web
+	@mkdir -p bin
+	CGO_ENABLED=0 go build -trimpath -o $(BIN) \
+		-ldflags "$(LDFLAGS)" ./cmd/wr
+	@echo "built $(BIN) ($(COMMIT_HASH) $(BUILD_TIME))"
+
+# Next 生产构建独立保留到 cutover（蓝图 §6）：make install 依赖它，
+# 否则 systemd unit 的 `npm run start` 会因为缺 .next 而启动失败。
+build-next:
 	source ~/.nvm/nvm.sh && npm run build
 
-install: build
+install: build-next
 	@echo "Installing $(SERVICE_NAME) service..."
 	mkdir -p $(SYSTEMD_USER_DIR)
 	cp $(SERVICE_FILE) $(SYSTEMD_USER_DIR)/$(SERVICE_FILE)
@@ -80,12 +111,26 @@ logs:
 test:
 	source ~/.nvm/nvm.sh && npm run test
 
+test-go:
+	go test ./...
+
 lint:
 	source ~/.nvm/nvm.sh && npm run lint
 
 migrate:
 	source ~/.nvm/nvm.sh && npx drizzle-kit generate
 
+# schema.sql 是 drizzle 语料的只读合并视图：只由脚本产出，不手改（ADR-0025）。
+schema:
+	go run ./cmd/schema-dump -root . -out internal/db/schema.sql
+
+sqlc: schema
+	go tool sqlc generate
+
+# 漂移防护：CI/本地都能发现「语料变了但 schema.sql 没重生成」。
+check-schema: schema
+	git diff --exit-code -- internal/db/schema.sql
+
 clean:
-	rm -rf .next node_modules/.cache
+	rm -rf .next node_modules/.cache bin
 	rm -rf data/*.db
