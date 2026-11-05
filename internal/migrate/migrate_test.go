@@ -107,14 +107,12 @@ func testCorpus(t *testing.T, whens []int64, tags []string, sqls map[string]stri
 	}
 	j := journal{Version: "7", Dialect: "sqlite"}
 	for i, tag := range tags {
-		body, ok := sqls[tag]
-		if !ok {
+		if _, ok := sqls[tag]; !ok {
 			t.Fatalf("testCorpus: 缺少 %s 的 SQL", tag)
 		}
 		j.Entries = append(j.Entries, journalEntry{
 			IDX: i, Version: "6", When: whens[i], Tag: tag, Breakpoints: true,
 		})
-		_ = body
 	}
 	raw, err := json.Marshal(j)
 	if err != nil {
@@ -137,26 +135,26 @@ func testCorpus(t *testing.T, whens []int64, tags []string, sqls map[string]stri
 
 // 旧式 16 位哈希：0002–0010 当年由老版本 drizzle 写入 sha256 前 16 位。
 func TestVerifyLedgerToleratesLegacyShortHash(t *testing.T) {
+	const (
+		initSQL   = "CREATE TABLE a (id integer);"
+		legacySQL = "CREATE TABLE b (id integer);"
+		tailSQL   = "CREATE TABLE c (id integer);"
+	)
 	corpus := testCorpus(t,
 		[]int64{100, 200, 300},
 		[]string{"0000_init", "0005_legacy", "0020_tail"},
 		map[string]string{
-			"0000_init":   "CREATE TABLE a (id integer);",
-			"0005_legacy": "CREATE TABLE b (id integer);",
-			"0020_tail":   "CREATE TABLE c (id integer);",
+			"0000_init":   initSQL,
+			"0005_legacy": legacySQL,
+			"0020_tail":   tailSQL,
 		})
 	db := newDB(t)
 	createLedger(t, db)
-	files := map[string]string{
-		"0000_init":   "CREATE TABLE a (id integer);",
-		"0005_legacy": "CREATE TABLE b (id integer);",
-		"0020_tail":   "CREATE TABLE c (id integer);",
-	}
 	// 第 2 行用旧式 16 位 hash，created_at 是“应用时刻”而非 journal when，
 	// 校验必须只看 hash 前缀、不看 created_at。
-	insertLedger(t, db, sha256Hex([]byte(files["0000_init"])), 999)
-	insertLedger(t, db, sha256Hex([]byte(files["0005_legacy"]))[:16], 1001)
-	insertLedger(t, db, sha256Hex([]byte(files["0020_tail"])), 300)
+	insertLedger(t, db, sha256Hex([]byte(initSQL)), 999)
+	insertLedger(t, db, sha256Hex([]byte(legacySQL))[:16], 1001)
+	insertLedger(t, db, sha256Hex([]byte(tailSQL)), 300)
 
 	if err := corpus.VerifyLedger(context.Background(), db); err != nil {
 		t.Fatalf("旧式 16 位哈希应被容忍，却失败: %v", err)
