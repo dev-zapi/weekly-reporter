@@ -17,7 +17,8 @@ import (
 // runDB 处理 `wr db <subcommand>`；args 是 "db" 之后的参数（即 os.Args[2:]）。
 //
 // 与 B0 骨架票（#97）的约定：
-//   - main.go 的 dispatch 里以 `case "db": return runDB(os.Args[2:])` 的形式接入；
+//   - main.go 的 dispatch 里以 `case "db": os.Exit(runDB(os.Args[2:]))` 的形式接入
+//     （runDB 返回退出码，main 需要原样传递）；
 //   - serve 启动路径在打开数据库后调用 migrate.Verify(ctx, db)（即内嵌语料 +
 //     只读账本校验），返回错误即拒启（fail closed），启动路径不执行任何迁移 SQL；
 //   - 本文件只负责 migrate 子命令，`wr db new` 是切换后项，本票不实现。
