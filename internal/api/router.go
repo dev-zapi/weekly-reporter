@@ -1,5 +1,5 @@
-// Package api 组装 chi 路由与中间件。B0 只有 health 与 SPA 回落骨架，
-// 业务域路由从 B1 起按域挂到 /api 下。
+// Package api 组装 chi 路由与中间件。B0 落地 health 与 SPA 回落骨架，
+// 业务域路由从 B1 起按域挂到 /api 下（B1 = 认证与审计域）。
 package api
 
 import (
