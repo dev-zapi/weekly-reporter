@@ -3,12 +3,15 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
+	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
 
 // 本文件是 src/app/api/auth/pats/route.test.ts 的 Go 同用例集（ADR-0029）：
@@ -353,6 +356,127 @@ func TestCreatePATDefaultsToNeverExpiring(t *testing.T) {
 			t.Fatalf("expiresAt = %v, want nil", *row.ExpiresAt)
 		}
 	}
+}
+
+// expiresAt 的可观测行为对照 route.ts：JSON 数字与数字字符串按 Date.now() 同单位
+// 落库；非数字字符串在 JS 里与数字比较恒为 false（永不过期，落 NULL）；布尔 /
+// 对象 / 多元素数组让 better-sqlite3 绑定抛错 → 500 CREATE_ERROR。
+// 存储类差异（TS 会把 "later" 存成 TEXT、1.5 存成 REAL）不影响鉴权结论，见
+// optionalMillis 的注释。
+func TestCreatePATExpiresAtMirrorsRouteTS(t *testing.T) {
+	cases := []struct {
+		label     string
+		expiresAt string
+		wantCode  int
+		wantStore *int64
+	}{
+		{"json number", `1700000000000`, http.StatusCreated, int64Ptr(1700000000000)},
+		{"negative json number", `-1`, http.StatusCreated, int64Ptr(-1)},
+		{"null", `null`, http.StatusCreated, nil},
+		{"numeric string", `"1700000000000"`, http.StatusCreated, int64Ptr(1700000000000)},
+		{"padded numeric string", `" 1700000000000 "`, http.StatusCreated, int64Ptr(1700000000000)},
+		{"non-numeric string", `"later"`, http.StatusCreated, nil},
+		{"pos infinity string", `"Infinity"`, http.StatusCreated, nil},
+		{"nan string", `"NaN"`, http.StatusCreated, nil},
+		{"neg infinity string", `"-Infinity"`, http.StatusCreated, int64Ptr(math.MinInt64)},
+		{"empty string", `""`, http.StatusCreated, int64Ptr(0)},
+		{"fraction truncates", `1.9`, http.StatusCreated, int64Ptr(1)},
+		{"huge number clamps up", `1e300`, http.StatusCreated, int64Ptr(math.MaxInt64)},
+		{"huge negative clamps down", `-1e300`, http.StatusCreated, int64Ptr(math.MinInt64)},
+		{"boolean", `true`, http.StatusInternalServerError, nil},
+		{"object", `{"a":1}`, http.StatusInternalServerError, nil},
+		{"empty array", `[]`, http.StatusInternalServerError, nil},
+		{"two-element array", `[1,2]`, http.StatusInternalServerError, nil},
+		{"single-element array", `[1700000000000]`, http.StatusCreated, int64Ptr(1700000000000)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			h := newHarness(t)
+			authPAT := h.createPAT("auth-pat", nil)
+
+			body := `{"name":"probe","expiresAt":` + tc.expiresAt + `}`
+			rec := h.do(http.MethodPost, "/api/auth/pats", body, authPAT.Token)
+			if rec.Code != tc.wantCode {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantCode, rec.Body.String())
+			}
+			if tc.wantCode != http.StatusCreated {
+				if !strings.Contains(rec.Body.String(), "CREATE_ERROR") {
+					t.Fatalf("body = %s, want CREATE_ERROR", rec.Body.String())
+				}
+				return
+			}
+
+			row, err := findPATNamed(t, h, "probe")
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case tc.wantStore == nil && row.ExpiresAt != nil:
+				t.Fatalf("expiresAt = %d, want NULL", *row.ExpiresAt)
+			case tc.wantStore != nil && row.ExpiresAt == nil:
+				t.Fatalf("expiresAt = NULL, want %d", *tc.wantStore)
+			case tc.wantStore != nil && *row.ExpiresAt != *tc.wantStore:
+				t.Fatalf("expiresAt = %d, want %d", *row.ExpiresAt, *tc.wantStore)
+			}
+		})
+	}
+}
+
+// 过期判定必须跟着 expiresAt 的 JS 语义走：字符串 "1700000000000" 与数字等价（会
+// 过期），非数字字符串永不过期（JS 里与数字比较恒 false）。
+func TestCreatePATExpiresAtDrivesAuthVerdict(t *testing.T) {
+	h := newHarness(t)
+	authPAT := h.createPAT("auth-pat", nil)
+
+	past := `{"name":"past-string","expiresAt":"1700000000000"}`
+	rec := h.do(http.MethodPost, "/api/auth/pats", past, authPAT.Token)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	created := decodeCreatedPAT(t, rec.Body.Bytes())
+
+	// 2000 年就"过期"了：拿它请求必须 401。
+	if got := h.do(http.MethodGet, "/api/auth/pats", "", created.Token); got.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d with an expired numeric-string expiresAt, want 401", got.Code)
+	}
+
+	// 非数字字符串：JS 里 `"later" <= now` 为 false，永不过期 → 仍可用。
+	rec = h.do(http.MethodPost, "/api/auth/pats", `{"name":"later","expiresAt":"later"}`, authPAT.Token)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	forever := decodeCreatedPAT(t, rec.Body.Bytes())
+	if got := h.do(http.MethodGet, "/api/auth/pats", "", forever.Token); got.Code != http.StatusOK {
+		t.Fatalf("status = %d with a non-numeric expiresAt, want 200", got.Code)
+	}
+}
+
+func findPATNamed(t *testing.T, h *harness, name string) (db.ApiToken, error) {
+	t.Helper()
+	rows, err := h.conn.ListAPITokens(context.Background())
+	if err != nil {
+		return db.ApiToken{}, err
+	}
+	for _, row := range rows {
+		if row.Name == name {
+			found, err := h.conn.FindAPITokenByID(context.Background(), row.ID)
+			return found, err
+		}
+	}
+	return db.ApiToken{}, fmt.Errorf("PAT %q not found", name)
+}
+
+func decodeCreatedPAT(t *testing.T, body []byte) struct {
+	Token string `json:"token"`
+} {
+	t.Helper()
+	var created struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &created); err != nil {
+		t.Fatal(err)
+	}
+	return created
 }
 
 func TestCreatePATRecordsAuditForCreation(t *testing.T) {

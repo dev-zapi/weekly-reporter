@@ -9,7 +9,9 @@ import (
 	"errors"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -138,7 +140,15 @@ func createPATHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		created, err := auth.CreatePAT(r.Context(), deps.Queries, name, optionalMillis(object, isObject))
+		expiresAtMillis, ok := optionalMillis(object, isObject)
+		if !ok {
+			// route.ts 的 createPat 抛错分支（布尔 / 对象 / 多元素数组无法绑定）。
+			log.Printf("Error creating PAT: unusable expiresAt in body")
+			respond.Error(w, http.StatusInternalServerError, "Failed to create PAT", "CREATE_ERROR")
+			return
+		}
+
+		created, err := auth.CreatePAT(r.Context(), deps.Queries, name, expiresAtMillis)
 		if err != nil {
 			log.Printf("Error creating PAT: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "Failed to create PAT", "CREATE_ERROR")
@@ -174,22 +184,204 @@ func parseName(object map[string]any, isObject bool) (string, bool) {
 	return name, true
 }
 
-// optionalMillis 把 body 里的 expiresAt 转成毫秒时间戳；缺省 / null / 非数字一律
-// 视为「永不过期」（TS 的 `options.expiresAt ?? null`）。
+// optionalMillis 复刻 route.ts 的 `createPat(db, name.trim(), { expiresAt })`。
+// ok=false 表示 route.ts 会抛错并回 500 CREATE_ERROR；其余一律 201。
 //
-// 小数按 JS 侧存进 INTEGER 亲和列的数值截断（Date.now() 永远给整数，小数只可能
-// 来自手写请求）。非数字值在 TS 里会被原样写库、Go 的 int64 无法表达，这里取
-// 「不设过期」而不是 500——两者都是垃圾输入，后者更可用。
-func optionalMillis(object map[string]any, isObject bool) *int64 {
+// expiresAt 在 TS 里是原样绑定进 drizzle 的，两条可观测后果必须一起对上：
+//
+//	鉴权判定：guard 用 `expiresAt <= now` 比较。JS 的关系比较会把字符串转数字，
+//	          所以 "42" 过期、"later" 永不过期（与数字比较恒为 false）、"Infinity"
+//	          永不过期、"-Infinity" 立刻过期。这里用 jsToNumber 复刻该转换，
+//	          而不是「凡非 number 一律永不过期」。
+//	绑定成败：better-sqlite3 只接受数字 / 字符串 / bigint / Buffer / null，布尔与
+//	          对象在绑定阶段抛错（→ 500），数组按参数列表展开（单元素才成功）。
+//
+// 仍有一处存储类差异（本票无法消除，见下）：sqlc 把 expires_at 生成为 *int64，
+// 表达不了 TS 会让 INTEGER 亲和列留下的 TEXT（"later"）与 REAL（1.5）；要逐字节
+// 对等得改跨批次的列类型契约，而蓝图 §2.5 冻结 schema、票面又写明「只施工不设计」。
+// 对鉴权结论无影响：TEXT 值在 JS 里比较恒为 false，与这里记 NULL 同义；REAL 小数
+// 与截断后的整数在「是否已过期」上同结论。
+func optionalMillis(object map[string]any, isObject bool) (*int64, bool) {
 	if !isObject {
-		return nil
+		return nil, true
 	}
-	number, ok := object["expiresAt"].(float64)
-	if !ok {
-		return nil
+	value, present := object["expiresAt"]
+	if !present || value == nil {
+		return nil, true
 	}
-	millis := int64(number)
-	return &millis
+	return expiresAtMillis(value)
+}
+
+// expiresAtMillis 把一个 JSON 值折成库里的 INTEGER 时间戳；ok=false 对应 TS 的 500。
+func expiresAtMillis(value any) (*int64, bool) {
+	if value == nil {
+		return nil, true
+	}
+	switch v := value.(type) {
+	case float64:
+		return millisFromDouble(v), true
+	case string:
+		number, kind := jsToNumber(v)
+		switch kind {
+		case jsNumberNegInfinity:
+			return int64Ptr(math.MinInt64), true
+		case jsNumberNaN, jsNumberPosInfinity:
+			// JS 里与数字比较恒为 false → 永不过期。
+			return nil, true
+		default:
+			return millisFromDouble(number), true
+		}
+	case []any:
+		// better-sqlite3 把数组展开成参数列表：长度 1 才绑定成功，其余抛错。
+		if len(v) != 1 {
+			return nil, false
+		}
+		return expiresAtMillis(v[0])
+	default:
+		// 布尔 / 对象：绑定阶段抛错 → route.ts 的 catch → 500 CREATE_ERROR。
+		return nil, false
+	}
+}
+
+// millisFromDouble 把 JS 数字折成 int64。越界必须夹到两端：Go 的 float→int 转换
+// 在溢出时给出 MinInt64，会让 1e300 立刻过期，而 TS 的 `1e300 <= now` 为 false。
+func millisFromDouble(number float64) *int64 {
+	switch {
+	case math.IsNaN(number):
+		return nil
+	case number >= math.MaxInt64:
+		return int64Ptr(math.MaxInt64)
+	case number <= math.MinInt64:
+		return int64Ptr(math.MinInt64)
+	default:
+		return int64Ptr(int64(number))
+	}
+}
+
+func int64Ptr(v int64) *int64 { return &v }
+
+type jsNumberKind int
+
+const (
+	jsNumberFinite jsNumberKind = iota
+	jsNumberNaN
+	jsNumberPosInfinity
+	jsNumberNegInfinity
+)
+
+// jsToNumber 复刻 ECMAScript 的 ToNumber(字符串)：裁掉首尾空白、空串为 0、
+// 支持 ±Infinity 与 0x/0o/0b 字面量、十进制与指数写法；其余为 NaN。
+//
+// 不用 strconv.ParseFloat 直接兜底：Go 还接受 "inf" / "nan" 这类 JS 视为 NaN 的
+// 写法，会把「永不过期」错判成「立刻过期」。所以先按 JS 文法校验再解析。
+func jsToNumber(s string) (float64, jsNumberKind) {
+	s = strings.TrimSpace(s)
+	switch s {
+	case "":
+		return 0, jsNumberFinite
+	case "Infinity", "+Infinity":
+		return 0, jsNumberPosInfinity
+	case "-Infinity":
+		return 0, jsNumberNegInfinity
+	}
+
+	for _, prefix := range []struct {
+		token string
+		base  float64
+	}{
+		{"0x", 16}, {"0X", 16},
+		{"0o", 8}, {"0O", 8},
+		{"0b", 2}, {"0B", 2},
+	} {
+		if !strings.HasPrefix(s, prefix.token) {
+			continue
+		}
+		// JS 不允许带符号的进制前缀（Number("-0x10") 是 NaN）。
+		digits := s[len(prefix.token):]
+		if digits == "" {
+			return 0, jsNumberNaN
+		}
+		var n float64
+		for i := 0; i < len(digits); i++ {
+			d, ok := radixDigit(prefix.base, digits[i])
+			if !ok {
+				return 0, jsNumberNaN
+			}
+			n = n*prefix.base + d
+		}
+		return n, jsNumberFinite
+	}
+
+	if !isJSDecimal(s) {
+		return 0, jsNumberNaN
+	}
+	number, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		if errors.Is(err, strconv.ErrRange) {
+			// 上溢到 ±Inf、下溢到 0：两个方向都与 JS 一致。
+			if strings.HasPrefix(s, "-") {
+				return 0, jsNumberNegInfinity
+			}
+			return 0, jsNumberPosInfinity
+		}
+		return 0, jsNumberNaN
+	}
+	return number, jsNumberFinite
+}
+
+// isJSDecimal 判断是否符合 JS 的十进制数字文法：
+//
+//	[+-]? ( digits [ '.' digits? ] | '.' digits ) [ ('e'|'E') [+-]? digits ]
+func isJSDecimal(s string) bool {
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		i++
+	}
+	intDigits := 0
+	for i < len(s) && isASCIIDigit(s[i]) {
+		i++
+		intDigits++
+	}
+	fracDigits := 0
+	if i < len(s) && s[i] == '.' {
+		i++
+		for i < len(s) && isASCIIDigit(s[i]) {
+			i++
+			fracDigits++
+		}
+	}
+	if intDigits == 0 && fracDigits == 0 {
+		return false
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		expDigits := 0
+		for i < len(s) && isASCIIDigit(s[i]) {
+			i++
+			expDigits++
+		}
+		if expDigits == 0 {
+			return false
+		}
+	}
+	return i == len(s)
+}
+
+func isASCIIDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+func radixDigit(base float64, b byte) (float64, bool) {
+	switch {
+	case b >= '0' && b <= '9':
+		return float64(b - '0'), true
+	case base == 16 && b >= 'a' && b <= 'f':
+		return float64(b-'a') + 10, true
+	case base == 16 && b >= 'A' && b <= 'F':
+		return float64(b-'A') + 10, true
+	}
+	return 0, false
 }
 
 func revokePATHandler(deps Deps) http.HandlerFunc {
