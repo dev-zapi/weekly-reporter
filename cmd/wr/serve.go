@@ -113,7 +113,8 @@ func runServe(args []string) error {
 			PasswordPath: cfg.AuthPath,
 			Store:        auth.QueriesStore{Queries: db.New(conn)},
 		},
-		SPA: spa,
+		Queries: db.New(conn),
+		SPA:     spa,
 	})
 
 	server := &http.Server{

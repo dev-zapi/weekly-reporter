@@ -1,5 +1,5 @@
-// Package api 组装 chi 路由与中间件。B0 只有 health 与 SPA 回落骨架，
-// 业务域路由从 B1 起按域挂到 /api 下。
+// Package api 组装 chi 路由与中间件。B0 落地 health 与 SPA 回落骨架，
+// 业务域路由从 B1 起按域挂到 /api 下（B1 = 认证与审计域）。
 package api
 
 import (
@@ -8,15 +8,20 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
+	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/buildinfo"
+	"github.com/dev-zapi/weekly-reporter/internal/db"
 	"github.com/dev-zapi/weekly-reporter/internal/trace"
 )
 
 // Options 是路由装配所需的依赖。SPA 为 nil 时不注册静态回落（测试常用）。
+// Queries 是各业务域共用的 sqlc 查询集；serve 必须提供，域路由通过它读写库。
 type Options struct {
-	Auth auth.Options
-	SPA  http.Handler
+	Auth    auth.Options
+	Queries *db.Queries
+	SPA     http.Handler
 }
 
 // NewRouter 返回应用路由。
@@ -31,12 +36,16 @@ func NewRouter(opts Options) http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		r.Use(auth.Middleware(opts.Auth))
+		// B1+ 在这里注册各域路由。域内只做业务语义：鉴权、审计、trace 头由上面
+		// 的中间件与全局 trace 统一负责。
+		authapi.Mount(r, authapi.Deps{Queries: opts.Queries})
+		auditapi.Mount(r, auditapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
 		// 必须显式挂一个通配路由，而不是只设 NotFound。
+		// 通配路由最后注册、优先级也低于静态路由，不会吃掉上面的域路由。
 		r.Handle("/*", http.HandlerFunc(apiNotFound))
-		// B1+ 在这里注册各域路由；B0 留空。
 	})
 
 	if opts.SPA != nil {
