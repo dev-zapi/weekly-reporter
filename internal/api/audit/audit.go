@@ -146,19 +146,28 @@ func listHandler(deps Deps) http.HandlerFunc {
 		}
 
 		// JSON 回显：NaN 在 JSON.stringify 里变 null，所以 limit/offset 必须可空。
-		var limitJSON, offsetJSON *int64
+		var limitJSON *int64
+		var offsetJSON *float64
 		if limitOK {
 			limitJSON = &limit
 		}
 		if offsetOK {
-			offsetJSON = &offset
+			// route.ts 回显的是 parseInt 的 double 结果，不是精确整数：数学值 ≥ 2^53
+			// 时 parseInt 已把它舍入到最近的 double，JSON.stringify 再打该 double 的
+			// 最短往返十进制（?offset=9223372036854775295 → "offset":9223372036854775000）。
+			// Go 的 encoding/json 对 float64 用同一套最短往返记法（< 1e21 不切指数）
+			// 且 |offset| < 2^63 恒在范围内，所以折成 float64 回显即逐字节对等。
+			// OFFSET 绑定仍用精确 int64：两者在此量级最多差 1024，结果都是空页，
+			// 可观测行集与状态码不变（见 parseOffset 的说明）。
+			echo := float64(offset)
+			offsetJSON = &echo
 		}
 
 		respond.JSON(w, http.StatusOK, struct {
 			Records []record `json:"records"`
 			Total   int64    `json:"total"`
 			Limit   *int64   `json:"limit"`
-			Offset  *int64   `json:"offset"`
+			Offset  *float64 `json:"offset"`
 		}{Records: records, Total: total, Limit: limitJSON, Offset: offsetJSON})
 	}
 }
@@ -189,6 +198,9 @@ func parseLimit(raw string) (int64, bool) {
 // parseOffset 复刻 `Math.max(parseInt(sp.get('offset') || '0'), 0)`。ok=false 是 NaN；
 // overflow 表示 JS 的 double 结果已到 2^63，绑定进 SQLite 必然 datatype mismatch。
 // 负向溢出被 Math.max 归 0，不会进 OFFSET 子句，因而不报 overflow。
+//
+// 返回的 n 是精确 int64（用于绑定），而 route.ts 回显的是 parseInt 的 double 结果；
+// ≥ 2^53 的两者最多差 1024，回显侧的舍入在 listHandler 里折成 float64 复现。
 func parseOffset(raw string) (n int64, ok, overflow bool) {
 	if raw == "" {
 		return 0, true, false

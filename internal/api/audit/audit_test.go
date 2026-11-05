@@ -24,9 +24,11 @@ type auditResponse struct {
 		CallerCwd     *string `json:"callerCwd"`
 		Outcome       string  `json:"outcome"`
 	} `json:"records"`
-	Total  int64  `json:"total"`
-	Limit  *int64 `json:"limit"`
-	Offset *int64 `json:"offset"`
+	Total int64  `json:"total"`
+	Limit *int64 `json:"limit"`
+	// offset 是 route.ts 回显的 parseInt double 结果，不是精确整数（≥ 2^53 会
+	// 被舍入），所以按 float64 解码。
+	Offset *float64 `json:"offset"`
 }
 
 // intPtr 让「回显数字」的表驱动用例可以直接写字面量。
@@ -46,6 +48,24 @@ func assertEcho(t *testing.T, field string, got, want *int64) {
 	}
 	if *got != *want {
 		t.Fatalf("%s = %d, want %d", field, *got, *want)
+	}
+}
+
+// assertOffsetEcho 断言 offset 回显。小值（< 2^53）在 double 里是精确的，直接用期望
+// 整数比对；≥ 2^53 的舍入由 TestAuditEchoesDoubleRoundedOffset 逐字节钉住。
+func assertOffsetEcho(t *testing.T, got *float64, want *int64) {
+	t.Helper()
+	if want == nil {
+		if got != nil {
+			t.Fatalf("offset = %v, want null", *got)
+		}
+		return
+	}
+	if got == nil {
+		t.Fatalf("offset = null, want %d", *want)
+	}
+	if *got != float64(*want) {
+		t.Fatalf("offset = %v, want %d", *got, *want)
 	}
 }
 
@@ -90,7 +110,7 @@ func TestAuditReturnsEmptyArrayWhenNoRecords(t *testing.T) {
 		t.Fatalf("total = %d, want 0", resp.Total)
 	}
 	assertEcho(t, "limit", resp.Limit, intPtr(50))
-	assertEcho(t, "offset", resp.Offset, intPtr(0))
+	assertOffsetEcho(t, resp.Offset, intPtr(0))
 }
 
 func TestAuditReturnsPaginatedRecordsNewestFirst(t *testing.T) {
@@ -236,7 +256,7 @@ func TestAuditSupportsLimitAndOffset(t *testing.T) {
 		t.Fatalf("total = %d, want 5", resp.Total)
 	}
 	assertEcho(t, "limit", resp.Limit, intPtr(2))
-	assertEcho(t, "offset", resp.Offset, intPtr(1))
+	assertOffsetEcho(t, resp.Offset, intPtr(1))
 }
 
 // 票内点名：limit clamp 到 [1,200]。
@@ -296,7 +316,40 @@ func TestAuditClampsOffsetToAtLeastZero(t *testing.T) {
 				t.Fatalf("status = %d", rec.Code)
 			}
 			resp := decodeAudit(t, rec.Body.Bytes())
-			assertEcho(t, "offset", resp.Offset, tc.want)
+			assertOffsetEcho(t, resp.Offset, tc.want)
+		})
+	}
+}
+
+// route.ts 回显的是 parseInt 的 double 结果，不是请求里的精确整数：数学值 ≥ 2^53
+// 时 parseInt 已舍入到最近的 double，JSON.stringify 再打它的最短往返十进制。
+// Go 侧按同一 double 回显，逐字节对齐（期望值由 Node 实测：
+// `console.log(JSON.stringify(parseInt(v, 10)))`）。
+func TestAuditEchoesDoubleRoundedOffset(t *testing.T) {
+	cases := []struct {
+		offset string
+		want   string // 响应体里的 `"offset":<want>`
+	}{
+		{"0", "0"},
+		{"3", "3"},
+		{"9007199254740991", "9007199254740991"}, // 2^53-1，double 仍精确
+		{"9007199254740993", "9007199254740992"}, // 2^53+1，舍入到 2^53
+		{"4611686018427387905", "4611686018427388000"},
+		{"9223372036854775295", "9223372036854775000"}, // 2^63-513，overflow 阈值下方一档
+	}
+	for _, tc := range cases {
+		t.Run(tc.offset, func(t *testing.T) {
+			h := newHarness(t)
+			authPAT := h.createPAT("auth-pat")
+			h.seedAudit("pat-1", 200, "success", 1_700_000_000_000)
+
+			rec := h.do("/api/audit?offset="+tc.offset, authPAT.Token)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			if want := `"offset":` + tc.want; !strings.Contains(rec.Body.String(), want) {
+				t.Fatalf("body = %s, want %s", rec.Body.String(), want)
+			}
 		})
 	}
 }
@@ -353,7 +406,7 @@ func TestAuditNonNumericPaginationMirrorsRouteTS(t *testing.T) {
 				t.Fatalf("records = %d, want %d", len(resp.Records), tc.wantRecords)
 			}
 			assertEcho(t, "limit", resp.Limit, tc.wantLimit)
-			assertEcho(t, "offset", resp.Offset, tc.wantOffset)
+			assertOffsetEcho(t, resp.Offset, tc.wantOffset)
 		})
 	}
 }
@@ -378,7 +431,7 @@ func TestAuditNonNumericLimitDropsLimitClause(t *testing.T) {
 		t.Fatalf("total = %d, want 60", resp.Total)
 	}
 	assertEcho(t, "limit", resp.Limit, nil)
-	assertEcho(t, "offset", resp.Offset, intPtr(0))
+	assertOffsetEcho(t, resp.Offset, intPtr(0))
 
 	// 默认路径仍然只取 50 行——两条路径必须真的不同。
 	def := h.do("/api/audit", authPAT.Token)
