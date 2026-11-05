@@ -59,9 +59,9 @@ func runDBMigrate(stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// 与 better-sqlite3 默认对齐（ADR-0025）；migrate 是写路径，用 immediate 事务锁
-	// 避免“先读后写”的升级死锁。journal_mode 不在这里切换，那是 serve 的启动决策。
-	dsn := "file:" + dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_txlock=immediate"
+	// 与 better-sqlite3 默认对齐（ADR-0025）。事务锁由 Migrate 显式 BEGIN IMMEDIATE
+	// 管理（research §7.3），不在 DSN 上重复配 _txlock。
+	dsn := "file:" + dbPath + "?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		fmt.Fprintf(stderr, "打开数据库失败: %v\n", err)
