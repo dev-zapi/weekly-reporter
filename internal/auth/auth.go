@@ -125,7 +125,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			ctx := r.Context()
 
 			if opts.Disabled {
-				next.ServeHTTP(w, r)
+				// 判定结果进 context：/api/auth/verify 要回 mode=disabled。
+				// 只加传值，判定顺序、审计与响应语义都不变。
+				next.ServeHTTP(w, r.WithContext(withResult(ctx, Result{Mode: ModeDisabled})))
 				return
 			}
 
@@ -138,7 +140,7 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 
 			if password := ReadStartupPassword(opts.PasswordPath); password != "" &&
 				timingSafeEqualString(password, token) {
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, r.WithContext(withResult(ctx, Result{Mode: ModePassword})))
 				return
 			}
 
@@ -146,7 +148,8 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			pat, err := opts.Store.FindPAT(ctx, HashToken(token))
 			switch {
 			case errors.Is(err, ErrPATNotFound):
-				audit(ctx, opts.Store, r, http.StatusUnauthorized, nil)
+				// 认不出是哪个 PAT，pat_name 只能为空；失败也记（ADR-0020）。
+				RecordAudit(ctx, opts.Store, r, http.StatusUnauthorized, Result{Mode: ModePAT})
 				writeUnauthorized(w)
 				return
 			case err != nil:
@@ -158,7 +161,8 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 
 			if pat.revoked() || pat.expired(nowMillis) {
 				name := pat.Name
-				audit(ctx, opts.Store, r, http.StatusUnauthorized, &name)
+				RecordAudit(ctx, opts.Store, r, http.StatusUnauthorized,
+					Result{Mode: ModePAT, PATName: &name})
 				writeUnauthorized(w)
 				return
 			}
@@ -167,40 +171,24 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 				log.Printf("auth: touching PAT %d failed: %v", pat.ID, err)
 			}
 
+			// 判定结果进 context 供 handler 读（/api/auth/verify 的 mode 字段）。
+			// 只加传值：判定顺序、审计行为与响应语义都不变。
+			name := pat.Name
+			res := Result{Mode: ModePAT, PATName: &name}
+
 			// 审计要记录 handler 的最终 status，所以必须包一层响应写入器。用 chi 的
 			// WrapResponseWriter 而不是自写结构体：它保留 Flusher / Hijacker 等可选
 			// 接口，否则 B6 的流式生成会卡死（研究文档 §3.3）。
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
-			next.ServeHTTP(ww, r)
+			next.ServeHTTP(ww, r.WithContext(withResult(ctx, res)))
 
-			name := pat.Name
-			audit(ctx, opts.Store, r, ww.Status(), &name)
+			// 审计放在 handler 返回之后，status 才是 handler 真正写出的值。
+			RecordAudit(ctx, opts.Store, r, ww.Status(), res)
 		})
 	}
 }
 
-// audit 写一行审计；失败只记日志，绝不改变业务响应（ADR-0020）。
-func audit(ctx context.Context, store Store, r *http.Request, status int, patName *string) {
-	outcome := "success"
-	if status == http.StatusUnauthorized {
-		outcome = "unauthorized"
-	}
-	rec := AuditRecord{
-		CreatedAtMillis: time.Now().UnixMilli(),
-		PatName:         patName,
-		Method:          r.Method,
-		APIPath:         r.URL.Path,
-		Status:          status,
-		UserAgent:       optionalHeader(r, "User-Agent"),
-		AgentIdentity:   optionalHeader(r, agentIdentityHeader),
-		CallerCwd:       optionalHeader(r, callerCwdHeader),
-		Outcome:         outcome,
-	}
-	if err := store.WriteAudit(ctx, rec); err != nil {
-		log.Printf("auth: failed to write audit record: %v", err)
-	}
-}
-
+// optionalHeader 把可选请求头读成 *string（缺省为 nil，与库里的 NULL 对应）。
 func optionalHeader(r *http.Request, name string) *string {
 	if v := r.Header.Get(name); v != "" {
 		return &v
