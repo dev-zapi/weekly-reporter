@@ -120,6 +120,36 @@ func TestRecordAuditLeavesAbsentHeadersNull(t *testing.T) {
 	}
 }
 
+// 头存在但值为空时 route.ts 存空串（Headers.get 返回 ""），只有头缺失才是 null。
+func TestRecordAuditKeepsPresentButEmptyHeadersAsEmpty(t *testing.T) {
+	q, store := newAuditStore(t)
+	name := "my-agent"
+
+	RecordAudit(context.Background(), store,
+		requestWithHeaders("http://localhost:6868/api/events", http.MethodGet,
+			map[string]string{
+				"User-Agent":              "",
+				"X-Weekly-Reporter-Agent": "",
+				"X-Weekly-Reporter-Cwd":   "",
+			}),
+		http.StatusOK, Result{Mode: ModePAT, PATName: &name})
+
+	row := onlyAuditRow(t, q)
+	cases := []struct {
+		field string
+		got   *string
+	}{
+		{"user_agent", row.UserAgent},
+		{"agent_identity", row.AgentIdentity},
+		{"caller_cwd", row.CallerCwd},
+	}
+	for _, tc := range cases {
+		if tc.got == nil || *tc.got != "" {
+			t.Fatalf("%s = %v, want empty string (not NULL)", tc.field, tc.got)
+		}
+	}
+}
+
 func TestRecordAuditStoresNullPatNameWhenUnidentified(t *testing.T) {
 	q, store := newAuditStore(t)
 

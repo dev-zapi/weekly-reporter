@@ -188,12 +188,17 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 	}
 }
 
-// optionalHeader 把可选请求头读成 *string（缺省为 nil，与库里的 NULL 对应）。
+// optionalHeader 复刻 `request.headers.get(name)` 的三态：头缺失 → nil（库里 NULL，
+// 响应里 null）；头存在但值为空 → &""（TS 存空串，响应里 ""）；多个同名头按
+// Headers 语义用 ", " 连接。不能用 Header.Get：它对「缺失」与「空值」都返回 ""，
+// 会把显式空头误记成 NULL。
 func optionalHeader(r *http.Request, name string) *string {
-	if v := r.Header.Get(name); v != "" {
-		return &v
+	values := r.Header.Values(name)
+	if values == nil {
+		return nil
 	}
-	return nil
+	v := strings.Join(values, ", ")
+	return &v
 }
 
 // QueriesStore 把 sqlc 生成的查询集适配成 Store。
