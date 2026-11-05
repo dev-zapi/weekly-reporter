@@ -19,6 +19,8 @@
 
 # production
 /build
+# Go binary produced by `make build`
+/bin/
 
 # misc
 .DS_Store
@@ -60,6 +62,8 @@ playwright-report/
 blob-report/
 *.yml
 *.yaml
+# sqlc config is source, not a playwright artifact
+!sqlc.yaml
 
 # skill eval workspaces (transient artifacts from skill-creator runs)
 skills/*-workspace/
