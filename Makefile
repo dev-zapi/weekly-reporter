@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: help dev build build-next test test-go lint migrate schema sqlc check-schema install uninstall start stop restart status logs clean
+.PHONY: help dev web build build-next test test-go lint migrate schema sqlc check-schema install uninstall start stop restart status logs clean
 
 SERVICE_NAME=weekly-reporter
 SERVICE_FILE=$(SERVICE_NAME).service
