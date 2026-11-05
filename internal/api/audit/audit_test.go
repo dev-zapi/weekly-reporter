@@ -1,4 +1,4 @@
-package apiaudit
+package audit
 
 import (
 	"encoding/json"

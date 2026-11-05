@@ -1,8 +1,8 @@
-// Package apiauth mounts the authentication domain routes (`/api/auth/**`) on the
+// Package auth mounts the authentication domain routes (`/api/auth/**`) on the
 // chi /api subrouter. Behavior is a 1:1 port of src/app/api/auth/**/route.ts;
 // authentication, auditing and trace headers are the middleware's job (internal/auth
 // and internal/trace), so these handlers never re-authenticate.
-package apiauth
+package auth
 
 import (
 	"database/sql"

@@ -1,6 +1,6 @@
-// Package apiaudit mounts the audit domain route (`GET /api/audit`) on the chi
+// Package audit mounts the audit domain route (`GET /api/audit`) on the chi
 // /api subrouter. Behavior is a 1:1 port of src/app/api/audit/route.ts.
-package apiaudit
+package audit
 
 import (
 	"log"

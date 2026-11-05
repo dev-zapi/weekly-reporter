@@ -1,4 +1,4 @@
-package apiauth
+package auth
 
 import (
 	"encoding/json"
