@@ -170,6 +170,11 @@ func newMockProvider(t *testing.T) *mockProvider {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		if status < 200 || status > 299 {
+			// 错误响应带 retry-after-ms: 0：aiclient 复刻了 AI SDK 的重试，
+			// 这里让重试立即发生，测试不等待指数退避。
+			w.Header().Set("Retry-After-Ms", "0")
+		}
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(payload))
 	}))

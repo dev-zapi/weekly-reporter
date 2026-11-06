@@ -28,7 +28,12 @@ func (c *Client) generateChatCompletions(ctx context.Context, req ObjectRequest)
 	}
 	setTemperature(body, req.Temperature)
 
-	raw, err := c.postJSON(ctx, c.baseURL(defaultOpenAIBaseURL)+"/chat/completions", body, map[string]string{
+	base, err := c.baseURL(defaultOpenAIBaseURL)
+	if err != nil {
+		return "", err
+	}
+
+	raw, err := c.postJSON(ctx, base+"/chat/completions", body, map[string]string{
 		"Authorization": "Bearer " + c.cfg.APIKey,
 	})
 	if err != nil {

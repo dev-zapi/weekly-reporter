@@ -33,7 +33,12 @@ func (c *Client) generateResponses(ctx context.Context, req ObjectRequest) (stri
 	}
 	setTemperature(body, req.Temperature)
 
-	raw, err := c.postJSON(ctx, c.baseURL(defaultOpenAIBaseURL)+"/responses", body, map[string]string{
+	base, err := c.baseURL(defaultOpenAIBaseURL)
+	if err != nil {
+		return "", err
+	}
+
+	raw, err := c.postJSON(ctx, base+"/responses", body, map[string]string{
 		"Authorization": "Bearer " + c.cfg.APIKey,
 	})
 	if err != nil {

@@ -212,7 +212,8 @@ func TestGenerateObjectWritesNaNTemperatureAsNull(t *testing.T) {
 func TestGenerateObjectErrors(t *testing.T) {
 	t.Run("http error", func(t *testing.T) {
 		server, _ := newServer(t, func(w http.ResponseWriter, _ map[string]any) {
-			w.WriteHeader(http.StatusInternalServerError)
+			// 400 不可重试，测试因此不等待退避。
+			w.WriteHeader(http.StatusBadRequest)
 			writeJSON(w, `{"error":"boom"}`)
 		})
 		client := aiclient.New(aiclient.Config{
@@ -243,6 +244,81 @@ func TestGenerateObjectErrors(t *testing.T) {
 func nan() float64 {
 	var zero float64
 	return zero / zero
+}
+
+// AI SDK 默认 maxRetries=2：429/5xx 与网络错误重试，4xx 不重试。测试用
+// retry-after-ms: 0 让退避立即发生（SDK 同样接受该值）。
+func TestGenerateObjectRetriesRetryableStatus(t *testing.T) {
+	var attempts int
+	server, requests := newServer(t, func(w http.ResponseWriter, _ map[string]any) {
+		attempts++
+		if attempts == 1 {
+			w.Header().Set("Retry-After-Ms", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			writeJSON(w, `{"error":{"message":"slow down"}}`)
+			return
+		}
+		writeJSON(w, `{"choices":[{"message":{"content":"{\"ok\":4}"}}]}`)
+	})
+
+	client := aiclient.New(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible, BaseURL: server.URL, Model: "m",
+	})
+	text, err := client.GenerateObject(context.Background(), aiclient.ObjectRequest{
+		Prompt: "hi", Schema: json.RawMessage(testSchema),
+	})
+	if err != nil {
+		t.Fatalf("GenerateObject: %v", err)
+	}
+	if text != `{"ok":4}` {
+		t.Fatalf("text = %q", text)
+	}
+	if len(*requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(*requests))
+	}
+}
+
+func TestGenerateObjectDoesNotRetryNonRetryableStatus(t *testing.T) {
+	server, requests := newServer(t, func(w http.ResponseWriter, _ map[string]any) {
+		w.WriteHeader(http.StatusBadRequest)
+		writeJSON(w, `{"error":{"message":"bad"}}`)
+	})
+
+	client := aiclient.New(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible, BaseURL: server.URL, Model: "m",
+	})
+	if _, err := client.GenerateObject(context.Background(), aiclient.ObjectRequest{
+		Prompt: "hi", Schema: json.RawMessage(testSchema),
+	}); err == nil {
+		t.Fatal("want error for non-retryable status")
+	}
+	if len(*requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(*requests))
+	}
+}
+
+func TestGenerateObjectGivesUpAfterMaxRetries(t *testing.T) {
+	server, requests := newServer(t, func(w http.ResponseWriter, _ map[string]any) {
+		w.Header().Set("Retry-After-Ms", "0")
+		w.WriteHeader(http.StatusInternalServerError)
+		writeJSON(w, `{"error":{"message":"boom"}}`)
+	})
+
+	client := aiclient.New(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible, BaseURL: server.URL, Model: "m",
+	})
+	_, err := client.GenerateObject(context.Background(), aiclient.ObjectRequest{
+		Prompt: "hi", Schema: json.RawMessage(testSchema),
+	})
+	if err == nil {
+		t.Fatal("want error after retries are exhausted")
+	}
+	if want := "Failed after 3 attempts"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	if len(*requests) != 3 {
+		t.Fatalf("requests = %d, want 3", len(*requests))
+	}
 }
 
 // 不支持原生结构化输出的 anthropic 模型（含自定义模型名）退回「单个 json 工具 +
