@@ -10,6 +10,7 @@ import (
 
 	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
 	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
+	collectadditionsapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/additions"
 	eventsapi "github.com/dev-zapi/weekly-reporter/internal/api/events"
 	heatmapapi "github.com/dev-zapi/weekly-reporter/internal/api/events/heatmap"
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
@@ -59,6 +60,10 @@ func NewRouter(opts Options) http.Handler {
 		// B3 的计划域：/plans 与 /plan-items 的 CRUD、评论、顺延与兑现。同样扁平注册，
 		// {id} 与更长的子路由按段数共存。
 		plansapi.Mount(r, plansapi.Deps{Queries: opts.Queries})
+		// B4 的两条增补路由（迁移中唯一的 additive 变更，blueprint §2.8）：
+		// collect 的两个 'use server' action 变成 POST 路由，业务错误走 200 +
+		// 内嵌 error 字段。其余 /collect/* 路由由同批 #103/#117 注册。
+		collectadditionsapi.Mount(r, collectadditionsapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
