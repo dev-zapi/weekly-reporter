@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -161,11 +162,18 @@ func findEventsForWeek(ctx context.Context, queries *db.Queries, weekStart, week
 }
 
 // draftEventsFromRows 把 raw_events 行折成原稿输入。
-func draftEventsFromRows(rows []db.ListRawEventsBetweenForReportRoutesRow) []DraftEvent {
+//
+// metadata 是 drizzle 的 json mode 列：TS 查询时对每行 JSON.parse，非法 JSON
+// 会让整个 findEventsForWeek 抛错（route.ts 的 catch → 500）。这里同样把解析
+// 失败作为错误返回，避免损坏数据被静默当成「无来源的手动事件」。
+func draftEventsFromRows(rows []db.ListRawEventsBetweenForReportRoutesRow) ([]DraftEvent, error) {
 	events := make([]DraftEvent, 0, len(rows))
 	for _, row := range rows {
 		id := row.ID
-		sourceID, sourceIDPresent, repo := eventMetadataFacts(row.Metadata)
+		sourceID, sourceIDPresent, repo, err := eventMetadataFacts(row.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("raw_events id=%d metadata: %w", row.ID, err)
+		}
 		events = append(events, DraftEvent{
 			ID:              &id,
 			EventTime:       row.EventTime,
@@ -176,7 +184,7 @@ func draftEventsFromRows(rows []db.ListRawEventsBetweenForReportRoutesRow) []Dra
 			Repo:            repo,
 		})
 	}
-	return events
+	return events, nil
 }
 
 // VariantDrafts 是 variantSourceDrafts 的结果：两个受众的原稿。
@@ -205,7 +213,11 @@ func PreviewReportSourceDrafts(ctx context.Context, queries *db.Queries, weekSta
 	if err != nil {
 		return nil, err
 	}
-	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+	draftEvents, err := draftEventsFromRows(events)
+	if err != nil {
+		return nil, err
+	}
+	drafts := VariantSourceDrafts(draftEvents, scopes)
 	return []PreviewVariant{
 		{Variant: "leadership", SourceDraft: drafts.Leadership},
 		{Variant: "personal", SourceDraft: drafts.Personal},
@@ -245,7 +257,11 @@ func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, inpu
 	if err != nil {
 		return CreatedReport{}, err
 	}
-	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+	draftEvents, err := draftEventsFromRows(events)
+	if err != nil {
+		return CreatedReport{}, err
+	}
+	drafts := VariantSourceDrafts(draftEvents, scopes)
 
 	created := CreatedReport{}
 	err = queries.InTx(ctx, func(tx *db.Queries) error {
@@ -263,7 +279,11 @@ func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, inpu
 		}
 
 		for _, event := range events {
-			classification := ClassifyEventForVariants(metadataSourceFacts(event.Metadata), scopes)
+			facts, err := metadataSourceFacts(event.Metadata)
+			if err != nil {
+				return err
+			}
+			classification := ClassifyEventForVariants(facts, scopes)
 			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
 				ReportID:           report.ID,
 				RawEventID:         &event.ID,
@@ -387,7 +407,11 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 	if err != nil {
 		return nil, err
 	}
-	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+	draftEvents, err := draftEventsFromRows(events)
+	if err != nil {
+		return nil, err
+	}
+	drafts := VariantSourceDrafts(draftEvents, scopes)
 
 	err = queries.InTx(ctx, func(tx *db.Queries) error {
 		current, err := tx.ListReportVariantsForReportRoutes(ctx, db.ListReportVariantsForReportRoutesParams{
@@ -407,7 +431,11 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 		nextRevision++
 
 		for _, event := range events {
-			classification := ClassifyEventForVariants(metadataSourceFacts(event.Metadata), scopes)
+			facts, err := metadataSourceFacts(event.Metadata)
+			if err != nil {
+				return err
+			}
+			classification := ClassifyEventForVariants(facts, scopes)
 			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
 				ReportID:           reportID,
 				RawEventID:         &event.ID,

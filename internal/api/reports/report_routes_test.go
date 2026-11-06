@@ -487,3 +487,35 @@ func TestSearchReportsErrorShape(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+// raw_events.metadata 是 drizzle 的 json mode 列：非法 JSON 在 TS 里让
+// findEventsForWeek 在查询期抛错 → route.ts 的 catch → 500。preview / create /
+// regenerate-source 三条原稿入口都要复刻这一行为，不能把损坏事件静默当成
+// 无来源的手动事件。
+func TestSourceDraftRoutesRejectCorruptEventMetadata(t *testing.T) {
+	h := newHarness(t)
+	h.seedEvent(1705000000, "git-remote-github", "损坏元数据", `{"sourceId":`)
+
+	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"PREVIEW_ERROR"`) {
+		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = h.do(http.MethodPost, "/api/reports", `{"title":"周报","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"CREATE_ERROR"`) {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var count int
+	if err := h.sqlDB.QueryRow(`SELECT COUNT(*) FROM reports`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("reports = %d, want 0 (corrupt metadata must abort before insert)", count)
+	}
+
+	reportID := h.seedReport("周报", "", "2024-01-08", "2024-01-14", 1705000100)
+	rec = h.do(http.MethodPost, "/api/reports/"+itoa(reportID)+"/regenerate-source", "")
+	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"REGENERATE_ERROR"`) {
+		t.Fatalf("regenerate: %d %s", rec.Code, rec.Body.String())
+	}
+}

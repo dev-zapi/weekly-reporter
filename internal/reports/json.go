@@ -174,11 +174,15 @@ func metadataPointer(raw []byte) *string {
 //
 // TS 侧是 `event.metadata?.sourceId` / `event.metadata?.repo`：非对象、缺键、
 // 类型不对都得到 undefined（等价 nil/空串）。数字兼容 JSON 的 float64 与
-// int64 两种解码结果。
-func eventMetadataFacts(raw []byte) (*int64, bool, string) {
-	metadata := decodeMetadataObject(raw)
+// int64 两种解码结果。非法 JSON 在 TS 里是查询期的 JSON.parse 异常（调用方以
+// 500 收场），这里同样返回错误，而不是把事件静默降级成「无来源的手动事件」。
+func eventMetadataFacts(raw []byte) (*int64, bool, string, error) {
+	metadata, err := decodeMetadataObject(raw)
+	if err != nil {
+		return nil, false, "", err
+	}
 	if metadata == nil {
-		return nil, false, ""
+		return nil, false, "", nil
 	}
 	value, present := metadata["sourceId"]
 	var sourceID *int64
@@ -194,25 +198,28 @@ func eventMetadataFacts(raw []byte) (*int64, bool, string) {
 		}
 	}
 	repo, _ := metadata["repo"].(string)
-	return sourceID, present && value != nil, repo
+	return sourceID, present && value != nil, repo, nil
 }
 
 // metadataSourceFacts 只取 sourceId（classifyEventForVariants 的输入）。
-func metadataSourceFacts(raw []byte) SourceFacts {
-	sourceID, present, _ := eventMetadataFacts(raw)
-	return SourceFacts{ID: sourceID, Present: present}
+func metadataSourceFacts(raw []byte) (SourceFacts, error) {
+	sourceID, present, _, err := eventMetadataFacts(raw)
+	if err != nil {
+		return SourceFacts{}, err
+	}
+	return SourceFacts{ID: sourceID, Present: present}, nil
 }
 
-func decodeMetadataObject(raw []byte) map[string]any {
+func decodeMetadataObject(raw []byte) (map[string]any, error) {
 	if len(raw) == 0 {
-		return nil
+		return nil, nil
 	}
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil
+		return nil, err
 	}
 	object, _ := value.(map[string]any)
-	return object
+	return object, nil
 }
 
 func int64FromFloat(value float64) (int64, bool) {
