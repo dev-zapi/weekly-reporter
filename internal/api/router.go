@@ -20,6 +20,7 @@ import (
 	plansapi "github.com/dev-zapi/weekly-reporter/internal/api/plans"
 	snippetsapi "github.com/dev-zapi/weekly-reporter/internal/api/snippets"
 	tagsapi "github.com/dev-zapi/weekly-reporter/internal/api/tags"
+	templatesapi "github.com/dev-zapi/weekly-reporter/internal/api/templates"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/buildinfo"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -77,6 +78,10 @@ func NewRouter(opts Options) http.Handler {
 		// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由，三段前缀
 		// 都扁平注册在 /collect 之下。
 		collectapi.Mount(r, collectapi.Deps{Queries: opts.Queries})
+		// B5 的模板与 AI 配置域数据面（tickets #104）：/templates 与 /prompts。
+		// 同样扁平注册，静态段 clone 优先于 /templates/{id}，/templates/{id}/render
+		// 按段数与之共存。同批的 settings/ai 与 ai/* 由另两张票注册。
+		templatesapi.Mount(r, templatesapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
