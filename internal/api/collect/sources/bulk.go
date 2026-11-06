@@ -13,10 +13,11 @@ import (
 // 其余非对象/缺 ids/ids 非数组/空数组 → 400 INVALID_IDS。
 
 // bulkIDs 从 body 里取 ids 并校验形状。ok=false 时已经写过响应。
-// decodeErr 表示 body 需要按 500 处理（null 的解构异常）。
-func bulkIDs(w http.ResponseWriter, body any, invalidMessage, serverErrorCode string) ([]any, bool) {
+// invalidMessage 是 400 的业务文案，serverMessage/serverCode 是 catch 分支的 500 文案。
+func bulkIDs(w http.ResponseWriter, body any, invalidMessage, serverMessage, serverCode string) ([]any, bool) {
 	if body == nil {
-		logAndError(w, invalidMessage, serverErrorCode)
+		// `const { ids } = null` 抛 TypeError → catch → 500。
+		logAndError(w, serverMessage, serverCode)
 		return nil, false
 	}
 	object, _ := jsObject(body)
@@ -31,7 +32,8 @@ func bulkIDs(w http.ResponseWriter, body any, invalidMessage, serverErrorCode st
 		case nil, float64, string:
 			// better-sqlite3 只接受 number/string/bigint/buffer/null。
 		default:
-			logAndError(w, invalidMessage, serverErrorCode)
+			// better-sqlite3 在绑定阶段抛错（TypeError/RangeError）→ catch → 500。
+			logAndError(w, serverMessage, serverCode)
 			return nil, false
 		}
 	}
@@ -56,7 +58,7 @@ func bulkDeleteHandler(deps Deps) http.HandlerFunc {
 			logAndError(w, "批量删除采集源失败", "DELETE_ERROR")
 			return
 		}
-		ids, ok := bulkIDs(w, body, "请选择要删除的采集源", "DELETE_ERROR")
+		ids, ok := bulkIDs(w, body, "请选择要删除的采集源", "批量删除采集源失败", "DELETE_ERROR")
 		if !ok {
 			return
 		}
@@ -85,7 +87,7 @@ func bulkUpdateScopeHandler(deps Deps) http.HandlerFunc {
 			logAndError(w, "批量更新项目类型失败", "UPDATE_ERROR")
 			return
 		}
-		ids, ok := bulkIDs(w, body, "请选择要更新的采集源", "UPDATE_ERROR")
+		ids, ok := bulkIDs(w, body, "请选择要更新的采集源", "批量更新项目类型失败", "UPDATE_ERROR")
 		if !ok {
 			return
 		}
