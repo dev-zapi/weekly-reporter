@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -35,7 +36,7 @@ func lookupHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		normalizedPath := stripTrailingSlash(expandInputPath(rawPath))
+		normalizedPath := stripTrailingSlash(collectpath.ExpandInputPath(rawPath))
 		candidateRealpath := tryRealpath(normalizedPath)
 
 		rows, err := deps.Queries.ListCollectSourcesByType(r.Context(), "git-local")

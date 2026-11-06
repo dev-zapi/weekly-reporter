@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -88,7 +89,7 @@ func scanReposHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		resolvedPath := expandInputPath(basePath)
+		resolvedPath := collectpath.ExpandInputPath(basePath)
 		if !isPathAllowed(resolvedPath) {
 			writeScanReposError(w, "不允许访问此目录")
 			return

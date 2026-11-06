@@ -3,6 +3,7 @@ package sources
 import (
 	"strings"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 )
 
@@ -196,7 +197,7 @@ func validateCollectSource(body any) (collectSourceInput, []issue) {
 
 	// transform：git-local 的 owner 做路径展开 + 去结尾斜杠
 	if input.Type == "git-local" {
-		input.Config.Owner = stripTrailingSlash(expandInputPath(input.Config.Owner))
+		input.Config.Owner = stripTrailingSlash(collectpath.ExpandInputPath(input.Config.Owner))
 	}
 	return input, nil
 }

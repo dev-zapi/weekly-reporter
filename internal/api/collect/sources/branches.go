@@ -12,6 +12,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
 
@@ -210,7 +211,7 @@ func branchesHandler(deps Deps) http.HandlerFunc {
 		queryType := query.Get("type")
 		requestPath := ""
 		if raw := query.Get("path"); raw != "" {
-			requestPath = expandInputPath(raw)
+			requestPath = collectpath.ExpandInputPath(raw)
 		}
 		owner := query.Get("owner")
 		repo := query.Get("repo")
@@ -289,7 +290,7 @@ func emailsHandler(deps Deps) http.HandlerFunc {
 		authors := []authorInfo{}
 		switch {
 		case queryType == "git-local" && requestPath != "":
-			authors = getLocalAuthors(expandInputPath(requestPath), branch)
+			authors = getLocalAuthors(collectpath.ExpandInputPath(requestPath), branch)
 		case queryType == "git-remote-github" && owner != "" && repo != "" && effectiveToken != "":
 			authors = getGitHubAuthors(deps.httpDo(), owner, repo, effectiveToken)
 		case queryType == "git-remote-gitlab" && owner != "" && repo != "" && effectiveToken != "":

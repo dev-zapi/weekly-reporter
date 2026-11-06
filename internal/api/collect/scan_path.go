@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"unicode/utf16"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
@@ -44,7 +45,7 @@ func scanPathHandler() http.HandlerFunc {
 		raw := r.URL.Query().Get("path")
 
 		// 路径展开后必为绝对路径；空输入或裸 ~ 视为列出 $HOME 内容。
-		input := expandInputPath(raw)
+		input := collectpath.ExpandInputPath(raw)
 		if jsstr.Trim(raw) == "" || jsstr.Trim(raw) == "~" {
 			input += "/"
 		}
@@ -62,7 +63,7 @@ func scanPathHandler() http.HandlerFunc {
 			query = input[lastSlash+1:]
 		}
 
-		resolvedBase := resolvePath(basePath)
+		resolvedBase := collectpath.Resolve(basePath)
 		if !isPathAllowed(resolvedBase) {
 			respond.Error(w, http.StatusForbidden, "不允许访问此目录", "FORBIDDEN")
 			return
@@ -203,7 +204,7 @@ func readDirectories(basePath string) ([]directoryItem, error) {
 		}
 		directories = append(directories, directoryItem{
 			Name: entry.Name(),
-			Path: resolvePath(filepath.Join(basePath, entry.Name())),
+			Path: collectpath.Resolve(filepath.Join(basePath, entry.Name())),
 		})
 	}
 	return directories, nil
@@ -242,7 +243,7 @@ func findExistingBase(inputPath string) (existingBase, bool) {
 	lastExistingIndex := -1
 	lastExistingPath := ""
 	for i := 0; i < len(segments); i++ {
-		testPath := resolvePath("/" + strings.Join(segments[:i+1], "/"))
+		testPath := collectpath.Resolve("/" + strings.Join(segments[:i+1], "/"))
 		if info, err := os.Stat(testPath); err == nil && info.IsDir() {
 			lastExistingIndex = i
 			lastExistingPath = testPath
@@ -286,7 +287,7 @@ func collectDirs(basePath, query string, maxDepth, currentDepth int) []scoredDir
 		if strings.HasPrefix(name, ".") && name != "." {
 			continue
 		}
-		fullPath := resolvePath(filepath.Join(basePath, name))
+		fullPath := collectpath.Resolve(filepath.Join(basePath, name))
 		score := fuzzyScore(name, query)
 		if score >= 0 {
 			results = append(results, scoredDirectory{Name: name, Path: fullPath, Score: score})

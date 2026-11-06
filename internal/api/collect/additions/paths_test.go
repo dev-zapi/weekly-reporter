@@ -47,31 +47,3 @@ func TestAllowedBaseDirsFallBackToHome(t *testing.T) {
 		t.Fatalf("allowedBaseDirs() = %v, want %v", dirs, want)
 	}
 }
-
-func TestExpandInputPath(t *testing.T) {
-	t.Setenv("HOME", "/home/tester")
-
-	cases := []struct {
-		input string
-		want  string
-	}{
-		{"~", "/home/tester"},
-		{"~/repo", "/home/tester/repo"},
-		{"repo", "/home/tester/repo"},
-		{"/abs/repo", "/abs/repo"},
-		// 结尾斜杠保留（调用方用它区分「列出目录内容」）。
-		{"/abs/repo/", "/abs/repo/"},
-		{"~/repo/", "/home/tester/repo/"},
-		{"/", "/"},
-		// JS 的 trim 语义。
-		{"  ~/repo  ", "/home/tester/repo"},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.input, func(t *testing.T) {
-			if got := expandInputPath(tc.input); got != tc.want {
-				t.Fatalf("expandInputPath(%q) = %q, want %q", tc.input, got, tc.want)
-			}
-		})
-	}
-}

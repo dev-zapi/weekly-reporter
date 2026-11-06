@@ -4,34 +4,6 @@ import (
 	"testing"
 )
 
-// TestExpandInputPathMatchesNode 的期望值来自在施工机上跑 Node path.resolve 的
-// 同一组输入（见 src/lib/collect/paths.ts 的语义）。
-func TestExpandInputPathMatchesNode(t *testing.T) {
-	t.Setenv("HOME", "/home/tester")
-
-	cases := []struct{ input, want string }{
-		{"~/repo/", "/home/tester/repo/"},
-		{"~/", "/home/tester/"},
-		{"~", "/home/tester"},
-		{"/abs/", "/abs/"},
-		{"/abs", "/abs"},
-		{"rel", "/home/tester/rel"},
-		{"./rel", "/home/tester/rel"},
-		{"../up", "/home/up"},
-		{"/", "/"},
-		{"//", "/"},
-		{"///a//b//", "/a/b/"},
-		{"~/a//b//", "/home/tester/a/b/"},
-		{"  ~/repo  ", "/home/tester/repo"},
-		{"a/", "/home/tester/a/"},
-	}
-	for _, tc := range cases {
-		if got := expandInputPath(tc.input); got != tc.want {
-			t.Errorf("expandInputPath(%q) = %q, want %q", tc.input, got, tc.want)
-		}
-	}
-}
-
 // TestStripTrailingSlashPreservesRoot 复刻 `p.replace(/(.)\/+$/, '$1')`。
 func TestStripTrailingSlashPreservesRoot(t *testing.T) {
 	cases := []struct{ input, want string }{

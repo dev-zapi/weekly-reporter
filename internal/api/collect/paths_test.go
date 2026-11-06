@@ -1,40 +1,12 @@
 package collect
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 )
 
-// 本文件是 src/lib/collect/paths.test.ts 与白名单判定的 Go 版本。白名单是票面
-// 明确要求「必有断言」的部分，因此这里直接对纯函数做表驱动断言，再由
-// scan-path 的 httptest 覆盖 403 的线上形状。
-
-func TestExpandInputPath(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	cases := []struct{ name, input, want string }{
-		{"bare tilde", "~", home},
-		{"tilde slash", "~/github/weekly", filepath.Join(home, "github/weekly")},
-		{"trailing slash preserved", "~/", home + "/"},
-		{"trailing slash on absolute", home + "/github/", home + "/github/"},
-		{"surrounding whitespace trimmed", "  ~/github  ", filepath.Join(home, "github")},
-		{"tilde user unsupported", "~god/github", filepath.Join(home, "~god/github")},
-		{"tilde not at start", "/tmp/~weird", "/tmp/~weird"},
-		{"relative resolves under home", "github/weekly", filepath.Join(home, "github/weekly")},
-		{"absolute normalized", "/opt//projects/../repo", "/opt/repo"},
-		{"parent segments collapse", "~/../outside", filepath.Join(home, "..", "outside")},
-		{"empty input is home", "", home},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := expandInputPath(tc.input); got != filepath.Clean(tc.want) && got != tc.want {
-				t.Fatalf("expandInputPath(%q) = %q, want %q", tc.input, got, tc.want)
-			}
-		})
-	}
-}
+// 本文件只保留 scan-path route 的白名单判定断言。路径展开的用例已随实现收口到
+// internal/api/collect/collectpath（CONTEXT.md「路径展开」的单一规则）。
 
 func TestIsPathAllowed(t *testing.T) {
 	home := t.TempDir()
@@ -156,9 +128,6 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
-
-// 编译期确认 os 包在 HOME 缺失时仍返回空串（expandInputPath 的兜底分支）。
-var _ = os.Getenv
 
 // git 执行面的错误文案是冻结契约的一部分（route.ts 按 stderr 文本分支），
 // 这里钉住三种输入的错误形态。
