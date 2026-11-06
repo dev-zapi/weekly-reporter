@@ -3,6 +3,7 @@ package sources
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"testing"
 )
 
@@ -251,7 +252,7 @@ func manyAliases(count int, value string) string {
 	encoded, err := json.Marshal(func() []string {
 		values := make([]string, count)
 		for i := range values {
-			values[i] = value + itoa(i)
+			values[i] = value + strconv.Itoa(i)
 		}
 		return values
 	}())

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -105,7 +106,7 @@ func putHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			if duplicates := duplicateAliases(input.Aliases, existingAliases); len(duplicates) > 0 {
-				respond.Error(w, http.StatusBadRequest, "别名已被使用: "+joinAliases(duplicates), "DUPLICATE_ALIAS")
+				respond.Error(w, http.StatusBadRequest, "别名已被使用: "+strings.Join(duplicates, ", "), "DUPLICATE_ALIAS")
 				return
 			}
 		}
@@ -347,7 +348,6 @@ func removeBranch(existingConfig []byte, branchName string) (string, *branchRemo
 		// 非对象 JSON（数组/字符串/标量）上读属性是 undefined → NO_BRANCHES。
 		return "", &branchRemovalError{message: "采集源没有分支配置", code: "NO_BRANCHES", status: http.StatusBadRequest}
 	}
-	_ = config
 	rawBranches, present := config["branches"]
 	branches, isArray := rawBranches.([]any)
 	if !present || !isArray {

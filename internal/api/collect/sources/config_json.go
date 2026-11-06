@@ -186,7 +186,7 @@ func mergeEditedBranches(existing json.RawMessage, edited []branchEntry, hasEdit
 	result := make([]branchCursorEntry, 0, len(edited))
 	for _, entry := range edited {
 		name := jsTrim(entry.String)
-		if entry.IsString == false {
+		if !entry.IsString {
 			name = jsTrim(entry.Name)
 		}
 		if name == "" {

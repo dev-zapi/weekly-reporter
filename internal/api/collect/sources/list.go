@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
@@ -133,7 +134,6 @@ func bindInt64(value float64) (int64, bool) {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value != math.Trunc(value) {
 		return 0, false
 	}
-	const maxInt64AsFloat = 9223372036854775807
 	if value >= 9223372036854775808.0 || value < -9223372036854775808.0 {
 		return 0, false
 	}
@@ -177,7 +177,7 @@ func createHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			if duplicates := duplicateAliases(input.Aliases, aliases); len(duplicates) > 0 {
-				respond.Error(w, http.StatusBadRequest, "别名已被使用: "+joinAliases(duplicates), "DUPLICATE_ALIAS")
+				respond.Error(w, http.StatusBadRequest, "别名已被使用: "+strings.Join(duplicates, ", "), "DUPLICATE_ALIAS")
 				return
 			}
 		}
@@ -316,18 +316,6 @@ func existingAliases(r *http.Request, queries *db.Queries, excludeID int64) (map
 		}
 	}
 	return aliases, nil
-}
-
-// joinAliases 复刻 JS 的 `duplicates.join(', ')`。
-func joinAliases(values []string) string {
-	result := ""
-	for i, value := range values {
-		if i > 0 {
-			result += ", "
-		}
-		result += value
-	}
-	return result
 }
 
 // duplicateAliases 复刻 `validated.aliases.filter(a => existingAliases.has(a))`：

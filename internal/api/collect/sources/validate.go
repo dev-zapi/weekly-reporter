@@ -1,6 +1,7 @@
 package sources
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
@@ -81,19 +82,7 @@ func typeMessage(expected string, value any) string {
 }
 
 func indexSegment(index int) string {
-	return itoa(index)
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	digits := []byte{}
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
+	return strconv.Itoa(index)
 }
 
 func appendSegment(path []string, segment string) []string {
