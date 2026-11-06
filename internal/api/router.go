@@ -10,6 +10,7 @@ import (
 
 	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
 	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
+	collectsourcesapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/sources"
 	eventsapi "github.com/dev-zapi/weekly-reporter/internal/api/events"
 	heatmapapi "github.com/dev-zapi/weekly-reporter/internal/api/events/heatmap"
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
@@ -29,6 +30,9 @@ type Options struct {
 	Auth    auth.Options
 	Queries *db.Queries
 	SPA     http.Handler
+	// HTTPClient 是采集域远端 provider 的 fetch 替身；nil = http.DefaultClient。
+	// 只给 httptest 打桩用，生产装配不传。
+	HTTPClient func(*http.Request) (*http.Response, error)
 }
 
 // NewRouter 返回应用路由。
@@ -59,6 +63,10 @@ func NewRouter(opts Options) http.Handler {
 		// B3 的计划域：/plans 与 /plan-items 的 CRUD、评论、顺延与兑现。同样扁平注册，
 		// {id} 与更长的子路由按段数共存。
 		plansapi.Mount(r, plansapi.Deps{Queries: opts.Queries})
+		// B4 的采集域：本批先落 sources 数据面（CRUD + bulk + branches/emails/lookup）。
+		// 同样扁平注册，静态段 branches/emails/lookup/bulk-* 优先于 /{id}。
+		// 同批另外两张票（git 执行面、两条增补路由）在集成分支汇合。
+		collectsourcesapi.Mount(r, collectsourcesapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
