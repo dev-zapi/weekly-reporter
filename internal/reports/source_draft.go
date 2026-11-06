@@ -308,26 +308,3 @@ func SnapshotToDraftEvents(snapshots []SnapshotDraftEvent) []DraftEvent {
 	}
 	return events
 }
-
-// SliceUTF16 复刻 `String.prototype.slice(0, limit)` 的截断行为：边界按 UTF-16
-// 码元计算，增补平面字符不会在中间被劈开（码点整体保留）。
-//
-// 放在 reports 包而不是 jsstr：B6 的引擎票也在建同一组 utf16 helper（ADR-0027），
-// 两处都写 jsstr 会在集成分支撞名；这里只服务报告域的两个截断点。
-func SliceUTF16(value string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	count := 0
-	for index, r := range value {
-		width := 1
-		if r > 0xffff {
-			width = 2
-		}
-		if count+width > limit {
-			return value[:index]
-		}
-		count += width
-	}
-	return value
-}

@@ -87,7 +87,7 @@ func postHandler(deps Deps) http.HandlerFunc {
 		}
 
 		// `body.marker.trim().slice(0, 120)`：先按 JS trim，再按 UTF-16 码元截断。
-		marker := sliceUTF16(jsstr.Trim(markerValue), 120)
+		marker := jsstr.SliceUTF16(jsstr.Trim(markerValue), 120)
 		// `const now = new Date()` 只取一次，所有行共用同一个时间戳（drizzle 的
 		// timestamp 模式存 Unix 秒）。
 		now := time.Now().Unix()
@@ -515,22 +515,5 @@ func subDays(t time.Time, days int) time.Time { return t.AddDate(0, 0, -days) }
 
 // formatLocalDay 复刻 date-fns `format(date, 'yyyy-MM-dd')`：本地日历日。
 func formatLocalDay(t time.Time) string { return t.In(time.Local).Format("2006-01-02") }
-
-// sliceUTF16 复刻 `String.prototype.slice(0, limit)` 的 UTF-16 码元截断。
-// Go 字符串无法表示孤立代理项，所以边界上不拆代理对；e2e marker 全是 ASCII。
-func sliceUTF16(value string, limit int) string {
-	units := 0
-	for index, r := range value {
-		width := 1
-		if r > 0xffff {
-			width = 2
-		}
-		if units+width > limit {
-			return value[:index]
-		}
-		units += width
-	}
-	return value
-}
 
 func stringPtr(value string) *string { return &value }

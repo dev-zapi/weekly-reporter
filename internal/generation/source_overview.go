@@ -53,7 +53,7 @@ func BuildSourceOverview(sourceDraft, variant string) string {
 		compact := jsstr.Trim(collapseWhitespace(events[index]))
 		display := compact
 		if jsstr.UTF16Len(compact) > 88 {
-			display = reports.SliceUTF16(compact, 88) + "…"
+			display = jsstr.SliceUTF16(compact, 88) + "…"
 		}
 		preview = append(preview, itoa(index+1)+". "+display)
 	}

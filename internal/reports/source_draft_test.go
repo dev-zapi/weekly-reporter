@@ -140,19 +140,6 @@ func indexOf(haystack, needle string) int {
 	return -1
 }
 
-func TestSliceUTF16(t *testing.T) {
-	if got := reports.SliceUTF16("abcdef", 3); got != "abc" {
-		t.Fatalf("got %q", got)
-	}
-	// 增补平面字符占两个 UTF-16 码元，且不会被劈开。
-	if got := reports.SliceUTF16("a😀b", 2); got != "a" {
-		t.Fatalf("got %q", got)
-	}
-	if got := reports.SliceUTF16("a😀b", 3); got != "a😀" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 // 以下期望值由 src/lib/reports/source-draft.ts 的 buildSourceDraft 直接跑出
 // （同一输入 → 同一输出），固化排序、分组与过滤的逐字节对等。
 func TestBuildSourceDraftMatchesTSOutput(t *testing.T) {

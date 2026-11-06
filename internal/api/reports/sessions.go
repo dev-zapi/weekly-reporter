@@ -15,6 +15,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/aiseed"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsnum"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	generationlib "github.com/dev-zapi/weekly-reporter/internal/generation"
@@ -588,7 +589,7 @@ func renameSessionHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		// `trimmed.slice(0, 120)`：slice 的边界是 UTF-16 码元。
-		clipped := reportlib.SliceUTF16(trimmed, 120)
+		clipped := jsstr.SliceUTF16(trimmed, 120)
 
 		updated, err := deps.Queries.UpdateGenerationSessionTitleForReportRoutes(r.Context(), db.UpdateGenerationSessionTitleForReportRoutesParams{
 			Title:     clipped,
