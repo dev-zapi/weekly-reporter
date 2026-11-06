@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
+	"github.com/dev-zapi/weekly-reporter/internal/api/events"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -122,7 +122,7 @@ func createComment(ctx context.Context, q *db.Queries, planItemID int64, content
 		}
 		comment = inserted
 
-		referencedIDs := parseEventReferences(content)
+		referencedIDs := events.ParseReferences(content)
 		if len(referencedIDs) == 0 {
 			return nil
 		}
@@ -210,57 +210,6 @@ func (h *requestHeaders) headerValue(name string) *string {
 	return &joined
 }
 
-// parseEventReferences 复刻 src/lib/references/parse.ts 的 parseReferences：
-// 提取 `@<id>`，按出现顺序去重，只保留 > 0 的有限整数。
-//
-// 与 events 域的 parseIDReferences 同一规则，但那一个未导出：评论解析是唯一
-// 消费者，这里保留一份最小实现，避免让 plans 包反向依赖 events 域。
-func parseEventReferences(content string) []int64 {
-	runes := []rune(content)
-	seen := make(map[int64]struct{})
-	ids := []int64{}
-
-	for i := 0; i < len(runes); i++ {
-		if runes[i] != '@' {
-			continue
-		}
-		if i > 0 && !jsstr.IsSpace(runes[i-1]) {
-			continue
-		}
-		start := i + 1
-		end := start
-		for end < len(runes) && runes[end] >= '0' && runes[end] <= '9' {
-			end++
-		}
-		if end == start {
-			continue
-		}
-		if end < len(runes) && !jsstr.IsSpace(runes[end]) {
-			continue
-		}
-		id := digitsToID(runes[start:end])
-		if id <= 0 {
-			continue
-		}
-		if _, dup := seen[id]; dup {
-			continue
-		}
-		seen[id] = struct{}{}
-		ids = append(ids, id)
-	}
-	return ids
-}
-
-// digitsToID 把纯数字段折成 int64；溢出饱和到 MaxInt64（JS 那边是有限浮点数，
-// 查库必然查不到，可观测结果一致）。
-func digitsToID(digits []rune) int64 {
-	var n int64
-	for _, r := range digits {
-		d := int64(r - '0')
-		if n > (1<<63-1-d)/10 {
-			return 1<<63 - 1
-		}
-		n = n*10 + d
-	}
-	return n
-}
+// 评论的 `@<id>` 解析直接用 events 域的实现：冻结的词边界规则（`@` 前是串首
+// 或空白、后是空白或串尾）只有一份事实源，与 events 复用 tags.ParseTags 同理。
+// 事件引用与评论引用因此不会各自漂移；events 不依赖 plans，不存在循环。
