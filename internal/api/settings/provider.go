@@ -123,9 +123,6 @@ func fetchModelList(ctx context.Context, do func(*http.Request) (*http.Response,
 	if err != nil {
 		return nil, errors.New("fetch failed")
 	}
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse URL from %s", target)
-	}
 	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	applyTraceHeaders(ctx, req)
 
