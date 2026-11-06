@@ -93,11 +93,11 @@ func (localGitAdapter) fetchCommits(ctx context.Context, opts fetchOptions) ([]g
 		return nil, fmt.Errorf("Git 命令执行失败：Error: %s", err.Error())
 	}
 
-	if strings.TrimSpace(stdout) == "" {
+	if jsstr.Trim(stdout) == "" {
 		return []gitCommit{}, nil
 	}
 
-	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	lines := strings.Split(jsstr.Trim(stdout), "\n")
 	commits := make([]gitCommit, 0, len(lines))
 	for _, line := range lines {
 		commit, ok := parseGitLogLine(line)
@@ -122,7 +122,7 @@ func pullForSync(ctx context.Context, repoPath, configuredBranch string) error {
 		}
 		return nil
 	}
-	if strings.TrimSpace(remotes) == "" {
+	if jsstr.Trim(remotes) == "" {
 		return nil
 	}
 
@@ -132,7 +132,7 @@ func pullForSync(ctx context.Context, repoPath, configuredBranch string) error {
 		if err != nil {
 			return classifyPullError(err.Error(), repoPath)
 		}
-		currentBranch = strings.TrimSpace(stdout)
+		currentBranch = jsstr.Trim(stdout)
 	}
 
 	if _, err := runGit(ctx, repoPath, "pull", "--no-edit", "origin", currentBranch); err != nil {

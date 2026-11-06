@@ -3,7 +3,6 @@ package sources
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // 本文件复刻 route.ts 里 config 对象的构造与规范化：
@@ -186,9 +185,9 @@ func mergeEditedBranches(existing json.RawMessage, edited []branchEntry, hasEdit
 
 	result := make([]branchCursorEntry, 0, len(edited))
 	for _, entry := range edited {
-		name := strings.TrimSpace(entry.String)
+		name := jsTrim(entry.String)
 		if entry.IsString == false {
-			name = strings.TrimSpace(entry.Name)
+			name = jsTrim(entry.Name)
 		}
 		if name == "" {
 			continue
@@ -254,13 +253,13 @@ func rawBranchNames(raw json.RawMessage) ([]rawBranch, error) {
 	for _, item := range items {
 		switch typed := item.(type) {
 		case string:
-			branches = append(branches, rawBranch{name: strings.TrimSpace(typed)})
+			branches = append(branches, rawBranch{name: jsTrim(typed)})
 		case map[string]any:
 			name, ok := typed["name"].(string)
 			if !ok {
 				return nil, fmt.Errorf("collect sources: branch name is not a string")
 			}
-			branch := rawBranch{name: strings.TrimSpace(name)}
+			branch := rawBranch{name: jsTrim(name)}
 			// `branch.lastCommitTime || null`：空串同样是假值 → null。
 			if cursor, ok := typed["lastCommitTime"].(string); ok && cursor != "" {
 				value := cursor

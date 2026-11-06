@@ -107,3 +107,27 @@ func TestSetNormalizedBranchesSerializesShape(t *testing.T) {
 }
 
 func stringPointer(value string) *string { return &value }
+
+// 分支名的 .trim() 是 JS 语义（jsstr.Trim），不是 Go 的 strings.TrimSpace：
+// U+FEFF（ZWNBSP）在 JS 里算空白、必须剥掉；U+0085（NEL）在 JS 里不算空白、
+// 必须保留。stdio 差异虽小，但这是 config.branches 落库与游标合并键的输入。
+func TestMergeEditedBranchesTrimsJSWhitespaceOnly(t *testing.T) {
+	edited := []branchEntry{
+		{IsString: true, String: "\ufeffmain\ufeff"},
+		{IsString: true, String: "\u0085develop"},
+	}
+
+	merged, ok, err := mergeEditedBranches(nil, edited, true)
+	if err != nil {
+		t.Fatalf("mergeEditedBranches: %v", err)
+	}
+	if !ok || len(merged) != 2 {
+		t.Fatalf("merged = %+v ok=%v", merged, ok)
+	}
+	if merged[0].Name != "main" {
+		t.Fatalf("ZWNBSP should be trimmed: %q", merged[0].Name)
+	}
+	if merged[1].Name != "\u0085develop" {
+		t.Fatalf("NEL is not JS whitespace and must be kept: %q", merged[1].Name)
+	}
+}
