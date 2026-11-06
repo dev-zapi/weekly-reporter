@@ -128,21 +128,27 @@ func writeScanReposError(w http.ResponseWriter, message string) {
 	respond.JSON(w, http.StatusOK, scanReposResponse{Repos: []foundRepo{}, Error: message})
 }
 
-// maxDepthValue 复刻 `maxDepth: number = 3`：请求体没有该键时取默认 3。
+// maxDepthValue 复刻 `maxDepth: number = 3` 的 JS 语义：
+//   - 键缺省 → 默认参数 3；
+//   - 显式 null → 不触发默认参数，参与 `currentDepth > maxDepth` 数值比较时
+//     null 折算为 0（即只扫容器本身，结果为空）；
+//   - 数字原样（小数也照 `>` 比较）。
 //
 // 本路由的请求体是新增的 HTTP 面（TS 侧是强类型 server action，参数类型由调用方
-// 保证），所以这里只接受 JSON 数字；其它类型按非法请求走内嵌 error，不做 JS 的
-// 隐式数值转换（`currentDepth > "2"` 之类）。
+// 保证），其它类型按非法请求走内嵌 error，不做 JS 的隐式字符串数值转换。
 func maxDepthValue(object map[string]any) (float64, bool) {
 	raw, present := object["maxDepth"]
-	if !present || raw == nil {
+	if !present {
 		return defaultMaxDepth, true
 	}
-	value, ok := raw.(float64)
-	if !ok {
+	switch value := raw.(type) {
+	case nil:
+		return 0, true
+	case float64:
+		return value, true
+	default:
 		return 0, false
 	}
-	return value, true
 }
 
 // batchAddResponse 是 {success, addedCount, error?}：成功时没有 error 键。
@@ -155,13 +161,13 @@ type batchAddResponse struct {
 // gitLocalConfig 是落库 config 的 JSON 形状，键顺序照 actions.ts 的对象字面量
 // （owner, authorEmails, branches）。
 //
-// authorEmails 用 any：actions.ts 原样透传入参，JSON.stringify 会省略 undefined
-// 字段、保留空数组和其它值。用指针/omitempty 无法区分「缺省」与「空数组」，
-// 所以这里保留通用值——缺省（nil）时该键被省略，其余值原样序列化。
+// authorEmails 用 json.RawMessage：TS 是 JSON.parse(body) 后再 JSON.stringify，
+// 所以这里同样「解析后原样重序列化」——缺省（undefined）时键被省略，显式 null
+// 保留为 null，数组（含空数组）原样写出。
 type gitLocalConfig struct {
-	Owner        string   `json:"owner"`
-	AuthorEmails any      `json:"authorEmails,omitempty"`
-	Branches     []string `json:"branches"`
+	Owner        string          `json:"owner"`
+	AuthorEmails json.RawMessage `json:"authorEmails,omitempty"`
+	Branches     []string        `json:"branches"`
 }
 
 // batchAddSourcesHandler 复刻 actions.ts 的 batchAddSources(repos)。
@@ -228,11 +234,16 @@ func batchAddSourcesHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 
-			config, err := json.Marshal(gitLocalConfig{
-				Owner:        path,
-				AuthorEmails: repo["authorEmails"],
-				Branches:     []string{},
-			})
+			config := gitLocalConfig{Owner: path, Branches: []string{}}
+			if rawAuthorEmails, present := repo["authorEmails"]; present {
+				encoded, err := json.Marshal(rawAuthorEmails)
+				if err != nil {
+					writeBatchAddError(w, err.Error())
+					return
+				}
+				config.AuthorEmails = encoded
+			}
+			encodedConfig, err := json.Marshal(config)
 			if err != nil {
 				writeBatchAddError(w, err.Error())
 				return
@@ -240,7 +251,7 @@ func batchAddSourcesHandler(deps Deps) http.HandlerFunc {
 
 			err = deps.Queries.InsertGitLocalCollectSource(r.Context(), db.InsertGitLocalCollectSourceParams{
 				Name:      name,
-				Config:    string(config),
+				Config:    string(encodedConfig),
 				Enabled:   1,
 				CreatedAt: now,
 				UpdatedAt: now,
