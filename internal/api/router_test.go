@@ -93,6 +93,52 @@ func TestB1DomainRoutesAreMounted(t *testing.T) {
 	}
 }
 
+// B2 的 7 条路由必须真的挂在 /api 子路由上。这里同样用「关认证 + 真实库」的
+// 装配验证「路由存在 + 静态段不被 {id} 吃掉 + 没落到通配兜底」。
+func TestB2DomainRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/tags", "", http.StatusOK, `"tags":[]`},
+		{http.MethodDelete, "/api/tags?name=unknown", "", http.StatusOK, `"removed":0`},
+		{http.MethodPost, "/api/tags/rename", `{"from":"工作","to":"任务"}`, http.StatusOK, `"eventsUpdated":0`},
+		{http.MethodGet, "/api/snippets", "", http.StatusOK, `"snippets":[]`},
+		{http.MethodDelete, "/api/snippets/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodGet, "/api/events", "", http.StatusOK, `"events":[]`},
+		{http.MethodGet, "/api/events/999", "", http.StatusNotFound, `"error":"Event not found"`},
+		{http.MethodPost, "/api/export", `{"content":"x"}`, http.StatusOK, `"variant":"personal"`},
+		// /events/heatmap 与 /events/{id}/references 归同批另一张票：本 worktree 里
+		// 它们尚未注册，所以这里不断言它们的响应，跨票共存由集成分支验证。
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
 // 通配兜底本身保持 B0 形状：未注册的 /api 路径仍然回 {error:"Not Found"}。
 func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 	queries := db.New(dbtest.New(t))
