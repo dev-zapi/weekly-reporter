@@ -24,6 +24,39 @@ func TestUTF16Len(t *testing.T) {
 	}
 }
 
+// SliceUTF16 的期望值来自 Node 的 `s.slice(0, n)` 实测（含 CJK 与代理对边界）。
+func TestSliceUTF16MatchesJSSlice(t *testing.T) {
+	cases := []struct {
+		input string
+		n     int
+		want  string
+	}{
+		{"", 5, ""},
+		{"abc", 0, ""},
+		{"abc", 3, "abc"},
+		{"abc", 4, "abc"},
+		{"abcdef", 2, "ab"},
+		{"一二三四五", 3, "一二三"},
+		{"一二三四五", 4, "一二三四"},
+		{"\U0001F600abc", 1, ""}, // 代理对占 2 个码元，劈不开 → 整对舍弃
+		{"\U0001F600abc", 2, "\U0001F600"},
+		{"a\U0001F600b", 2, "a"},
+		{"a\U0001F600b", 3, "a\U0001F600"},
+		{"a\U0001F600b", 4, "a\U0001F600b"},
+		{"中文\U0001F600", 3, "中文"},
+		{"中文\U0001F600", 4, "中文\U0001F600"},
+	}
+	for _, tc := range cases {
+		got := SliceUTF16(tc.input, tc.n)
+		if got != tc.want {
+			t.Fatalf("SliceUTF16(%q, %d) = %q, want %q", tc.input, tc.n, got, tc.want)
+		}
+		if got := UTF16Len(got); got > tc.n {
+			t.Fatalf("SliceUTF16(%q, %d) returned %d units, want <= %d", tc.input, tc.n, got, tc.n)
+		}
+	}
+}
+
 func TestTrimMatchesJSWhitespace(t *testing.T) {
 	cases := []struct {
 		input string

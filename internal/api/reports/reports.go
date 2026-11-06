@@ -28,11 +28,14 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/engine"
 )
 
 // Deps 是本域路由的数据依赖。
 type Deps struct {
 	Queries *db.Queries
+	// NewStepProvider 只给 httptest 注入生成引擎的 provider；nil = 三协议 adapter。
+	NewStepProvider engine.ProviderFactory
 }
 
 // Mount 把报告域注册到 /api 子路由上。
@@ -46,12 +49,19 @@ func Mount(r chi.Router, deps Deps) {
 	r.Delete("/reports/{id}", deleteReportHandler(deps))
 	r.Put("/reports/{id}/final", saveFinalHandler(deps))
 	r.Post("/reports/{id}/regenerate-source", regenerateSourceHandler(deps))
+	r.Post("/reports/{id}/generate", generateReportHandler(deps))
 
-	// 生成会话的读面 + 新建/改名/归档。轮次与提案的写路径（turns / stop /
-	// accept / query-snapshots）由引擎票注册在同一前缀下。
+	// 生成会话的读面 + 新建/改名/归档。
 	r.Get("/reports/{id}/generation-sessions", listSessionsHandler(deps))
 	r.Post("/reports/{id}/generation-sessions", createSessionHandler(deps))
 	r.Get("/reports/{id}/generation-sessions/{sessionId}", getSessionHandler(deps))
 	r.Patch("/reports/{id}/generation-sessions/{sessionId}", renameSessionHandler(deps))
 	r.Delete("/reports/{id}/generation-sessions/{sessionId}", archiveSessionHandler(deps))
+
+	// 生成引擎的写面：一轮 NDJSON 流、停止、接受提案与历史查询刷新。
+	generator := engine.New(engine.Options{Queries: deps.Queries, NewProvider: deps.NewStepProvider})
+	r.Post("/reports/{id}/generation-sessions/{sessionId}/turns", turnsHandler(deps, generator))
+	r.Post("/reports/{id}/generation-sessions/{sessionId}/turns/{turnId}/stop", stopTurnHandler(deps, generator))
+	r.Post("/reports/{id}/generation-sessions/{sessionId}/proposals/{proposalId}/accept", acceptProposalHandler(deps))
+	r.Post("/reports/{id}/generation-sessions/{sessionId}/query-snapshots/refresh", refreshQuerySnapshotHandler(deps, generator))
 }
