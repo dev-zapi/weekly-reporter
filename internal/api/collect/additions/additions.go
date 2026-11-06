@@ -220,6 +220,11 @@ func batchAddSourcesHandler(deps Deps) http.HandlerFunc {
 			}
 			path, ok := repo["path"].(string)
 			if !ok {
+				// 有意收紧（与 actions.ts 的唯一行为偏差）：TS 里 `knownPaths.has(repo.path)`
+				// 对 undefined 恒为 false，随后 `config: {owner: repo.path}` 经
+				// JSON.stringify 落库时 owner 键被省略（非字符串则原样落成非字符串
+				// owner），即插入一条脏数据并 addedCount++。本路由改为整批报错，
+				// 不复制 TS 的静默脏写入。
 				writeBatchAddError(w, batchFallbackError)
 				return
 			}

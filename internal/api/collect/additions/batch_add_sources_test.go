@@ -244,3 +244,33 @@ func TestBatchAddSourcesOmitsMissingAuthorEmails(t *testing.T) {
 		t.Fatalf("branches = %s, want []", config["branches"])
 	}
 }
+
+// 有意偏离 TS 的一处，必须钉住：actions.ts 对缺 path（或非字符串 path）的条目会
+// `knownPaths.has(undefined) === false` → 插入一条 owner 键被省略（或非字符串 owner）
+// 的脏行并 addedCount++。本路由收紧为整批报错，不复制脏写入。
+func TestBatchAddSourcesRejectsEntriesWithoutAStringPath(t *testing.T) {
+	h := newHarness(t)
+
+	for _, body := range []string{
+		`{"repos":[{"name":"alpha","authorEmails":[]}]}`,
+		`{"repos":[{"path":42,"name":"alpha","authorEmails":[]}]}`,
+		`{"repos":[{"path":null,"name":"alpha","authorEmails":[]}]}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			rec := h.post("/api/collect/batch-add-sources", body)
+			if rec.Code != 200 {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			response := decodeBody(t, rec)
+			if response["success"] != false || response["addedCount"] != float64(0) {
+				t.Fatalf("response = %v, want success:false + addedCount:0", response)
+			}
+			if message, ok := response["error"].(string); !ok || message == "" {
+				t.Fatalf("error = %v, want a non-empty string", response["error"])
+			}
+			if rows := h.gitLocalRows(t); len(rows) != 0 {
+				t.Fatalf("rows = %+v, want no dirty insert", rows)
+			}
+		})
+	}
+}
