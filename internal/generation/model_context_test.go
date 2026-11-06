@@ -132,7 +132,7 @@ func decodeObject(t *testing.T, raw string) map[string]any {
 	t.Helper()
 	var value map[string]any
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-			t.Fatalf("decode fixture: %v", err)
+		t.Fatalf("decode fixture: %v", err)
 	}
 	return value
 }
