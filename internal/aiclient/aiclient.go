@@ -174,6 +174,12 @@ func (c *Client) postJSON(ctx context.Context, url string, body any, headers map
 // 抛的 TypeError 不在「网络错误」清单里，因此不重试；这里用哨兵值保持同样语义。
 var errInvalidRequest = errors.New("invalid request")
 
+// errUnprocessableSuccess 表示「已收到 2xx 响应头，但响应体没能读完」（连接中断/
+// 被截断）。SDK 在 postToApi 里把 successfulResponseHandler 的抛错包成 statusCode
+// 为 2xx 的 APICallError（"Failed to process successful response"），isRetryable
+// 因此走构造器的状态码默认值 → false，一次就失败。这里用哨兵值复刻同样的「不重试」。
+var errUnprocessableSuccess = errors.New("failed to process successful response")
+
 // doJSON 发一次请求（不含重试）。
 func (c *Client) doJSON(ctx context.Context, url string, payload []byte, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
@@ -198,7 +204,12 @@ func (c *Client) doJSON(ctx context.Context, url string, payload []byte, headers
 
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		// 2xx 已经到手、只是体读不完：SDK 的 "Failed to process successful
+		// response" 不可重试；非 2xx 的读体失败则走下面的 StatusError（按状态码
+		// 判定，与 SDK 的 "Failed to process error response" 一致）。
+		if res.StatusCode >= 200 && res.StatusCode <= 299 {
+			return nil, fmt.Errorf("%w: %v", errUnprocessableSuccess, err)
+		}
 	}
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		retryAfter, hasRetryAfter := parseRetryAfter(res.Header)
@@ -223,11 +234,16 @@ func isRetryable(ctx context.Context, err error) bool {
 	if errors.Is(err, errInvalidRequest) {
 		return false
 	}
+	// 2xx 响应头已到、读体失败：SDK 的 "Failed to process successful response"
+	// 按 statusCode（2xx）判为不可重试。
+	if errors.Is(err, errUnprocessableSuccess) {
+		return false
+	}
 	var statusError *StatusError
 	if errors.As(err, &statusError) {
 		return retryableStatus(statusError.StatusCode)
 	}
-	// 其余传输层失败（连接被拒、DNS、读 body 中断）：SDK 对网络错误重试。
+	// 其余传输层失败（连接被拒、DNS、请求没拿到响应）：SDK 对网络错误重试。
 	return true
 }
 

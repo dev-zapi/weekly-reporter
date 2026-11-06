@@ -297,6 +297,78 @@ func TestGenerateObjectDoesNotRetryNonRetryableStatus(t *testing.T) {
 	}
 }
 
+// 2xx 响应头已到达、响应体被截断（连接中断）：SDK 把它包成 statusCode=2xx 的
+// APICallError（"Failed to process successful response"），isRetryable 走构造器
+// 默认按状态码判定 → false，因此不重试。Go 侧必须同样只发一次请求。
+func TestGenerateObjectDoesNotRetryTruncatedSuccessBody(t *testing.T) {
+	var attempts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		// 声明 128 字节，只写一小段就断开连接。
+		_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 128\r\n\r\n{\"choices\":[")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	t.Cleanup(server.Close)
+
+	client := aiclient.New(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible, BaseURL: server.URL, Model: "m",
+	})
+	if _, err := client.GenerateObject(context.Background(), aiclient.ObjectRequest{
+		Prompt: "hi", Schema: json.RawMessage(testSchema),
+	}); err == nil {
+		t.Fatal("want error for a truncated success body")
+	} else if !strings.Contains(err.Error(), "unexpected EOF") {
+		t.Fatalf("err = %v, want an underlying unexpected EOF", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("requests = %d, want 1 (SDK does not retry a failed successful response)", attempts)
+	}
+}
+
+// 非 2xx 的读体失败相反：SDK 的 "Failed to process error response" 继承按状态码
+// 判定的 isRetryable（429 → true），因此仍重试。
+func TestGenerateObjectRetriesTruncatedErrorBody(t *testing.T) {
+	var attempts int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts > 1 {
+			writeJSON(w, `{"choices":[{"message":{"content":"{\"ok\":5}"}}]}`)
+			return
+		}
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		_, _ = buf.WriteString("HTTP/1.1 429 Too Many Requests\r\nContent-Type: application/json\r\nRetry-After-Ms: 0\r\nContent-Length: 128\r\n\r\n{\"error\":")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	t.Cleanup(server.Close)
+
+	client := aiclient.New(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible, BaseURL: server.URL, Model: "m",
+	})
+	text, err := client.GenerateObject(context.Background(), aiclient.ObjectRequest{
+		Prompt: "hi", Schema: json.RawMessage(testSchema),
+	})
+	if err != nil {
+		t.Fatalf("GenerateObject: %v", err)
+	}
+	if text != `{"ok":5}` {
+		t.Fatalf("text = %q", text)
+	}
+	if attempts != 2 {
+		t.Fatalf("requests = %d, want 2", attempts)
+	}
+}
+
 func TestGenerateObjectGivesUpAfterMaxRetries(t *testing.T) {
 	server, requests := newServer(t, func(w http.ResponseWriter, _ map[string]any) {
 		w.Header().Set("Retry-After-Ms", "0")
