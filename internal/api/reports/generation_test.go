@@ -632,6 +632,18 @@ func TestRefreshQuerySnapshotRoute(t *testing.T) {
 		t.Fatalf("refreshed part data = %s", partData)
 	}
 
+	// JSON 字符串按 SQLite 的数值亲和性绑定："<id>" 与数字 id 同效（TS 200）。
+	rec = h.do(http.MethodPost, turnPath(reportID, sessionID)+"/query-snapshots/refresh", `{"snapshotId":"`+itoa(snapshotID)+`"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("string snapshotId: status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+
+	// 非数字字符串不会被亲和性折成数字 → 查不到行 → 404。
+	rec = h.do(http.MethodPost, turnPath(reportID, sessionID)+"/query-snapshots/refresh", `{"snapshotId":"not-a-number"}`)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"code":"SNAPSHOT_NOT_FOUND"`) {
+		t.Fatalf("non-numeric string snapshotId: %d %s", rec.Code, rec.Body.String())
+	}
+
 	// 不支持的 tool → 400。
 	unsupported := seedSnapshot(t, h, reportID, sessionID, "query_other")
 	rec = h.do(http.MethodPost, turnPath(reportID, sessionID)+"/query-snapshots/refresh", `{"snapshotId":`+itoa(unsupported)+`}`)

@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -623,14 +624,65 @@ func refreshQuerySnapshotHandler(deps Deps, generator *engine.Engine) http.Handl
 	}
 }
 
-// snapshotIDValue 复刻 `body.snapshotId ?? 0` 对 JSON 数字的绑定。
+// snapshotIDValue 复刻 `body.snapshotId ?? 0` 在 drizzle + better-sqlite3 下的
+// 绑定语义。
+//
+// 数字按 JS 的 number 处理（NaN / ±Infinity / 非整数一律不命中）。字符串在
+// better-sqlite3 里按 TEXT 绑定，而 SQLite 对 INTEGER 列施加数值亲和性：整串
+// 是合法的十进制数字字面量时按数值比较（"5" / "5.0" / "1e3" 都能命中对应
+// id），否则查不到任何行（404）。因此 JSON 字符串 "5" 与 TS 一样得到 200，
+// 而不是旧实现里的 0 → 404。
 func snapshotIDValue(value any) int64 {
-	number, ok := value.(float64)
-	if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number != math.Trunc(number) {
+	switch typed := value.(type) {
+	case float64:
+		return integerSnapshotID(typed)
+	case string:
+		number, ok := numericStringValue(typed)
+		if !ok {
+			return 0
+		}
+		return integerSnapshotID(number)
+	default:
+		return 0
+	}
+}
+
+func integerSnapshotID(number float64) int64 {
+	if math.IsNaN(number) || math.IsInf(number, 0) || number != math.Trunc(number) {
 		return 0
 	}
 	if number < math.MinInt64 || number > math.MaxInt64 {
 		return 0
 	}
 	return int64(number)
+}
+
+// numericStringValue 判断字符串是否是 SQLite 数值亲和性会接受的十进制数字
+// 字面量（整串，允许 JS 空白与符号/小数/指数），并返回其数值。十六进制
+// （"0x10"）、NaN / Infinity、带垃圾后缀（"5abc"）都不接受——SQLite 的亲和性
+// 转换同样不会把它们折成数字。
+func numericStringValue(value string) (float64, bool) {
+	trimmed := jsstr.Trim(value)
+	if trimmed == "" {
+		return 0, false
+	}
+	// 先按字面量字符集过滤，避免接受 strconv 的 NaN / Infinity / 十六进制形式。
+	digits := 0
+	for index := 0; index < len(trimmed); index++ {
+		switch trimmed[index] {
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			digits++
+		case '+', '-', '.', 'e', 'E':
+		default:
+			return 0, false
+		}
+	}
+	if digits == 0 {
+		return 0, false
+	}
+	number, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil {
+		return 0, false
+	}
+	return number, true
 }
