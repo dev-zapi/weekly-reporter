@@ -23,7 +23,7 @@ import (
 
 // 本文件覆盖 /api/reports/{id}/generation-sessions 的读面与生命周期
 // （列表 / 新建 / 详情 / 改名 / 归档）。轮次与提案的写路径（turns / stop /
-// accept / query-snapshots）由同批的引擎票注册。
+// accept / query-snapshots）与一次性 generate 路由见同包的 generation.go。
 //
 // 语义事实源是 src/app/api/reports/[id]/generation-sessions/**/route.ts 与
 // src/lib/generation/service.ts 的对应函数。

@@ -1,9 +1,8 @@
-// Package reports 把报告域的非生成路由挂到 chi 的 /api 子路由上。
+// Package reports 把报告域的全部路由挂到 chi 的 /api 子路由上。
 // 行为逐条对照 src/app/api/reports 下的 route.ts，服务端逻辑移植自
-// src/lib/reports/{service,source-draft}.ts。
+// src/lib/reports/{service,source-draft}.ts 与 src/lib/generation/service.ts。
 //
-// 生成路由（generate / turns / stop / accept / query-snapshots）由同批的引擎票
-// 注册，本包只覆盖不触发生成引擎的 8 条路由：
+// 不触发生成引擎的报告路由：
 //
 //	GET    /reports
 //	POST   /reports
@@ -14,11 +13,22 @@
 //	POST   /reports/{id}/regenerate-source
 //	POST   /reports/preview
 //	GET    /reports/search
+//
+// 生成会话的读面与生命周期（列表 / 新建 / 详情 / 改名 / 归档）：
+//
 //	GET    /reports/{id}/generation-sessions
 //	POST   /reports/{id}/generation-sessions
 //	GET    /reports/{id}/generation-sessions/{sessionId}
 //	PATCH  /reports/{id}/generation-sessions/{sessionId}
 //	DELETE /reports/{id}/generation-sessions/{sessionId}
+//
+// 生成路由（引擎循环在 internal/engine，路由仍由本包注册）：
+//
+//	POST /reports/{id}/generate
+//	POST /reports/{id}/generation-sessions/{sessionId}/turns
+//	POST /reports/{id}/generation-sessions/{sessionId}/turns/{turnId}/stop
+//	POST /reports/{id}/generation-sessions/{sessionId}/proposals/{proposalId}/accept
+//	POST /reports/{id}/generation-sessions/{sessionId}/query-snapshots/refresh
 //
 // 静态段 preview / search 由 chi 原生优先于 /reports/{id}；generation-sessions
 // 比 /reports/{id} 多一段，按段数与之共存。
