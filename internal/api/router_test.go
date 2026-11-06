@@ -231,3 +231,48 @@ func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
+
+// B4 采集源数据面的 11 个 handler 必须真的挂在 /api 子路由上，且静态段
+// （branches/emails/lookup/bulk-*）不被 /collect/sources/{id} 吃掉。
+func TestB4CollectSourcesRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/collect/sources", "", http.StatusOK, `"sources":[]`},
+		{http.MethodGet, "/api/collect/sources/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodGet, "/api/collect/sources/abc", "", http.StatusBadRequest, `"code":"INVALID_ID"`},
+		{http.MethodGet, "/api/collect/sources/branches", "", http.StatusOK, `"branches":[]`},
+		{http.MethodGet, "/api/collect/sources/emails", "", http.StatusOK, `"authors":[]`},
+		{http.MethodGet, "/api/collect/sources/lookup?type=git-local&path=/x", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodPost, "/api/collect/sources/bulk-delete", `{"ids":[]}`, http.StatusBadRequest, `"code":"INVALID_IDS"`},
+		{http.MethodPost, "/api/collect/sources/bulk-update-scope", `{"ids":[]}`, http.StatusBadRequest, `"code":"INVALID_IDS"`},
+		{http.MethodPost, "/api/collect/sources", `{"type":"nope"}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
