@@ -17,12 +17,9 @@ import (
 // planItemStatuses 逐值对应 PERIOD_PLAN_ITEM_STATUSES（schema 常量）。
 var planItemStatuses = []string{"planned", "in_progress", "done", "cancelled", "deferred"}
 
-// planItemPriorities 逐值对应 PERIOD_PLAN_ITEM_PRIORITIES。
+// planItemPriorities 逐值对应 PERIOD_PLAN_ITEM_PRIORITIES，键序即
+// PLAN_ITEM_PRIORITY_ORDER：优先级名次表，也是 400 提示里的枚举顺序。
 var planItemPriorities = []string{"high", "normal", "low"}
-
-// priorityOrder 是 PLAN_ITEM_PRIORITY_ORDER（plan-item-display.ts 的键序），
-// 即 sort/attachCandidates 用的优先级名次表。
-var priorityOrder = planItemPriorities
 
 func indexOf(values []string, target string) int {
 	for i, value := range values {
@@ -33,8 +30,8 @@ func indexOf(values []string, target string) int {
 	return -1
 }
 
-// errInvalidPriority 等是 validatePlanItemPriorityFields 的错误形状：
-// {error, code}，与 route.ts 的 400 响应体一致。
+// fieldError 是 validatePlanItemPriorityFields 的错误形状：{error, code}，
+// 与 route.ts 的 400 响应体一致。
 type fieldError struct {
 	Error string `json:"error"`
 	Code  string `json:"code"`

@@ -435,9 +435,9 @@ func buildAttachCandidates(weekPlans []db.PeriodPlan, items []db.PeriodPlanItem)
 
 // priorityRank 复刻 priorityRank：未知值排在所有已知优先级之后（与 SQL CASE 一致）。
 func priorityRank(priority string) int {
-	index := indexOf(priorityOrder, priority)
+	index := indexOf(planItemPriorities, priority)
 	if index < 0 {
-		return len(priorityOrder)
+		return len(planItemPriorities)
 	}
 	return index
 }
