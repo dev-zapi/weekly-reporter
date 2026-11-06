@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	aiapi "github.com/dev-zapi/weekly-reporter/internal/api/ai"
 	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
 	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
 	collectapi "github.com/dev-zapi/weekly-reporter/internal/api/collect"
@@ -84,6 +85,10 @@ func NewRouter(opts Options) http.Handler {
 		// 按段数与之共存。同批的 settings/ai 与 ai/* 由另两张票注册。
 		templatesapi.Mount(r, templatesapi.Deps{Queries: opts.Queries})
 		promptsapi.Mount(r, promptsapi.Deps{Queries: opts.Queries})
+		// B5 的 AI 三个 one-shot：/ai/expand-section、/ai/polish-event、
+		// /ai/unify-style。internal/aiclient 的首个消费者，模型调用走它的
+		// one-shot 路径（generateObject + zod 的 Go 对应物）。
+		aiapi.Mount(r, aiapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
