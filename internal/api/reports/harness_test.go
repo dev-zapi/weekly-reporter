@@ -25,16 +25,45 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	return newHarnessWithOptions(t, api.Options{})
+}
+
+// newHarnessWithOptions 允许生成域测试注入 engine 的 mock provider。
+func newHarnessWithOptions(t *testing.T, opts api.Options) *harness {
+	t.Helper()
 
 	sqlDB := dbtest.New(t)
 	conn := db.New(sqlDB)
 
-	router := api.NewRouter(api.Options{
-		Auth:    auth.Options{Disabled: true},
-		Queries: conn,
-	})
+	opts.Auth = auth.Options{Disabled: true}
+	opts.Queries = conn
+	router := api.NewRouter(opts)
 
 	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn}
+}
+
+// seedAIConfig 写一行 ai_config（生成引擎/一次性生成都要读它）。
+func (h *harness) seedAIConfig(protocol, apiURL, model string) {
+	h.t.Helper()
+	if _, err := h.sqlDB.Exec(
+		`INSERT INTO ai_config (protocol, api_url, api_key, model, created_at, updated_at)
+		 VALUES (?, ?, 'test-key', ?, 1700000000, 1700000000)`,
+		protocol, apiURL, model,
+	); err != nil {
+		h.t.Fatalf("seed ai_config: %v", err)
+	}
+}
+
+// seedTemplate 写一行用户模板（getTemplateSelection 的 user-<id> 形态）。
+func (h *harness) seedTemplate(id int64, name, content, aiStyle string) {
+	h.t.Helper()
+	if _, err := h.sqlDB.Exec(
+		`INSERT INTO templates (id, name, content, ai_style, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, 1700000000, 1700000000)`,
+		id, name, content, aiStyle,
+	); err != nil {
+		h.t.Fatalf("seed template: %v", err)
+	}
 }
 
 func (h *harness) do(method, path, body string) *httptest.ResponseRecorder {

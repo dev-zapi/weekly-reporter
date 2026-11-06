@@ -517,6 +517,13 @@ func TestB6ReportRoutesAreMounted(t *testing.T) {
 		{http.MethodGet, "/api/reports/999/generation-sessions/1", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
 		{http.MethodPatch, "/api/reports/999/generation-sessions/1", `{"title":"x"}`, http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
 		{http.MethodDelete, "/api/reports/999/generation-sessions/1", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		// B6 生成引擎的 5 条路由：路径必须落在域内（业务 400/404），而不是被
+		// /api/* 通配兜底成 "Not Found"。
+		{http.MethodPost, "/api/reports/999/generate", `{}`, http.StatusBadRequest, `"code":"INVALID_INPUT"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/turns", `{}`, http.StatusBadRequest, `"code":"EMPTY_MESSAGE"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/turns/1/stop", "", http.StatusNotFound, `"code":"TURN_NOT_FOUND"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/proposals/1/accept", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/query-snapshots/refresh", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {

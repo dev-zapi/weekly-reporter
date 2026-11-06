@@ -29,6 +29,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/buildinfo"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/engine"
 	"github.com/dev-zapi/weekly-reporter/internal/trace"
 )
 
@@ -41,6 +42,9 @@ type Options struct {
 	// HTTPClient 是采集域远端 provider 的 fetch 替身，也用于 settings/ai 的
 	// provider 探测；nil = http.DefaultClient。只给 httptest 打桩用，生产装配不传。
 	HTTPClient func(*http.Request) (*http.Response, error)
+	// EngineProvider 是生成引擎的 step provider 工厂；nil = 按 ai_config 建
+	// internal/aiclient 的三协议 adapter。同样只给 httptest 注入 mock。
+	EngineProvider engine.ProviderFactory
 }
 
 // NewRouter 返回应用路由。
@@ -97,10 +101,10 @@ func NewRouter(opts Options) http.Handler {
 		// 路由 /settings/ai 共存。同批的 templates/prompts 与 ai/* 由另两张票注册。
 		settingsapi.Mount(r, settingsapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
 		// B6 的报告域非生成路由：/reports 的列表、CRUD、终版、预览、搜索、原稿
-		// 重建与生成会话读面。同批的生成路由（generate / turns / stop / accept /
-		// query-snapshots）由引擎票注册在同一前缀下；静态段 preview / search 与
-		// 更长的 generation-sessions 子路由都由 chi 原生优先匹配。
-		reportsapi.Mount(r, reportsapi.Deps{Queries: opts.Queries})
+		// 重建与生成会话读面；生成本票同时注册 generate / turns / stop / accept /
+		// query-snapshots 五条写路由（引擎在 internal/engine）。静态段 preview /
+		// search 与更长的 generation-sessions 子路由都由 chi 原生优先匹配。
+		reportsapi.Mount(r, reportsapi.Deps{Queries: opts.Queries, NewStepProvider: opts.EngineProvider})
 		// B6 的 e2e 造数面：POST/DELETE /e2e/fixtures（ADR-0029 原样移植）。它由
 		// E2E_FIXTURES=1 门控，auth/审计照常走上面 /api 的中间件链。同批其余 B6
 		// 路由（reports 与生成引擎）由另几张票注册。
