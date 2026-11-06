@@ -1,0 +1,323 @@
+package heatmap_test
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+// 本文件是 src/app/api/events/heatmap/route.test.ts 的 Go 同用例集（ADR-0029）：
+// 8 个用例逐条对应，另补 route.ts 里可观测的 days 解析边界（parseInt 前缀、
+// 假值回退、clamp 上限、负值把 cutoff 推到未来）。
+//
+// 与 TS 的差异只有夹具形态：TS 用 vi.mock 替换 getDb 并按 case 摆好返回行，
+// Go 写进真实 SQLite（同一个 schema.sql）再让 handler 自己查。因此「聚合」这件事
+// 是被真 SQL 验证过的，而不是验证我们怎么拼 mock。
+
+type heatmapResponse struct {
+	Data []struct {
+		Date  string `json:"date"`
+		Count int64  `json:"count"`
+	} `json:"data"`
+}
+
+func decodeHeatmap(t *testing.T, body []byte) heatmapResponse {
+	t.Helper()
+
+	var resp heatmapResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("decode body %s: %v", body, err)
+	}
+	return resp
+}
+
+// mustJSONKeys 返回响应体的顶层键集合，用来钉死 {error, code} 形状（不能多带字段）。
+func mustJSONKeys(t *testing.T, rec *httptest.ResponseRecorder) map[string]json.RawMessage {
+	t.Helper()
+
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode body %s: %v", rec.Body.String(), err)
+	}
+	return got
+}
+
+// dayKey 复刻 route.ts 聚合键：本地时区的 YYYY-MM-DD。
+func dayKey(t time.Time) string {
+	return t.Local().Format("2006-01-02")
+}
+
+// startOfDay 取本地时区当天的 00:00。
+func startOfDay(t time.Time) time.Time {
+	local := t.Local()
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
+}
+
+func TestHeatmapGroupsByDay(t *testing.T) {
+	h := newHarness(t)
+	today := startOfDay(time.Now())
+	yesterday := today.AddDate(0, 0, -1)
+
+	h.seedEvent(today.Add(10 * time.Hour).Unix())
+	h.seedEvent(today.Add(14 * time.Hour).Unix())
+	h.seedEvent(yesterday.Add(9 * time.Hour).Unix())
+
+	rec := h.do("/api/events/heatmap")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 2 {
+		t.Fatalf("data = %+v, want 2 days", resp.Data)
+	}
+	if resp.Data[0].Date != dayKey(today) || resp.Data[0].Count != 2 {
+		t.Fatalf("data[0] = %+v, want {%s 2}", resp.Data[0], dayKey(today))
+	}
+	if resp.Data[1].Date != dayKey(yesterday) || resp.Data[1].Count != 1 {
+		t.Fatalf("data[1] = %+v, want {%s 1}", resp.Data[1], dayKey(yesterday))
+	}
+}
+
+func TestHeatmapDateIsZeroPaddedYMD(t *testing.T) {
+	h := newHarness(t)
+	today := startOfDay(time.Now())
+	h.seedEvent(today.Add(10 * time.Hour).Unix())
+
+	rec := h.do("/api/events/heatmap")
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+
+	if len(resp.Data) != 1 {
+		t.Fatalf("data = %+v, want 1 day", resp.Data)
+	}
+	// 单月单日也必须补零（route.ts 的 String(...).padStart(2,'0')）。
+	if resp.Data[0].Date != dayKey(today) {
+		t.Fatalf("date = %q, want %q", resp.Data[0].Date, dayKey(today))
+	}
+	if len(resp.Data[0].Date) != len("2006-01-02") {
+		t.Fatalf("date = %q, want YYYY-MM-DD", resp.Data[0].Date)
+	}
+}
+
+func TestHeatmapAggregatesEventsOnTheSameDay(t *testing.T) {
+	h := newHarness(t)
+	today := startOfDay(time.Now())
+	h.seedEvent(today.Add(8 * time.Hour).Unix())
+	h.seedEvent(today.Add(12 * time.Hour).Unix())
+	h.seedEvent(today.Add(18 * time.Hour).Unix())
+
+	rec := h.do("/api/events/heatmap")
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+
+	if len(resp.Data) != 1 {
+		t.Fatalf("data = %+v, want a single day", resp.Data)
+	}
+	if resp.Data[0] != (struct {
+		Date  string `json:"date"`
+		Count int64  `json:"count"`
+	}{dayKey(today), 3}) {
+		t.Fatalf("data[0] = %+v, want {%s 3}", resp.Data[0], dayKey(today))
+	}
+}
+
+func TestHeatmapEmptyResultIsEmptyArrayNotNull(t *testing.T) {
+	h := newHarness(t)
+
+	rec := h.do("/api/events/heatmap")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	// 空结果必须是 [] 而不是 null：客户端直接对 data 做数组操作。
+	if got := rec.Body.String(); got != `{"data":[]}` {
+		t.Fatalf("body = %s, want {\"data\":[]}", got)
+	}
+}
+
+func TestHeatmapSkipsZeroFillAndSortsDescending(t *testing.T) {
+	h := newHarness(t)
+	today := startOfDay(time.Now())
+	older := today.AddDate(0, 0, -4)
+
+	h.seedEvent(today.Add(10 * time.Hour).Unix())
+	h.seedEvent(older.Add(9 * time.Hour).Unix())
+
+	rec := h.do("/api/events/heatmap")
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+
+	if len(resp.Data) != 2 {
+		t.Fatalf("data = %+v, want 2 days (no zero fill)", resp.Data)
+	}
+	for _, d := range resp.Data {
+		if d.Count <= 0 {
+			t.Fatalf("day %q has count %d, want > 0 (no zero fill)", d.Date, d.Count)
+		}
+	}
+	if resp.Data[0].Date != dayKey(today) || resp.Data[1].Date != dayKey(older) {
+		t.Fatalf("data = %+v, want %s before %s", resp.Data, dayKey(today), dayKey(older))
+	}
+}
+
+// 数据库故障走 route.ts 的 catch：500 + {error, code}，而不是空数组。
+func TestHeatmapDatabaseErrorReturns500(t *testing.T) {
+	h := newHarness(t)
+	h.seedEvent(startOfDay(time.Now()).Unix())
+
+	if err := h.sqlDB.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	rec := h.do("/api/events/heatmap")
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
+	}
+	got := mustJSONKeys(t, rec)
+
+	var body struct {
+		Error string `json:"error"`
+		Code  string `json:"code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body %s: %v", rec.Body.String(), err)
+	}
+	if body.Error != "Failed to fetch heatmap data" || body.Code != "FETCH_ERROR" {
+		t.Fatalf("body = %s, want FETCH_ERROR shape", rec.Body.String())
+	}
+	if len(got) != 2 {
+		t.Fatalf("body must carry exactly {error, code}: %s", rec.Body.String())
+	}
+}
+
+// days=30 必须真的收窄窗口：30 天内的事件在内，31 天前的不在。
+func TestHeatmapAcceptsCustomDaysParameter(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	h.seedEvent(now.AddDate(0, 0, -3).Unix())
+	h.seedEvent(now.AddDate(0, 0, -45).Unix())
+
+	rec := h.do("/api/events/heatmap?days=30")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 1 {
+		t.Fatalf("data = %+v, want only the 3-day-old event", resp.Data)
+	}
+	if resp.Data[0].Date != dayKey(now.AddDate(0, 0, -3)) {
+		t.Fatalf("data[0] = %+v, want the recent day", resp.Data[0])
+	}
+}
+
+// Math.min(days, 730) 的上限是硬上限：days=9999 也不看 800 天前的事件。
+func TestHeatmapClampsDaysTo730(t *testing.T) {
+	h := newHarness(t)
+	h.seedEvent(time.Now().AddDate(0, 0, -800).Unix())
+
+	rec := h.do("/api/events/heatmap?days=9999")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 0 {
+		t.Fatalf("data = %+v, want empty (730-day clamp excludes 800 days ago)", resp.Data)
+	}
+}
+
+// days 的解析逐条对照 route.ts 的
+//
+//	Math.min(parseInt(sp.get('days') || '365') || 365, 730)
+//
+// NaN 与 0 都是假值，`|| 365` 把它们拉回 365；parseInt 容忍尾随垃圾；缺省与空串
+// 同样走 365。500 天前的事件是这些分支的可观测分界（365 排除它、500 包含它）。
+func TestHeatmapDaysParsingMirrorsRouteTS(t *testing.T) {
+	// 子测试名不能为空：空名时 Go 用 "#00" 拼临时目录，而 dbtest 的 file: DSN 会把
+	// "#" 之后当 URI fragment，导致多个用例共用同一个库文件（第二例起报 table
+	// already exists）。给缺省分支一个可读名字即可绕开。
+	cases := []struct {
+		name      string
+		query     string
+		wantEvent bool // 500 天前的事件是否落在窗口里
+	}{
+		{"default", "", false},                         // 缺省 → 365
+		{"empty", "?days=", false},                     // 空串 → '365'
+		{"nan", "?days=abc", false},                    // NaN → 365
+		{"zero", "?days=0", false},                     // 0 是假值 → 365
+		{"zero-prefixed-garbage", "?days=0abc", false}, // parseInt('0abc') = 0 → 365
+		{"five-hundred", "?days=500", true},            // 500 天真窗口
+		{"trailing-garbage", "?days=500abc", true},     // parseInt 前缀
+		{"leading-zero", "?days=0300", false},          // parseInt('0300') = 300（十进制，无八进制）→ 排除 500 天
+		{"hex", "?days=0x1f4", true},                   // parseInt 无 radix 时认 0x 前缀 = 500
+		{"clamped", "?days=99999999999999", true},      // clamp 730 → 仍包含 500 天（clamp 本身由 TestHeatmapClampsDaysTo730 钉住）
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seedEvent(time.Now().AddDate(0, 0, -500).Unix())
+
+			rec := h.do("/api/events/heatmap" + tc.query)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			resp := decodeHeatmap(t, rec.Body.Bytes())
+			if got := len(resp.Data) == 1; got != tc.wantEvent {
+				t.Fatalf("500-day-old event included = %t, want %t (data %+v)", got, tc.wantEvent, resp.Data)
+			}
+		})
+	}
+}
+
+// 负 days 照抄 route.ts：Math.min(-5, 730) = -5，cutoff 被推到 5 天之后，
+// 于是只有「5 天后」的事件进来。这是 parseInt 语义的产物，不是可修的自由度。
+func TestHeatmapNegativeDaysPushesCutoffIntoTheFuture(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now()
+	h.seedEvent(now.Unix())
+	h.seedEvent(now.AddDate(0, 0, 6).Unix())
+
+	rec := h.do("/api/events/heatmap?days=-5")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 1 {
+		t.Fatalf("data = %+v, want only the future event", resp.Data)
+	}
+	if resp.Data[0].Date != dayKey(now.AddDate(0, 0, 6)) {
+		t.Fatalf("data[0] = %+v, want the future day", resp.Data[0])
+	}
+}
+
+// 极大负 days 让 route.ts 的 `cutoff.setDate(...)` 越过 JS Date 的范围（±8.64e15 ms），
+// cutoff 变成 Invalid Date → 绑进 SQLite 是 NaN → `event_time >= NaN` 恒不成立 → 零行。
+// 注意 days 先过 Math.min(…, 730)，所以只有负向能走到这里。
+func TestHeatmapHugeNegativeDaysYieldsInvalidDateAndNoRows(t *testing.T) {
+	h := newHarness(t)
+	h.seedEvent(time.Now().Unix())
+	h.seedEvent(time.Now().AddDate(0, 0, -30).Unix())
+
+	rec := h.do("/api/events/heatmap?days=-1e21") // parseInt('-1e21') = -1（尾随垃圾），窗口含今天
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	// -1 天：cutoff 是明天，今天的事件被排除 → 空数组。
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 0 {
+		t.Fatalf("data = %+v, want empty (cutoff pushed one day into the future)", resp.Data)
+	}
+
+	// 真正的 Invalid Date：days 是精确的极大负数。
+	rec = h.do("/api/events/heatmap?days=-999999999999999")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp = decodeHeatmap(t, rec.Body.Bytes())
+	if len(resp.Data) != 0 {
+		t.Fatalf("data = %+v, want empty (Invalid Date → NaN → no rows)", resp.Data)
+	}
+}
