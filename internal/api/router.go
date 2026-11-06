@@ -18,6 +18,7 @@ import (
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
 	exportapi "github.com/dev-zapi/weekly-reporter/internal/api/export"
 	plansapi "github.com/dev-zapi/weekly-reporter/internal/api/plans"
+	promptsapi "github.com/dev-zapi/weekly-reporter/internal/api/prompts"
 	snippetsapi "github.com/dev-zapi/weekly-reporter/internal/api/snippets"
 	tagsapi "github.com/dev-zapi/weekly-reporter/internal/api/tags"
 	templatesapi "github.com/dev-zapi/weekly-reporter/internal/api/templates"
@@ -82,6 +83,7 @@ func NewRouter(opts Options) http.Handler {
 		// 同样扁平注册，静态段 clone 优先于 /templates/{id}，/templates/{id}/render
 		// 按段数与之共存。同批的 settings/ai 与 ai/* 由另两张票注册。
 		templatesapi.Mount(r, templatesapi.Deps{Queries: opts.Queries})
+		promptsapi.Mount(r, promptsapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
