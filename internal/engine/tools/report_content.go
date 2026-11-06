@@ -32,30 +32,9 @@ const (
 	truncationMarker = "\n[系统截断：正文超过 40,000 字符]"
 )
 
-// sliceUTF16 复刻 JS 的 String.prototype.slice(0, n)（按 UTF-16 单元截断）。
-//
-// 与 TS 的一个有意边界差异：JS 允许把增补平面字符劈成孤立代理项（随后
-// JSON.stringify 会输出 \udXXX 转义），Go 的 string 无法表示孤立代理项；
-// 需要劈开时本函数整对舍弃（少 1 个单元），避免产生非法 UTF-8。ADR-0027 的
-// 公共 utf16 helper 随引擎票（#110）落地，这里先保留包内实现，避免两个并行
-// 分支在公共包里重复定义同一符号。
-func sliceUTF16(s string, n int) string {
-	if n <= 0 {
-		return ""
-	}
-	count := 0
-	for index, r := range s {
-		units := 1
-		if r > 0xFFFF {
-			units = 2
-		}
-		if count+units > n {
-			return s[:index]
-		}
-		count += units
-	}
-	return s
-}
+// sliceUTF16 是 jsstr.SliceUTF16 的包内别名：ADR-0027 要求 UTF-16 截断只有一份
+// 实现，引擎票（#110）已把公共 helper 落到 jsstr。
+func sliceUTF16(s string, n int) string { return jsstr.SliceUTF16(s, n) }
 
 // contentInvalid 构造 content 工具的 INVALID_QUERY 失败结果。
 func contentInvalid(message string) ReportContentToolResult {
