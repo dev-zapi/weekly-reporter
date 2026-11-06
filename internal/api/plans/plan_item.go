@@ -473,6 +473,9 @@ func applyUpdateFields(
 		}
 	}
 	if raw, ok := body["position"]; ok {
+		// route.ts 把原始值直接交给 drizzle：SQLite 的列亲和性会把 "5" 折成 5、
+		// 把 true 折成 1。这里只接受同样会落到整数上的值；非数值（"abc"、数组、
+		// 对象）在 TS 侧要么存成 TEXT、要么让驱动抛错，都不在冻结契约的输入集里。
 		if value, convertible := asID(raw); convertible {
 			*position = &value
 		}
