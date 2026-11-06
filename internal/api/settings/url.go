@@ -2,7 +2,6 @@ package settings
 
 import (
 	"net"
-	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -18,8 +17,10 @@ import (
 // 字符串）。
 //
 // 边界（有意收窄，非 WHATWG 全量对等）：IDNA/Punycode 转换、IPv4 数字形态
-// （`http://2130706433/`）、IPvFuture、`file:` 的路径规则都没有复刻——它们都
-// 没有出现在本路由的消费者与 e2e 里。下面的规则覆盖 V8 对常见输入的分支：
+// （`http://2130706433/`）、IPvFuture 与百分号解码（`http://%41.com` 在 WHATWG 里
+// 会解成 `http://a.com`）都没有复刻——它们都没有出现在本路由的消费者与 e2e 里，
+// 且 `new URL()` 的判定结果（通过/抛错）不受影响。下面的规则覆盖 V8 对常见输入
+// 的分支：
 //   - 必须有 scheme（相对 URL 无 base 时抛错）；
 //   - special scheme（http/https/ws/wss/ftp/file）必须能解析出 host，且端口
 //     是十进制、≤65535、host 不含 forbidden host code point；
@@ -220,18 +221,4 @@ func isHex(b byte) bool {
 // trimTrailingSlashes 复刻 `apiUrl.replace(/\/+$/, ”)`。
 func trimTrailingSlashes(value string) string {
 	return strings.TrimRight(value, "/")
-}
-
-// isValidFetchURL 判定 provider 调用用的绝对 URL 能否被 fetch 接受（Node 的
-// fetch 对相对地址抛 TypeError "Failed to parse URL from ..."）。这里只要求
-// scheme +（special scheme 时）非空 host；错误文案由调用方拼。
-func isValidFetchURL(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme == "" {
-		return false
-	}
-	if isSpecialScheme(strings.ToLower(parsed.Scheme)) && parsed.Host == "" && parsed.Opaque == "" {
-		return false
-	}
-	return true
 }

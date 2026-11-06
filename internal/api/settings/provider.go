@@ -109,14 +109,20 @@ func fetchModelList(ctx context.Context, do func(*http.Request) (*http.Response,
 		return []any{}, nil
 	}
 
-	target := trimTrailingSlashes(cfg.APIURL) + "/models"
-	if !isValidFetchURL(target) {
-		return nil, fmt.Errorf("Failed to parse URL from %s", target)
+	rawTarget := trimTrailingSlashes(cfg.APIURL) + "/models"
+	// Node 的 fetch 用 WHATWG 解析：会先 trim 首尾 C0/空格、删掉串内 tab/换行。
+	// 这里用同一份清洗后的串发请求；错误文案仍引用原始串（与 fetch 的报错一致）。
+	target := normalizeURLInput(rawTarget)
+	if !isValidAPIURL(target) {
+		return nil, fmt.Errorf("Failed to parse URL from %s", rawTarget)
 	}
 
 	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, errors.New("fetch failed")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse URL from %s", target)
 	}
@@ -306,12 +312,14 @@ func buildProbeRequest(ctx context.Context, cfg providerConfig) (*http.Request, 
 	if err != nil {
 		return nil, err
 	}
-	if !isValidFetchURL(target) {
-		return nil, fmt.Errorf("Failed to parse URL from %s", target)
+	rawTarget := target
+	target = normalizeURLInput(target)
+	if !isValidAPIURL(target) {
+		return nil, fmt.Errorf("Failed to parse URL from %s", rawTarget)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse URL from %s", target)
+		return nil, errors.New("fetch failed")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for key, value := range headers {

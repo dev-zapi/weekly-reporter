@@ -2,6 +2,7 @@ package settings
 
 import (
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -94,19 +95,8 @@ func sortModelIDs(ids []modelID) []modelID {
 		}
 	}
 	// sort.SliceStable 与 V8 一样是稳定排序。
-	stableSortModelIDs(defined)
+	sort.SliceStable(defined, func(i, j int) bool {
+		return utf16Less(jsStringValue(defined[i].value), jsStringValue(defined[j].value))
+	})
 	return append(defined, undefined...)
-}
-
-func stableSortModelIDs(ids []modelID) {
-	// 插入排序：模型列表通常很短，且避免为二十行 comparator 引入 sort 包的
-	// interface 噪音。
-	for i := 1; i < len(ids); i++ {
-		for j := i; j > 0; j-- {
-			if !utf16Less(jsStringValue(ids[j].value), jsStringValue(ids[j-1].value)) {
-				break
-			}
-			ids[j], ids[j-1] = ids[j-1], ids[j]
-		}
-	}
 }
