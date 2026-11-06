@@ -86,7 +86,10 @@ func lookupHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
-// configOwner 复刻 `(source.config?.owner as string | undefined) || ”`。
+// configOwner 复刻 src/app/api/collect/sources/lookup/route.ts:70 的
+//
+//	(source.config?.owner as string | undefined) || ''
+//
 // 非法 JSON 返回 error（drizzle 的 json mode 在解析时抛错 → 500）。
 func configOwner(raw []byte) (string, error) {
 	if len(raw) == 0 {

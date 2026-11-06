@@ -29,7 +29,11 @@ type branchSyncResult struct {
 }
 
 // syncResult 对应 SyncResult。字段顺序与 sync.ts 的对象字面量一致，保证响应体
-// 键序可对照。warnings 只是类型里的可选字段、sync.ts 从不赋值，因此这里不复制。
+// 键序可对照。
+//
+// warnings 不复制：src/lib/collect/source-commands.ts:53 与
+// src/components/CollectSourceList.tsx:213 确有读取方，但 sync.ts 从不给该键赋值，
+// 运行时恒为 undefined —— Go 省略该键与 TS 的 JSON 输出在读取侧不可区分。
 type syncResult struct {
 	SourceID     int64   `json:"sourceId"`
 	SourceName   string  `json:"sourceName"`
@@ -127,7 +131,7 @@ func syncSource(ctx context.Context, queries *db.Queries, sourceID int64, resync
 	return syncSourceUnlocked(ctx, queries, sourceID, resync)
 }
 
-// syncSourceUnlocked 是 sync.ts 的相主体。
+// syncSourceUnlocked 是 sync.ts 里 withSourceOperationLock 内的主体（sync.ts:399）。
 func syncSourceUnlocked(ctx context.Context, queries *db.Queries, sourceID int64, resync bool) (syncResult, error) {
 	row, err := queries.GetCollectSourceForExecution(ctx, sourceID)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -23,6 +23,9 @@ import (
 
 // fetchJSON 复刻 `const res = await fetch(...); if (!res.ok) return []; data = await res.json()`。
 // 网络错误、非 2xx、JSON 解析失败都返回 false，由调用方回退成 []。
+//
+// 与 collect 包的同名 fetchJSON 有意不同：这里把「失败」折叠成 false（不向调用方
+// 暴露状态码），且 HTTP 客户端由 Deps 注入以便测试打桩。
 func fetchJSON(do func(*http.Request) (*http.Response, error), request *http.Request, out any) bool {
 	response, err := do(request)
 	if err != nil {
@@ -73,6 +76,7 @@ func getLocalBranches(repoPath string) []string {
 }
 
 // getCurrentBranch 复刻 `git branch --show-current`，detached HEAD / 非仓库返回空串。
+// 与 collect 包的同名函数不同：那里带 ctx 且错误分类更细，这里只服务目录补全。
 func getCurrentBranch(repoPath string) string {
 	output, err := runGit(repoPath, "branch", "--show-current")
 	if err != nil {
@@ -105,6 +109,8 @@ func lookupSource(r *http.Request, deps Deps, sourceID float64) (db.CollectSourc
 // errInvalidStoredConfig 表示存量 config 不是合法 JSON（route.ts 的 findFirst 会抛错）。
 var errInvalidStoredConfig = errors.New("collect sources: stored config is not valid JSON")
 
+// 与 collect 包的同名 runGit 有意不同：这里只取 stdout，错误一律由调用方吞成
+// 空列表（route.ts 的 try/catch），不构造 Node 风格的错误文案，也不需要 ctx。
 func runGit(dir string, args ...string) (string, error) {
 	command := exec.Command("git", args...)
 	command.Dir = dir
@@ -353,6 +359,8 @@ func getLocalAuthors(repoPath, branch string) []authorInfo {
 	return counter.result()
 }
 
+// githubCommit 是 branches/emails 端点的作者聚合视图。
+// 与 collect 包 adapters.go 的同名类型不同：那里是同步用的完整 commit 形状。
 type githubCommit struct {
 	Author *struct {
 		Email string `json:"email"`

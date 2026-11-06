@@ -256,6 +256,11 @@ func TestScanReposExpandsHomeShorthand(t *testing.T) {
 
 // 顶层路径本身就是仓库时，结果为空（容器语义），与 src/app/collect/actions.test.ts
 // 的同名用例一致。
+//
+// 该 vitest 文件保留到 B8 cutover：ticket #118 未把它列入随票删除清单（票面写的是
+// 「新路由无 TS 前身测试」），而 blueprint §7 的 cutover 清单会把
+// src/app/collect/actions.ts 与「TS server 测试」一并删除。两条用例在 cutover 前
+// 并存是显式决定，不是遗漏。
 func TestScanReposDoesNotReturnTheContainerItself(t *testing.T) {
 	h := newHarness(t)
 	root := buildRepoTree(t)

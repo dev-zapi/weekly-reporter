@@ -268,7 +268,11 @@ func matchSSHForm(s string) (string, bool) {
 	return rest, true
 }
 
-// trimProtocolPrefix 复刻 `replace(/^(?:https?|ssh|git):\/\//, ”)`。
+// trimProtocolPrefix 复刻 src/lib/utils.ts:82 的
+//
+//	replace(/^(?:https?|ssh|git):\/\//, '')
+//
+// （第二个参数是空串字面量，故写成代码块以避开 gofmt 的引号折弯）。
 func trimProtocolPrefix(s string) string {
 	for _, prefix := range []string{"https://", "http://", "ssh://", "git://"} {
 		if strings.HasPrefix(s, prefix) {
@@ -278,7 +282,11 @@ func trimProtocolPrefix(s string) string {
 	return s
 }
 
-// trimUserPrefix 复刻 `replace(/^[^@\/]+@/, ”)`：@ 必须出现在第一个 `/` 之前。
+// trimUserPrefix 复刻 src/lib/utils.ts:83 的
+//
+//	replace(/^[^@\/]+@/, '')
+//
+// @ 必须出现在第一个 `/` 之前。
 func trimUserPrefix(s string) string {
 	at := strings.Index(s, "@")
 	if at <= 0 {

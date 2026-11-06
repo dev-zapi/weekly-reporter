@@ -32,8 +32,8 @@ type fetchOptions struct {
 	SkipPull bool
 }
 
-// gitAdapter 对应 types.ts 的 GitAdapter（platform 字段在 TS 侧也没有读取方，
-// 这里不复制）。
+// gitAdapter 对应 types.ts 的 GitAdapter。platform 字段不复制：src/lib/collect/types.ts
+// 声明了它，但 src/ 与 web/ 里没有任何读取方。
 type gitAdapter interface {
 	fetchCommits(ctx context.Context, opts fetchOptions) ([]gitCommit, error)
 }

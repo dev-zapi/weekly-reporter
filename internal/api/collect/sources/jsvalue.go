@@ -165,9 +165,13 @@ func jsonTypeName(value any) string {
 	return "unknown"
 }
 
-// numberFromQuery 复刻 `Number(searchParams.get(x) || ”)`，第二个返回值是
-// `Number.isInteger`。只用于 branches / emails 的 sourceId：Number(”) === 0、
-// Number('7.5') 非整数、Number('abc') 是 NaN。文法由 jsparse.ParseNumber 提供。
+// numberFromQuery 复刻 src/app/api/collect/sources/branches/route.ts:22 的
+//
+//	Number(searchParams.get(x) || '')
+//
+// 第二个返回值是 `Number.isInteger`。只用于 branches / emails 的 sourceId：
+// 空串得 0、'7.5' 非整数、'abc' 是 NaN。文法本身由 jsparse.ParseNumber 提供
+// （ECMAScript ToNumber，与 collect 包共用同一份）。
 func numberFromQuery(raw string) (float64, bool) {
 	value, ok := jsparse.ParseNumber(raw)
 	if !ok {
