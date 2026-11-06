@@ -254,15 +254,19 @@ const listEvents = `-- name: ListEvents :many
 SELECT id, event_time, source, content, CAST(metadata AS BLOB) AS metadata, category, created_at, updated_at, is_important,
        (SELECT COUNT(*) FROM comment_references WHERE comment_references.referenced_event_id = raw_events.id) AS comment_referrer_count
 FROM raw_events
-WHERE (?1 = 0 OR (raw_events.event_time >= ?2 AND raw_events.event_time <= ?3))
+WHERE (?1 = 0
+       OR (?1 = 1
+           AND raw_events.event_time >= ?2
+           AND raw_events.event_time <= ?3))
   AND (?4 = 0 OR (raw_events.event_time >= ?5 AND raw_events.event_time <= ?6))
   AND (?7 = 0 OR raw_events.source = ?8)
   AND (?9 = 0 OR raw_events.source <> ?10)
   AND (?11 = 0
-       OR raw_events.event_time < ?12
-       OR (raw_events.event_time = ?13
-           AND ?14 = 1
-           AND raw_events.id < ?15))
+       OR (?11 = 1
+           AND (raw_events.event_time < ?12
+                OR (raw_events.event_time = ?13
+                    AND ?14 = 1
+                    AND raw_events.id < ?15))))
 ORDER BY raw_events.event_time DESC
 LIMIT ?16
 `
@@ -303,6 +307,8 @@ type ListEventsRow struct {
 // is a flag plus its values so one static statement mirrors the route's dynamic
 // WHERE:
 //   - week_filter / date_filter mirror the two optional `between` conditions;
+//     week_filter = 2 encodes route.ts's invalid-date case (a BETWEEN that can
+//     never be true), so the rest of the pipeline still runs;
 //   - source_eq mirrors `source = 'manual'`, source_ne mirrors `source != 'manual'`;
 //   - cursor_filter mirrors the composite (event_time, id) cursor; cursor_id_filter
 //     stays 0 when parseInt('cursorId') is NaN, which makes only the `id <` half

@@ -71,6 +71,10 @@ func isoFromUnix(sec int64) string {
 // nullMetadata 是响应里 metadata 为 null 时的字面量。
 var nullMetadata = json.RawMessage("null")
 
+// filterAlwaysFalse 是 route.ts 里 NaN 条件的等价物：SQL 的 `flag = 2` 分支
+// 让整条谓词恒假，但查询本身照常执行（别名读取与分页计算也不变）。
+const filterAlwaysFalse = int64(2)
+
 // metadataFromColumn 把库里的 JSON 文本还原成 JS 侧的值。
 //
 // drizzle 的 json mode 是 JSON.parse + JSON.stringify，所以：NULL → null；
@@ -142,14 +146,14 @@ func listHandler(deps Deps) http.HandlerFunc {
 				start := jsdate.ParseString(weekStart)
 				end := jsdate.ParseString(weekEnd)
 				if !start.Valid || !end.Valid {
-					// `between(NaN, …)` 在 SQLite 里恒为假：直接回空页，
-					// 不去执行那条必然查不到行的语句。
-					writeEventsPage(w, nil, limit, limitOK)
-					return
+					// `between(NaN, …)` 在 SQLite 里恒为假。用 flag=2 表达，而不是
+					// 提前返回：route.ts 仍会跑完后续查询（含别名读取）与分页计算。
+					params.WeekFilter = filterAlwaysFalse
+				} else {
+					params.WeekFilter = int64(1)
+					params.WeekStart = floorDivSec(start.Millis)
+					params.WeekEnd = floorDivSec(endOfLocalDay(end.Millis))
 				}
-				params.WeekFilter = int64(1)
-				params.WeekStart = floorDivSec(start.Millis)
-				params.WeekEnd = floorDivSec(endOfLocalDay(end.Millis))
 			}
 
 			dateParam := query.Get("date")
@@ -182,17 +186,19 @@ func listHandler(deps Deps) http.HandlerFunc {
 		if cursorIDRaw != "" && cursorTimeRaw != "" {
 			cursorID, cursorIDOK, _ := jsparse.ParseIntWithOverflow(cursorIDRaw)
 			cursorTime, cursorTimeOK, _ := jsparse.ParseIntWithOverflow(cursorTimeRaw)
-			if !cursorTimeOK {
-				// `event_time < NaN` 与 `event_time = NaN` 恒为假。
-				writeEventsPage(w, nil, limit, limitOK)
-				return
-			}
 			cursorFilter = 1
 			params.CursorFilter = int64(1)
-			// JS 侧是 Math.floor(cursorTime / 1000)，cursorTime 是毫秒。
-			cursorSec := floorDivSec(cursorTime)
-			params.CursorTimeLt = cursorSec
-			params.CursorTimeEq = cursorSec
+			if !cursorTimeOK {
+				// `event_time < NaN` 与 `event_time = NaN` 恒为假；flag=2 表达同一
+				// 语义，剩下的流程（别名读取、分页计算）与其它请求完全一致。
+				cursorFilter = 2
+				params.CursorFilter = filterAlwaysFalse
+			} else {
+				// JS 侧是 Math.floor(cursorTime / 1000)，cursorTime 是毫秒。
+				cursorSec := floorDivSec(cursorTime)
+				params.CursorTimeLt = cursorSec
+				params.CursorTimeEq = cursorSec
+			}
 			if cursorIDOK {
 				cursorIDFilter = 1
 				params.CursorIDFilter = int64(1)

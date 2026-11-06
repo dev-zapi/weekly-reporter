@@ -15,6 +15,8 @@ LIMIT 1;
 -- is a flag plus its values so one static statement mirrors the route's dynamic
 -- WHERE:
 --   * week_filter / date_filter mirror the two optional `between` conditions;
+--     week_filter = 2 encodes route.ts's invalid-date case (a BETWEEN that can
+--     never be true), so the rest of the pipeline still runs;
 --   * source_eq mirrors `source = 'manual'`, source_ne mirrors `source != 'manual'`;
 --   * cursor_filter mirrors the composite (event_time, id) cursor; cursor_id_filter
 --     stays 0 when parseInt('cursorId') is NaN, which makes only the `id <` half
@@ -27,15 +29,19 @@ LIMIT 1;
 SELECT id, event_time, source, content, CAST(metadata AS BLOB) AS metadata, category, created_at, updated_at, is_important,
        (SELECT COUNT(*) FROM comment_references WHERE comment_references.referenced_event_id = raw_events.id) AS comment_referrer_count
 FROM raw_events
-WHERE (sqlc.arg('week_filter') = 0 OR (raw_events.event_time >= sqlc.arg('week_start') AND raw_events.event_time <= sqlc.arg('week_end')))
+WHERE (sqlc.arg('week_filter') = 0
+       OR (sqlc.arg('week_filter') = 1
+           AND raw_events.event_time >= sqlc.arg('week_start')
+           AND raw_events.event_time <= sqlc.arg('week_end')))
   AND (sqlc.arg('date_filter') = 0 OR (raw_events.event_time >= sqlc.arg('date_start') AND raw_events.event_time <= sqlc.arg('date_end')))
   AND (sqlc.arg('source_eq_filter') = 0 OR raw_events.source = sqlc.arg('source_eq'))
   AND (sqlc.arg('source_ne_filter') = 0 OR raw_events.source <> sqlc.arg('source_ne'))
   AND (sqlc.arg('cursor_filter') = 0
-       OR raw_events.event_time < sqlc.arg('cursor_time_lt')
-       OR (raw_events.event_time = sqlc.arg('cursor_time_eq')
-           AND sqlc.arg('cursor_id_filter') = 1
-           AND raw_events.id < sqlc.arg('cursor_id')))
+       OR (sqlc.arg('cursor_filter') = 1
+           AND (raw_events.event_time < sqlc.arg('cursor_time_lt')
+                OR (raw_events.event_time = sqlc.arg('cursor_time_eq')
+                    AND sqlc.arg('cursor_id_filter') = 1
+                    AND raw_events.id < sqlc.arg('cursor_id')))))
 ORDER BY raw_events.event_time DESC
 LIMIT sqlc.arg('limit');
 

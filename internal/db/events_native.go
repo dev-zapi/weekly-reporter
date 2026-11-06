@@ -44,10 +44,11 @@ WHERE EXISTS (
   AND (? = 0 OR raw_events.source = ?)
   AND (? = 0 OR raw_events.source <> ?)
   AND (? = 0
-       OR raw_events.event_time < ?
-       OR (raw_events.event_time = ?
-           AND ? = 1
-           AND raw_events.id < ?))
+       OR (? = 1
+           AND (raw_events.event_time < ?
+                OR (raw_events.event_time = ?
+                    AND ? = 1
+                    AND raw_events.id < ?))))
 ORDER BY raw_events.event_time DESC
 LIMIT ?`
 
@@ -62,6 +63,7 @@ LIMIT ?`
 		params.SourceEq,
 		params.SourceNeFilter,
 		params.SourceNe,
+		params.CursorFilter,
 		params.CursorFilter,
 		params.CursorTimeLt,
 		params.CursorTimeEq,
