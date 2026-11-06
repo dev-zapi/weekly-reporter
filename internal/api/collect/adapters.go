@@ -30,9 +30,9 @@ type fetchOptions struct {
 	SkipPull bool
 }
 
-// gitAdapter 对应 types.ts 的 GitAdapter。
+// gitAdapter 对应 types.ts 的 GitAdapter（platform 字段在 TS 侧也没有读取方，
+// 这里不复制）。
 type gitAdapter interface {
-	platform() string
 	fetchCommits(ctx context.Context, opts fetchOptions) ([]gitCommit, error)
 }
 
@@ -52,8 +52,6 @@ func getAdapter(sourceType string) gitAdapter {
 // ---------- git-local ----------
 
 type localGitAdapter struct{}
-
-func (localGitAdapter) platform() string { return "git-local" }
 
 // fetchCommits 复刻 localGitAdapter.fetchCommits：
 //   - 非 skipPull 时先 best-effort pull（skipPull 由 sync.go 的全分支模式传入）
@@ -198,8 +196,6 @@ func parseGitDate(value string) (time.Time, error) {
 
 type githubAdapter struct{}
 
-func (githubAdapter) platform() string { return "git-remote-github" }
-
 type githubCommit struct {
 	Sha    string `json:"sha"`
 	Commit struct {
@@ -299,8 +295,6 @@ func (githubAdapter) fetchCommits(ctx context.Context, opts fetchOptions) ([]git
 }
 
 type gitlabAdapter struct{}
-
-func (gitlabAdapter) platform() string { return "git-remote-gitlab" }
 
 type gitlabCommit struct {
 	ID            string `json:"id"`

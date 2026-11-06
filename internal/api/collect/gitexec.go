@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -64,10 +65,17 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		execErr := &gitExecError{command: strings.Join(args, " "), stderr: stderr.String()}
 		var startErr *exec.Error
-		if errors.As(err, &startErr) {
+		switch {
+		case errors.As(err, &startErr):
 			execErr.spawnFailed = true
 			execErr.spawnMsg = "spawn git ENOENT"
-		} else if stderr.Len() == 0 {
+		case errors.Is(err, fs.ErrNotExist):
+			// `cmd.Dir` 不存在时 Go 在 chdir 阶段就失败（*fs.PathError），Node 的
+			// execFile 则表现为 `spawn git ENOENT`——getGitErrorMessage 的 includes
+			// 判定依赖这条文案。
+			execErr.spawnFailed = true
+			execErr.spawnMsg = "spawn git ENOENT"
+		case stderr.Len() == 0:
 			// 进程启动了但没有任何 stderr（例如被信号打断）：Node 的 message 会是
 			// `Command failed: ...`，这里保留 Go 的错误文本即可，不进入 ENOENT 分支。
 			execErr.spawnFailed = true

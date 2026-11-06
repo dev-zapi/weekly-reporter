@@ -159,3 +159,24 @@ func equalStrings(a, b []string) bool {
 
 // 编译期确认 os 包在 HOME 缺失时仍返回空串（expandInputPath 的兜底分支）。
 var _ = os.Getenv
+
+// git 执行面的错误文案是冻结契约的一部分（route.ts 按 stderr 文本分支），
+// 这里钉住三种输入的错误形态。
+func TestGitExecErrorMessages(t *testing.T) {
+	dir := t.TempDir()
+
+	// 1) 不是仓库：stderr 是 fatal: not a git repository...
+	if _, err := runGit(t.Context(), dir, "rev-parse", "--is-inside-work-tree"); err == nil {
+		t.Fatal("expected an error for a non-repository directory")
+	} else if !isNotAGitRepository(err.Error()) {
+		t.Fatalf("error = %q, want a not-a-git-repository message", err.Error())
+	}
+
+	// 2) 目录不存在：Go 在 chdir 阶段失败，文案对齐 Node 的 `spawn git ENOENT`。
+	missing := filepath.Join(dir, "missing")
+	if _, err := runGit(t.Context(), missing, "rev-parse", "--is-inside-work-tree"); err == nil {
+		t.Fatal("expected an error for a missing directory")
+	} else if !isMissingPath(err.Error()) {
+		t.Fatalf("error = %q, want an ENOENT-shaped message", err.Error())
+	}
+}

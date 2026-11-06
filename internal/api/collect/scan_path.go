@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"unicode/utf16"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
@@ -170,9 +171,10 @@ func scanPathHandler() http.HandlerFunc {
 }
 
 // writeScanError 复刻 route.ts 的 catch 分支：EACCES → 403 ACCESS_DENIED，
-// 其它 → 500 SCAN_ERROR。
+// 其它 → 500 SCAN_ERROR。只认 EACCES（fs.ErrPermission 还包含 EPERM，route.ts
+// 对 EPERM 会走 500）。
 func writeScanError(w http.ResponseWriter, err error) {
-	if errors.Is(err, fs.ErrPermission) {
+	if errors.Is(err, syscall.EACCES) {
 		respond.Error(w, http.StatusForbidden, "无权限访问此目录", "ACCESS_DENIED")
 		return
 	}
@@ -183,15 +185,14 @@ func writeScanError(w http.ResponseWriter, err error) {
 // readDirectories 复刻 route.ts 里「readdirSync(withFileTypes) + 过滤目录」的那段：
 // 只保留目录，隐藏目录（以 `.` 开头且不是 `.` 本身）跳过。结果路径按 resolve 规范化。
 func readDirectories(basePath string) ([]directoryItem, error) {
-	entries, err := os.ReadDir(basePath)
+	entries, err := readDirectoryEntries(basePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// 注意：Node 的 readdirSync 按文件系统原始顺序返回，Go 的 os.ReadDir 会按文件名
-	// 排序。目录补全的消费方只做展示，顺序差异不可观测性足够（同分排序同样按该顺序
-	// 稳定进行）；这里用排序后的确定性顺序，便于测试断言。
 	directories := make([]directoryItem, 0, len(entries))
+	// 注意：readDirectoryEntries 保留文件系统原始顺序（对应 readdirSync），
+	// 同分排序（sort.SliceStable）的先后因此与 route.ts 一致。
 	for _, entry := range entries {
 		// Dirent.isDirectory() 对符号链接返回 false（不跟随），entry.IsDir() 同语义。
 		if !entry.IsDir() {
@@ -206,6 +207,18 @@ func readDirectories(basePath string) ([]directoryItem, error) {
 		})
 	}
 	return directories, nil
+}
+
+// readDirectoryEntries 复刻 `fs.readdirSync(p, {withFileTypes:true})`：`os.ReadDir`
+// 会按文件名排序，而 readdirSync 返回文件系统原始顺序；同分排序的先后与 50 条截断
+// 都依赖这个顺序，所以这里用 File.ReadDir(-1) 并保持原序。
+func readDirectoryEntries(path string) ([]fs.DirEntry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return file.ReadDir(-1)
 }
 
 // isDirectory 复刻 `fs.existsSync(p) && fs.statSync(p).isDirectory()`。
@@ -260,7 +273,7 @@ func collectDirs(basePath, query string, maxDepth, currentDepth int) []scoredDir
 	}
 
 	results := make([]scoredDirectory, 0, 8)
-	entries, err := os.ReadDir(basePath)
+	entries, err := readDirectoryEntries(basePath)
 	if err != nil {
 		// 不可读目录直接跳过（route.ts 的 `catch { }`）。
 		return nil
