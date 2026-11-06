@@ -59,7 +59,9 @@ func truthyJSON(v any) bool {
 }
 
 // asID 复刻 drizzle 把 JSON 值绑进 integer 主键时的 SQLite 亲和性：
-// 数字按数值、数字字符串按数值转换、布尔按 1/0。非整数（1.5）不可能命中。
+// 数字按数值、数字字符串按数值转换。非整数（1.5）不可能命中。
+// 布尔/数组/对象不在这里处理：better-sqlite3 在绑定阶段就抛错，由
+// unbindableJSON 的调用方映射成 route.ts 的 500 catch 分支。
 func asID(v any) (int64, bool) {
 	switch value := v.(type) {
 	case float64:
@@ -79,13 +81,21 @@ func asID(v any) (int64, bool) {
 			return 0, false
 		}
 		return int64(parsed), true
-	case bool:
-		if value {
-			return 1, true
-		}
-		return 0, true
 	}
 	return 0, false
+}
+
+// unbindableJSON 判断 route.ts 把原始 JSON 值交给 drizzle → better-sqlite3 时，
+// 是否会在参数绑定阶段抛错。驱动只接受 number/string/bigint/buffer/null：
+// 布尔是 TypeError，数组/对象是 RangeError（对象还会被当成命名参数），
+// 全部落进 route.ts 的 catch → 500。这些形态不在冻结消费者的输入集里，
+// 但状态码仍按 route.ts 对齐。
+func unbindableJSON(v any) bool {
+	switch v.(type) {
+	case bool, []any, map[string]any:
+		return true
+	}
+	return false
 }
 
 // asString 取字符串字段；非字符串返回 false（JS 的 typeof 判断）。

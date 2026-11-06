@@ -119,12 +119,23 @@ type parentLinkValidation struct {
 	Error string
 }
 
+// parentLinkScopeError 复刻 validateParentLink 的第一个检查：父链接只允许挂在
+// week 条目上。它不查库，所以 route.ts 在把父 id 绑进 SQL 之前就先返回它——
+// month 条目 + 任意形态的 parentItemId 报的都是这一条，而不是 id 形状错误。
+func parentLinkScopeError(childScope string) *string {
+	if childScope != "week" {
+		text := "parentItemId is only allowed on week items"
+		return &text
+	}
+	return nil
+}
+
 // validateParentLink 复刻 src/lib/plan-items.ts 的 validateParentLink：
 // 结构是单向的（week 条目可以挂到 month 条目上，反之不行），且父条目所在
 // 日历月必须包含子周的开始日，父链因此永不跨期。
 func validateParentLink(ctx context.Context, q *db.Queries, childScope, childPeriodStart string, parentItemID int64) (parentLinkValidation, error) {
-	if childScope != "week" {
-		return parentLinkValidation{Error: "parentItemId is only allowed on week items"}, nil
+	if msg := parentLinkScopeError(childScope); msg != nil {
+		return parentLinkValidation{Error: *msg}, nil
 	}
 
 	parentItem, err := q.GetPlanItem(ctx, parentItemID)

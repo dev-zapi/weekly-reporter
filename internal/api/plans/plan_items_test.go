@@ -292,6 +292,40 @@ func TestCreatePlanItemRejectsMissingParent(t *testing.T) {
 	}
 }
 
+// route.ts 的 parentItemId 分支先走 validateParentLink 的作用域检查（不查库），
+// 所以 month 条目的任何 parentItemId——包括形状错误的——都报作用域错误。
+func TestCreatePlanItemMonthScopeRejectsAnyParentFirst(t *testing.T) {
+	h := newHarness(t)
+	monthPlan := h.seedPlan("month", "2026-10-01", "2026-10-31", ptr("2026-10"))
+
+	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Monthly task","parentItemId":"abc"}`, monthPlan), testPassword))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status = %d", status)
+	}
+	assertField(t, "error", body["error"], "parentItemId is only allowed on week items")
+}
+
+// periodPlanId 的不可绑定真值（布尔/数组/对象）在 route.ts 里是驱动绑定错误 →
+// catch → 500 CREATE_ERROR，而不是「计划不存在」的 404。
+func TestCreatePlanItemUnbindablePeriodPlanIDIs500(t *testing.T) {
+	for _, body := range []string{
+		`{"periodPlanId":true,"text":"Task"}`,
+		`{"periodPlanId":[1,2],"text":"Task"}`,
+		`{"periodPlanId":{"a":1},"text":"Task"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			h := newHarness(t)
+
+			status, decoded := decode(t, h.do(http.MethodPost, "/api/plan-items", body, testPassword))
+			if status != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500", status)
+			}
+			assertField(t, "code", decoded["code"], "CREATE_ERROR")
+		})
+	}
+}
+
 func TestCreatePlanItemRejectsNonMonthParent(t *testing.T) {
 	h := newHarness(t)
 	weekPlan1 := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)

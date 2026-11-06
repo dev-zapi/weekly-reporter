@@ -138,6 +138,13 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 		} else {
 			planID, convertible := asID(rawPeriodPlanID)
 			if !convertible {
+				// route.ts 把这个真值原样绑进 where id = ?：布尔/数组/对象让
+				// better-sqlite3 在绑定阶段抛错，落进 catch → 500 CREATE_ERROR。
+				if unbindableJSON(rawPeriodPlanID) {
+					log.Printf("Error creating plan item: periodPlanId is not bindable to an integer: %T", rawPeriodPlanID)
+					respond.Error(w, http.StatusInternalServerError, "Failed to create plan item", "CREATE_ERROR")
+					return
+				}
 				respond.JSON(w, http.StatusNotFound, respond.ErrorBody{Error: "Period plan not found"})
 				return
 			}
@@ -155,24 +162,35 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 		}
 
 		// 可选父链接按目标计划的周期校验：只有周条目能挂、父条目必须是同月条目。
+		// route.ts 先走 validateParentLink 的作用域检查（不查库），再绑父 id，
+		// 所以 month 条目的任何 parentItemId 都报作用域错误，而不是 id 形状错误。
 		var parentItemID *int64
 		if raw, present := body["parentItemId"]; present && raw != nil {
-			if id, convertible := asID(raw); convertible {
-				validation, err := validateParentLink(ctx, q, targetPlan.Scope, targetPlan.PeriodStart, id)
-				if err != nil {
-					log.Printf("Error creating plan item: %v", err)
-					respond.Error(w, http.StatusInternalServerError, "Failed to create plan item", "CREATE_ERROR")
-					return
-				}
-				if !validation.OK {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: validation.Error})
-					return
-				}
-				parentItemID = &id
-			} else {
+			if msg := parentLinkScopeError(targetPlan.Scope); msg != nil {
+				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: *msg})
+				return
+			}
+			if unbindableJSON(raw) {
+				log.Printf("Error creating plan item: parentItemId is not bindable to an integer: %T", raw)
+				respond.Error(w, http.StatusInternalServerError, "Failed to create plan item", "CREATE_ERROR")
+				return
+			}
+			id, convertible := asID(raw)
+			if !convertible {
 				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "parentItemId does not reference an existing item"})
 				return
 			}
+			validation, err := validateParentLink(ctx, q, targetPlan.Scope, targetPlan.PeriodStart, id)
+			if err != nil {
+				log.Printf("Error creating plan item: %v", err)
+				respond.Error(w, http.StatusInternalServerError, "Failed to create plan item", "CREATE_ERROR")
+				return
+			}
+			if !validation.OK {
+				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: validation.Error})
+				return
+			}
+			parentItemID = &id
 		}
 
 		maxPosition, err := q.MaxPlanItemPosition(ctx, targetPlan.ID)
@@ -365,12 +383,9 @@ func updatePlanItemHandler(deps Deps) http.HandlerFunc {
 		parentProvided := hasParent && rawParent != nil
 		var parentItemID *int64
 		if parentProvided {
-			id, convertible := asID(rawParent)
-			if !convertible {
-				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "parentItemId does not reference an existing item"})
-				return
-			}
-
+			// route.ts 先查子条目所在计划，再由 validateParentLink 做作用域检查，
+			// 之后才把父 id 绑进查询。顺序照着走：month 条目的任何 parentItemId
+			// 报作用域错误，不可绑定的形态则是驱动的绑定错误（500）。
 			childPlan, err := q.GetPeriodPlan(ctx, existing.PeriodPlanID)
 			if errors.Is(err, sql.ErrNoRows) {
 				respond.JSON(w, http.StatusNotFound, respond.ErrorBody{Error: "Period plan not found"})
@@ -379,6 +394,22 @@ func updatePlanItemHandler(deps Deps) http.HandlerFunc {
 			if err != nil {
 				log.Printf("Error updating plan item: %v", err)
 				respond.Error(w, http.StatusInternalServerError, "Failed to update plan item", "UPDATE_ERROR")
+				return
+			}
+
+			if msg := parentLinkScopeError(childPlan.Scope); msg != nil {
+				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: *msg})
+				return
+			}
+			if unbindableJSON(rawParent) {
+				log.Printf("Error updating plan item: parentItemId is not bindable to an integer: %T", rawParent)
+				respond.Error(w, http.StatusInternalServerError, "Failed to update plan item", "UPDATE_ERROR")
+				return
+			}
+
+			id, convertible := asID(rawParent)
+			if !convertible {
+				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "parentItemId does not reference an existing item"})
 				return
 			}
 
@@ -403,8 +434,12 @@ func updatePlanItemHandler(deps Deps) http.HandlerFunc {
 				UpdatedAt: updatedAt,
 				ID:        itemID,
 			}
-			applyUpdateFields(&params.Text, &params.Status, &params.Priority,
-				&params.IsImportant, &params.IsUrgent, &params.ProjectScope, &params.Position, body)
+			if err := applyUpdateFields(&params.Text, &params.Status, &params.Priority,
+				&params.IsImportant, &params.IsUrgent, &params.ProjectScope, &params.Position, body); err != nil {
+				log.Printf("Error updating plan item: %v", err)
+				respond.Error(w, http.StatusInternalServerError, "Failed to update plan item", "UPDATE_ERROR")
+				return
+			}
 			// 非 null 时 parentItemID 已校验；null 时直接写 NULL。
 			params.ParentItemID = parentItemID
 			updated, err = q.UpdatePlanItemWithParent(ctx, params)
@@ -413,8 +448,12 @@ func updatePlanItemHandler(deps Deps) http.HandlerFunc {
 				UpdatedAt: updatedAt,
 				ID:        itemID,
 			}
-			applyUpdateFields(&params.Text, &params.Status, &params.Priority,
-				&params.IsImportant, &params.IsUrgent, &params.ProjectScope, &params.Position, body)
+			if err := applyUpdateFields(&params.Text, &params.Status, &params.Priority,
+				&params.IsImportant, &params.IsUrgent, &params.ProjectScope, &params.Position, body); err != nil {
+				log.Printf("Error updating plan item: %v", err)
+				respond.Error(w, http.StatusInternalServerError, "Failed to update plan item", "UPDATE_ERROR")
+				return
+			}
 			updated, err = q.UpdatePlanItem(ctx, params)
 		}
 		if err != nil {
@@ -427,6 +466,11 @@ func updatePlanItemHandler(deps Deps) http.HandlerFunc {
 	}
 }
 
+// errPositionUnbindable 表示 route.ts 会把该 position 原始值交给 drizzle，而
+// SQLite 驱动在写入阶段拒绝它（null 撞 NOT NULL，布尔/数组/对象在绑定阶段抛错）。
+// route.ts 的 catch 把这类错误统一翻成 500 UPDATE_ERROR。
+var errPositionUnbindable = errors.New("position is not bindable to an integer column")
+
 // applyUpdateFields 把 body 里出现的字段折成 COALESCE(narg) 参数：
 // 未出现的字段保持 nil，SQL 侧即「不改这一列」。
 func applyUpdateFields(
@@ -438,7 +482,7 @@ func applyUpdateFields(
 	projectScope **string,
 	position **int64,
 	body map[string]any,
-) {
+) error {
 	if raw, ok := body["text"]; ok {
 		if value, isString := asString(raw); isString {
 			trimmed := trimJS(value)
@@ -473,13 +517,22 @@ func applyUpdateFields(
 		}
 	}
 	if raw, ok := body["position"]; ok {
-		// route.ts 把原始值直接交给 drizzle：SQLite 的列亲和性会把 "5" 折成 5、
-		// 把 true 折成 1。这里只接受同样会落到整数上的值；非数值（"abc"、数组、
-		// 对象）在 TS 侧要么存成 TEXT、要么让驱动抛错，都不在冻结契约的输入集里。
+		// route.ts 把原始值直接交给 drizzle：null 撞 NOT NULL 约束，布尔/数组/对象
+		// 让 better-sqlite3 在绑定阶段抛错，三者都落进 catch → 500 UPDATE_ERROR。
+		// 这里显式对齐，而不是静默忽略整列。
+		if raw == nil || unbindableJSON(raw) {
+			return errPositionUnbindable
+		}
 		if value, convertible := asID(raw); convertible {
 			*position = &value
+			return nil
 		}
+		// 非数字字符串（"abc"）与非整数（5.5）在 route.ts 里按 SQLite 亲和性存成
+		// TEXT/REAL 并回 200。Go 的 position 参数是 int64，承载不了这两种形态：
+		// 保持原值、状态码仍是 200。这是已裁剪输入集的书面记录，冻结消费者
+		// （SPA/skills）只发整数。
 	}
+	return nil
 }
 
 // deletePlanItemHandler 复刻 DELETE /api/plan-items/{id}：一个事务里

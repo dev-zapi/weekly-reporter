@@ -286,6 +286,62 @@ func TestUpdatePlanItemPosition(t *testing.T) {
 	assertField(t, "position", body["position"], 5)
 }
 
+// route.ts 把 position 原始值直接交给 drizzle：null 撞 NOT NULL，布尔/数组/对象
+// 在 better-sqlite3 绑定阶段抛错，都是 catch → 500 UPDATE_ERROR。
+func TestUpdatePlanItemUnbindablePositionIs500(t *testing.T) {
+	for _, body := range []string{
+		`{"position":null}`,
+		`{"position":true}`,
+		`{"position":[1,2]}`,
+		`{"position":{"a":1}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			h := newHarness(t)
+			planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
+			itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
+
+			status, decoded := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), body, testPassword))
+			if status != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500", status)
+			}
+			assertField(t, "code", decoded["code"], "UPDATE_ERROR")
+		})
+	}
+}
+
+// 非数字字符串与非整数是 route.ts 的「200 + 按亲和性写 TEXT/REAL」形态；Go 的
+// int64 参数承载不了，保持原值（状态码仍对齐 200）。这是有意的已裁剪输入集。
+func TestUpdatePlanItemNonIntegerPositionLeavesColumnUnchanged(t *testing.T) {
+	for _, body := range []string{`{"position":"abc"}`, `{"position":5.5}`} {
+		t.Run(body, func(t *testing.T) {
+			h := newHarness(t)
+			planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
+			itemID := h.seedItem(itemSeed{planID: planID, text: "Task", position: 3})
+
+			status, decoded := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), body, testPassword))
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, want 200", status)
+			}
+			assertField(t, "position", decoded["position"], 3)
+		})
+	}
+}
+
+// route.ts 的 PUT 同样先查子条目所在计划，再走 validateParentLink 的作用域检查，
+// 所以 month 条目的 parentItemId 无论形状都报作用域错误。
+func TestUpdatePlanItemMonthScopeRejectsAnyParentFirst(t *testing.T) {
+	h := newHarness(t)
+	monthPlan := h.seedPlan("month", "2026-10-01", "2026-10-31", ptr("2026-10"))
+	monthItem := h.seedItem(itemSeed{planID: monthPlan, text: "Monthly goal"})
+
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", monthItem),
+		`{"parentItemId":"abc"}`, testPassword))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status = %d", status)
+	}
+	assertField(t, "error", body["error"], "parentItemId is only allowed on week items")
+}
+
 func TestUpdatePlanItemParentLink(t *testing.T) {
 	h := newHarness(t)
 	monthPlan := h.seedPlan("month", "2026-10-01", "2026-10-31", ptr("2026-10"))
