@@ -8,9 +8,13 @@
 //   - 数值/布尔按毫秒（布尔为 0/1）。
 //
 // 支持的输入 = ECMAScript 的 Date Time String Format（含 V8 普遍接受的空格式
-// 「日期 时间」变体，因为 `2024-01-10 10:00:00` 在 V8 里同样有效）。其余写法
-// （如 `Jan 10 2024`）在 V8 里也能解析，但不在 ES 规范内、也不是任何冻结契约的
-// 消费者会发的形态；这里按 Invalid Date 处理并在 parityNotes 里记录该边界。
+// 「日期 时间」变体，因为 `2024-01-10 10:00:00` 在 V8 里同样有效）。
+//
+// 边界（有意收窄，非 V8 全量对等）：V8 在该格式之外还走一套宽松的历史解析器，
+// 它接受 ` 2024-01-08 `（首尾空白）、`2024-1-8`（单数字月日）、`0`、五位年份、
+// `Jan 10 2024` 等写法（其中 date-only 形态按本地时间解释，与严格格式的 UTC
+// 不同）。这些形态都没有出现在任何冻结契约的消费者与 e2e 里，本包统一按
+// Invalid Date 处理，只复刻 route.ts 在正常输入下的可观测分支。
 package jsdate
 
 import (
@@ -45,8 +49,8 @@ func FromMillis(ms float64) Parsed {
 
 // ParseString 复刻 `new Date(string)` 对 Date Time String Format 的解释。
 func ParseString(value string) Parsed {
-	// 先把字符串按 ECMAScript 的空白集合裁掉（JS 的 Date 解析不接受内嵌空白，
-	// 但两端空白同样会让 V8 判 Invalid；这里保持严格，不裁剪）。
+	// 按 Date Time String Format 严格解析：两端空白即 Invalid（T 形态 V8 也如此，
+	// date-only 形态 V8 会 trim 后按本地时间解释——见包注释里的边界说明）。
 	s := value
 	if s == "" {
 		return invalid()

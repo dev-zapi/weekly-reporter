@@ -95,6 +95,25 @@ func TestParseStringRejectsInvalid(t *testing.T) {
 	}
 }
 
+// 有意收窄的边界：V8 的历史解析器（非 Date Time String Format）在 Node 24 里
+// 接受下面这些写法，本包一律按 Invalid 处理——见包注释的边界说明。
+func TestParseStringRejectsLegacyV8Forms(t *testing.T) {
+	cases := []string{
+		" 2024-01-08 ", // V8: date-only 形态下 trim 后按本地时间解释
+		"2024-01-08 ",  // 同上
+		"2024-1-8",     // V8: 单数字月日
+		"2024-1",       // V8: 单数字月
+		"0",            // V8: 2000-01-01 本地
+		"10000-01-01",  // V8: 五位年份
+		"Jan 10 2024",  // V8: 英文月份
+	}
+	for _, input := range cases {
+		if parsed := ParseString(input); parsed.Valid {
+			t.Fatalf("ParseString(%q) = %s, want invalid (documented boundary)", input, iso(parsed.Millis))
+		}
+	}
+}
+
 // ParseString("T00:00:00") 是 date 参数缺省时 route.ts 的实际输入（空串 + 'T00:00:00'）。
 // `new Date('T00:00:00')` 是 Invalid Date，所以 date 过滤被静默跳过。
 func TestParseStringEmptyPrefixIsInvalid(t *testing.T) {
