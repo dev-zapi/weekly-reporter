@@ -181,6 +181,39 @@ func TestB3DomainRoutesAreMounted(t *testing.T) {
 	}
 }
 
+// B4 的两条增补路由必须真的挂在 /api 子路由上（唯一 additive 变更，blueprint
+// §2.8）。这里只断言「路由存在 + 200 + 业务对象形状」，不碰文件系统：scan-repos
+// 用白名单外的 /etc（业务错误也是 200 + 内嵌 error），batch-add 用空列表。
+func TestB4AdditiveRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		expect string
+	}{
+		{http.MethodPost, "/api/collect/scan-repos", `{"basePath":"/etc"}`, `"error":"不允许访问此目录"`},
+		{http.MethodPost, "/api/collect/batch-add-sources", `{"repos":[]}`, `"success":true`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
 // 通配兜底本身保持 B0 形状：未注册的 /api 路径仍然回 {error:"Not Found"}。
 func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 	queries := db.New(dbtest.New(t))
