@@ -2,6 +2,7 @@ package sources
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
@@ -293,6 +294,10 @@ func existingAliases(r *http.Request, queries *db.Queries, excludeID int64) (map
 			var parsed any
 			if err := json.Unmarshal(record.Config, &parsed); err != nil {
 				return nil, err
+			}
+			if parsed == nil {
+				// `s.config.aliases` 在 JSON null 上抛 TypeError → route.ts 的 catch 500。
+				return nil, errors.New("collect sources: config is null")
 			}
 			config, _ = parsed.(map[string]any)
 		}
