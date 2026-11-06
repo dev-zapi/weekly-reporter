@@ -1,3 +1,7 @@
+// Package plans 把周期计划域路由挂到 chi 的 /api 子路由上。行为逐条对照
+// src/app/api/plans、src/app/api/plan-items 下的 route.ts，服务端逻辑移植自
+// src/lib/plan-items.ts、src/lib/plan-references/、src/lib/plan-item-comments/
+// 与 src/lib/periods.ts（ADR-0018/0019/0023/0024）。
 package plans
 
 import (
