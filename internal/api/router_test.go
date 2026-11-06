@@ -317,3 +317,50 @@ func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B5 的 AI 三个 one-shot 必须真的挂在 /api 子路由上。三条都是 POST，且校验都在
+// 风格查询与模型调用之前——所以不用 mock provider 也能断言「路由存在 + 业务 400」
+// 而不是被 B0 的 `/api/*` 通配兜底吃掉。
+func TestB5AIRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{
+			http.MethodPost, "/api/ai/expand-section",
+			`{"existingItems":[],"events":[]}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+		{
+			http.MethodPost, "/api/ai/polish-event",
+			`{}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+		{
+			http.MethodPost, "/api/ai/unify-style",
+			`{}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
