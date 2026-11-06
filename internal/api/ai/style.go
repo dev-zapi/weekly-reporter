@@ -16,15 +16,11 @@ type styleConfig struct {
 	Temperature  float64
 }
 
-// getAIStyle 复刻 getAIStyle(styleKey?)：先按 key 查，查不到回退到 is_default
-// 的行，再回退到硬编码的「正式汇报」。
-//
-// 与 TS 的差异（有意收窄）：TS 在入口调用 ensureSeed()，会在 ai_styles 为空时
-// 写入四条内置风格。那四个 prompt 字面量属于模板/提示词域（src/lib/ai/seed.ts
-// 同时服务 /api/prompts/styles 与 /api/prompts/system，由同批另一张票移植），
-// 本票不重复落一份；对这三条 one-shot 路由不可观测——空表时 TS 会 seed 出
-// formal，与这里返回的硬编码兜底逐字段相同。
+// getAIStyle 复刻 getAIStyle(styleKey?)：先 ensureSeed()，再按 key 查，查不到
+// 回退到 is_default 的行，最后回退到硬编码的「正式汇报」。
 func (d *Deps) getAIStyle(ctx context.Context, styleKey string) (styleConfig, error) {
+	d.ensureSeededStyles(ctx)
+
 	if styleKey != "" {
 		row, err := d.Queries.GetAIStyleByKeyForAI(ctx, styleKey)
 		if err == nil {

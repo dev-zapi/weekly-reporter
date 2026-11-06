@@ -170,8 +170,9 @@ func TestPolishEventFallsBackToDefaultStyle(t *testing.T) {
 	}
 }
 
-// 数据库完全没有风格行时回退到 styles.ts 的硬编码「正式汇报」。
-func TestPolishEventFallsBackToHardcodedStyleWithoutRows(t *testing.T) {
+// ai_styles 为空时 getAIStyle 先 ensureSeed()（styles.ts 的同款入口），四条内置
+// 风格落库；所以「空库 + 默认风格」拿到的是 seed 出来的 formal。
+func TestPolishEventSeedsBuiltinStylesWhenTableIsEmpty(t *testing.T) {
 	h := newHarness(t)
 	h.seedAIConfig("openai", h.mock.url(), "mock-model")
 	h.mock.setText(`{"polishedContent":"x"}`)
@@ -187,6 +188,59 @@ func TestPolishEventFallsBackToHardcodedStyleWithoutRows(t *testing.T) {
 	}
 	if temperature := h.mock.lastRequest().Body["temperature"]; temperature != 0.3 {
 		t.Fatalf("temperature = %v, want 0.3", temperature)
+	}
+
+	// 四条内置风格都进库，formal 是默认。
+	var count int
+	if err := h.sqlDB.QueryRow(`SELECT count(*) FROM ai_styles`).Scan(&count); err != nil {
+		t.Fatalf("count ai_styles: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("ai_styles rows = %d, want 4", count)
+	}
+	var defaultKey string
+	if err := h.sqlDB.QueryRow(`SELECT key FROM ai_styles WHERE is_default = 1`).Scan(&defaultKey); err != nil {
+		t.Fatalf("read default style: %v", err)
+	}
+	if defaultKey != "formal" {
+		t.Fatalf("default style = %q, want formal", defaultKey)
+	}
+}
+
+// 空库 + styleOverride 也必须命中 seed 出来的风格（不是硬编码兜底）。
+func TestPolishEventSeededStyleHonorsOverride(t *testing.T) {
+	h := newHarness(t)
+	h.seedAIConfig("openai", h.mock.url(), "mock-model")
+	h.mock.setText(`{"polishedContent":"x"}`)
+
+	rec := h.do("/api/ai/polish-event", `{"eventContent":"Test content","styleOverride":"technical"}`, testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var resp polishResponse
+	decodeJSONInto(t, rec.Body.Bytes(), &resp)
+	if resp.Style != "技术研发" {
+		t.Fatalf("style = %q, want 技术研发", resp.Style)
+	}
+	if temperature := h.mock.lastRequest().Body["temperature"]; temperature != 0.4 {
+		t.Fatalf("temperature = %v, want 0.4", temperature)
+	}
+}
+
+// 已有风格行时不再重复 seed。
+func TestPolishEventDoesNotReseedExistingStyles(t *testing.T) {
+	h := setupPolish(t)
+
+	if rec := h.do("/api/ai/polish-event", `{"eventContent":"x"}`, testPassword); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	var count int
+	if err := h.sqlDB.QueryRow(`SELECT count(*) FROM ai_styles`).Scan(&count); err != nil {
+		t.Fatalf("count ai_styles: %v", err)
+	}
+	if count != 4 {
+		t.Fatalf("ai_styles rows = %d, want 4 (seed must not run)", count)
 	}
 }
 
