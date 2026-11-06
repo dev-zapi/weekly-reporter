@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -156,7 +157,7 @@ func jsNumberOrNull(value float64) any {
 // createHandler 复刻 POST：zod 校验 → 别名唯一性 → 状态推导 → 插入 → 201。
 func createHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSONBody(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			logAndError(w, "创建采集源失败", "CREATE_ERROR")
 			return
@@ -317,18 +318,6 @@ func existingAliases(r *http.Request, queries *db.Queries, excludeID int64) (map
 	return aliases, nil
 }
 
-// duplicateAliases 复刻 `validated.aliases.filter(a => existingAliases.has(a))`：
-// 保持输入顺序。
-func duplicateAliases(candidates []string, existing map[string]struct{}) []string {
-	var duplicates []string
-	for _, candidate := range candidates {
-		if _, ok := existing[candidate]; ok {
-			duplicates = append(duplicates, candidate)
-		}
-	}
-	return duplicates
-}
-
 // joinAliases 复刻 JS 的 `duplicates.join(', ')`。
 func joinAliases(values []string) string {
 	result := ""
@@ -339,4 +328,16 @@ func joinAliases(values []string) string {
 		result += value
 	}
 	return result
+}
+
+// duplicateAliases 复刻 `validated.aliases.filter(a => existingAliases.has(a))`：
+// 保持输入顺序。
+func duplicateAliases(candidates []string, existing map[string]struct{}) []string {
+	var duplicates []string
+	for _, candidate := range candidates {
+		if _, ok := existing[candidate]; ok {
+			duplicates = append(duplicates, candidate)
+		}
+	}
+	return duplicates
 }

@@ -6,7 +6,10 @@
 // 不完全相同）。与 internal/api/jsparse 同一思路：只镜像可观测语义，不引入新行为。
 package jsstr
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // IsSpace 复刻 ECMAScript 的 \s（WhiteSpace + LineTerminator）：
 // TAB/VT/FF/SP/NBSP/ZWNBSP、行终止符以及 Unicode 的 Zs 类空白。
@@ -52,4 +55,26 @@ func UTF16Len(s string) int {
 		n++
 	}
 	return n
+}
+
+// EncodeURIComponent 复刻 ECMAScript 的 encodeURIComponent：不转义的字符集是
+// A-Za-z0-9 与 `-_.!~*'()`，其余按 UTF-8 字节 %XX。
+//
+// 与 url.QueryEscape 不同：后者把空格写成 '+'，保留字符集也不同。
+func EncodeURIComponent(value string) string {
+	const unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+	const hex = "0123456789ABCDEF"
+
+	var builder strings.Builder
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if strings.IndexByte(unreserved, b) >= 0 {
+			builder.WriteByte(b)
+			continue
+		}
+		builder.WriteByte('%')
+		builder.WriteByte(hex[b>>4])
+		builder.WriteByte(hex[b&0x0f])
+	}
+	return builder.String()
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -79,7 +80,7 @@ func putHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		body, err := decodeJSONBody(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			logAndError(w, "更新采集源失败", "UPDATE_ERROR")
 			return
@@ -249,7 +250,7 @@ func patchHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		body, err := decodeJSONBody(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			logAndError(w, "更新采集源失败", "UPDATE_ERROR")
 			return

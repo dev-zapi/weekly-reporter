@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
 
@@ -53,7 +54,7 @@ func idsJSON(ids []any) (string, error) {
 // bulkDeleteHandler 复刻 POST /api/collect/sources/bulk-delete。
 func bulkDeleteHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSONBody(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			logAndError(w, "批量删除采集源失败", "DELETE_ERROR")
 			return
@@ -82,7 +83,7 @@ func bulkDeleteHandler(deps Deps) http.HandlerFunc {
 // bulkUpdateScopeHandler 复刻 POST /api/collect/sources/bulk-update-scope。
 func bulkUpdateScopeHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSONBody(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			logAndError(w, "批量更新项目类型失败", "UPDATE_ERROR")
 			return

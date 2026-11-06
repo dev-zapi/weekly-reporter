@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
@@ -20,7 +21,7 @@ import (
 //	Busy → 409 SOURCE_BUSY；其它异常 → 500 SYNC_ERROR。
 func gitRemoteSyncHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSON(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			log.Printf("collect: decode sync body: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "同步失败", "SYNC_ERROR")

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
 
@@ -424,7 +425,7 @@ func runSync(ctx context.Context, queries *db.Queries, source sourceRecord, adap
 	for _, branch := range branches {
 		updated := normalizedBranch{Name: branch.Name, LastCommitTime: branch.LastCommitTime}
 		if max, ok := branchMaxCommitterDate[branch.Name]; ok {
-			value := isoMillisFromTime(max)
+			value := jsdate.ISOString(max.UnixMilli())
 			updated.LastCommitTime = &value
 		}
 		updatedBranches = append(updatedBranches, updated)

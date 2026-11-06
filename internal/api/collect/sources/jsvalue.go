@@ -1,32 +1,18 @@
 package sources
 
 import (
-	"encoding/json"
-	"io"
 	"math"
-	"net/http"
 	"sort"
 	"strconv"
-	"strings"
+
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 )
 
 // 本文件复刻 route.ts 依赖的几个 JavaScript 值语义，与 B1/B2 的 jsparse/jsstr
 // 同一思路：只镜像可观测行为，不引入新行为。
-
-// decodeJSONBody 复刻 `await request.json()`：读整个 body 再解析。
-// 解析失败与 TS 一样是错误（落进各 handler 的 catch）。
-// json.Unmarshal 与 JSON.parse 一样拒绝尾随垃圾，且数字折成 float64。
-func decodeJSONBody(r *http.Request) (any, error) {
-	raw, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	var body any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-	return body, nil
-}
+//
+// 跨票重复的语义不再留私有拷贝：`await request.json()` 在 jsjson，
+// `Number(string)` 的 ECMAScript 文法在 jsparse.ParseNumber。
 
 // jsTruthy 复刻 JS 的真值判断（`if (name)`、`Boolean(body.enabled)`）。
 func jsTruthy(v any) bool {
@@ -181,10 +167,9 @@ func jsonTypeName(value any) string {
 
 // numberFromQuery 复刻 `Number(searchParams.get(x) || ”)`，第二个返回值是
 // `Number.isInteger`。只用于 branches / emails 的 sourceId：Number(”) === 0、
-// Number('7.5') 非整数、Number('abc') 是 NaN。十六进制/二进制/八进制前缀与
-// Infinity 与 JS 一致（Number('Infinity') 大小写敏感）。
+// Number('7.5') 非整数、Number('abc') 是 NaN。文法由 jsparse.ParseNumber 提供。
 func numberFromQuery(raw string) (float64, bool) {
-	value, ok := parseJSNumber(raw)
+	value, ok := jsparse.ParseNumber(raw)
 	if !ok {
 		return math.NaN(), false
 	}
@@ -193,38 +178,6 @@ func numberFromQuery(raw string) (float64, bool) {
 
 func isInteger(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0) && value == math.Trunc(value)
-}
-
-// parseJSNumber 复刻 `Number(string)`：空串是 0，非法串是 NaN。
-func parseJSNumber(raw string) (float64, bool) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return 0, true
-	}
-	// Number('Infinity') 大小写敏感；带符号的进制前缀（'-0x10'）是 NaN。
-	switch trimmed {
-	case "Infinity", "+Infinity":
-		return math.Inf(1), true
-	case "-Infinity":
-		return math.Inf(-1), true
-	}
-	for _, prefix := range []struct {
-		prefix string
-		base   int
-	}{{"0x", 16}, {"0X", 16}, {"0b", 2}, {"0B", 2}, {"0o", 8}, {"0O", 8}} {
-		if strings.HasPrefix(trimmed, prefix.prefix) {
-			n, err := strconv.ParseUint(trimmed[2:], prefix.base, 64)
-			if err != nil {
-				return 0, false
-			}
-			return float64(n), true
-		}
-	}
-	n, err := strconv.ParseFloat(trimmed, 64)
-	if err != nil {
-		return 0, false
-	}
-	return n, true
 }
 
 // jsSortStrings 复刻 `Array.prototype.sort()` 的默认比较：按 UTF-16 码元升序。

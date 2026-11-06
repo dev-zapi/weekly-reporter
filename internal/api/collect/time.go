@@ -16,11 +16,6 @@ func unixSeconds(t time.Time) int64 {
 	return int64(math.Floor(float64(t.UnixMilli()) / 1000))
 }
 
-// isoMillisFromTime 复刻 `date.toISOString()`：UTC、毫秒三位、Z 后缀。
-func isoMillisFromTime(t time.Time) string {
-	return t.UTC().Format("2006-01-02T15:04:05.000Z")
-}
-
 // parseJSTime 复刻 `new Date(value)`，ok=false 对应 Invalid Date。
 func parseJSTime(value any) (time.Time, bool) {
 	switch v := value.(type) {

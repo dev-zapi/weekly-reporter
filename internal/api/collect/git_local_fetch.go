@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
 
@@ -18,7 +19,7 @@ import (
 //	同一仓库操作进行中 → 409 SOURCE_BUSY；其它异常 → 500 FETCH_ERROR。
 func gitLocalFetchHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSON(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			// request.json() 抛错落进 route.ts 的 catch → FETCH_ERROR。
 			log.Printf("collect: decode fetch body: %v", err)

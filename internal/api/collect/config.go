@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 )
 
@@ -242,7 +243,7 @@ func buildPrunedBranchCursors(
 	for _, name := range localHeads {
 		cursor := branchCursor{Name: name}
 		if max, ok := maxByBranch[name]; ok {
-			value := isoMillisFromTime(max)
+			value := jsdate.ISOString(max.UnixMilli())
 			cursor.LastCommitTime = &value
 		} else if previous, ok := existingByName[name]; ok {
 			cursor.LastCommitTime = previous

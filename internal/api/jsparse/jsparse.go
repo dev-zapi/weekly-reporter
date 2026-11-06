@@ -7,7 +7,14 @@
 // 偏离蓝图 §2.1 冻结的状态码与响应形状。
 package jsparse
 
-import "math"
+import (
+	"errors"
+	"math"
+	"strconv"
+	"strings"
+
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
+)
 
 // ParseInt 复刻 JavaScript `parseInt(value)`（不传 radix）的语义。
 // ok=false 对应 JS 的 NaN。
@@ -108,6 +115,119 @@ func digitValue(b byte, radix int64) (int, bool) {
 		return int(b-'a') + 10, true
 	case radix == 16 && b >= 'A' && b <= 'F':
 		return int(b-'A') + 10, true
+	}
+	return 0, false
+}
+
+// ParseNumber 复刻 `Number(string)`（ECMAScript ToNumber 的字符串分支）：
+// 裁掉 JS 的首尾空白、空串为 0、支持 ±Infinity 与 0x/0o/0b 字面量、十进制与
+// 指数写法；其余为 NaN（ok=false）。
+//
+// 不能直接用 strconv.ParseFloat 兜底：Go 还接受 "inf" / "nan" / 十六进制浮点
+// 这类 JS 视为 NaN 的写法，也会接受 Go 的下划线分隔数字。先按 JS 文法校验再解析。
+func ParseNumber(value string) (float64, bool) {
+	s := jsstr.Trim(value)
+	switch s {
+	case "":
+		return 0, true
+	case "Infinity", "+Infinity":
+		return math.Inf(1), true
+	case "-Infinity":
+		return math.Inf(-1), true
+	}
+
+	for _, prefix := range []struct {
+		token string
+		base  float64
+	}{
+		{"0x", 16}, {"0X", 16},
+		{"0o", 8}, {"0O", 8},
+		{"0b", 2}, {"0B", 2},
+	} {
+		if !strings.HasPrefix(s, prefix.token) {
+			continue
+		}
+		// JS 不允许带符号的进制前缀（Number("-0x10") 是 NaN）。
+		digits := s[len(prefix.token):]
+		if digits == "" {
+			return 0, false
+		}
+		var n float64
+		for i := 0; i < len(digits); i++ {
+			d, ok := radixDigit(prefix.base, digits[i])
+			if !ok {
+				return 0, false
+			}
+			n = n*prefix.base + d
+		}
+		return n, true
+	}
+
+	if !isJSDecimal(s) {
+		return 0, false
+	}
+	number, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		// 上溢到 ±Inf、下溢到 0 都与 JS 一致；其它错误按 NaN 处理。
+		if errors.Is(err, strconv.ErrRange) {
+			return number, true
+		}
+		return 0, false
+	}
+	return number, true
+}
+
+// isJSDecimal 判断是否符合 JS 的十进制数字文法：
+//
+//	[+-]? ( digits [ '.' digits? ] | '.' digits ) [ ('e'|'E') [+-]? digits ]
+func isJSDecimal(s string) bool {
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		i++
+	}
+	intDigits := 0
+	for i < len(s) && isASCIIDigit(s[i]) {
+		i++
+		intDigits++
+	}
+	fracDigits := 0
+	if i < len(s) && s[i] == '.' {
+		i++
+		for i < len(s) && isASCIIDigit(s[i]) {
+			i++
+			fracDigits++
+		}
+	}
+	if intDigits == 0 && fracDigits == 0 {
+		return false
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		expDigits := 0
+		for i < len(s) && isASCIIDigit(s[i]) {
+			i++
+			expDigits++
+		}
+		if expDigits == 0 {
+			return false
+		}
+	}
+	return i == len(s)
+}
+
+func isASCIIDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+func radixDigit(base float64, b byte) (float64, bool) {
+	switch {
+	case b >= '0' && b <= '9':
+		return float64(b - '0'), true
+	case base == 16 && b >= 'a' && b <= 'f':
+		return float64(b-'a') + 10, true
+	case base == 16 && b >= 'A' && b <= 'F':
+		return float64(b-'A') + 10, true
 	}
 	return 0, false
 }

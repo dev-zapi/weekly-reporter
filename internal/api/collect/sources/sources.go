@@ -11,10 +11,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -84,16 +84,11 @@ type sourceJSON struct {
 	UpdatedAt      string          `json:"updatedAt"`
 }
 
-// isoMillis 复刻 `Date.prototype.toISOString()`（UTC、毫秒三位、Z 后缀）。
-func isoMillis(sec int64) string {
-	return time.Unix(sec, 0).UTC().Format("2006-01-02T15:04:05.000") + "Z"
-}
-
 func isoOrNull(sec *int64) *string {
 	if sec == nil {
 		return nil
 	}
-	iso := isoMillis(*sec)
+	iso := jsdate.ISOStringFromUnix(*sec)
 	return &iso
 }
 
@@ -117,8 +112,8 @@ func toSourceJSON(record db.CollectSourceRecord) (sourceJSON, error) {
 		ProjectScope:   record.ProjectScope,
 		LastSyncAt:     isoOrNull(record.LastSyncAt),
 		LastSyncStatus: record.LastSyncStatus,
-		CreatedAt:      isoMillis(record.CreatedAt),
-		UpdatedAt:      isoMillis(record.UpdatedAt),
+		CreatedAt:      jsdate.ISOStringFromUnix(record.CreatedAt),
+		UpdatedAt:      jsdate.ISOStringFromUnix(record.UpdatedAt),
 	}, nil
 }
 

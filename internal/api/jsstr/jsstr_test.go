@@ -59,3 +59,23 @@ func TestTrimKeepsNEL(t *testing.T) {
 		t.Fatalf("IsSpace must reject NEL (JS \\s does not include it)")
 	}
 }
+
+// EncodeURIComponent 的期望值来自 Node：`encodeURIComponent('acme/widgets')` 是
+// `acme%2Fwidgets`，保留字符集 `-_.!~*'()` 与字母数字不转义。
+func TestEncodeURIComponentMatchesNode(t *testing.T) {
+	cases := []struct{ input, want string }{
+		{"acme/widgets", "acme%2Fwidgets"},
+		{"a b", "a%20b"},
+		{"-_.!~*'()", "-_.!~*'()"},
+		{"AZaz09", "AZaz09"},
+		{"中文", "%E4%B8%AD%E6%96%87"},
+		{"a+b", "a%2Bb"},
+		{"a%20b", "a%2520b"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := EncodeURIComponent(tc.input); got != tc.want {
+			t.Fatalf("EncodeURIComponent(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

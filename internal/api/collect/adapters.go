@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/trace"
 )
 
@@ -68,10 +70,10 @@ func (localGitAdapter) fetchCommits(ctx context.Context, opts fetchOptions) ([]g
 
 	args := []string{"log", "--pretty=format:%H|%s|%ai|%ci|%ae|%an", "--no-merges"}
 	if opts.Since != nil {
-		args = append(args, "--since="+isoMillisFromTime(*opts.Since))
+		args = append(args, "--since="+jsdate.ISOString(opts.Since.UnixMilli()))
 	}
 	if opts.Until != nil {
-		args = append(args, "--until="+isoMillisFromTime(*opts.Until))
+		args = append(args, "--until="+jsdate.ISOString(opts.Until.UnixMilli()))
 	}
 	if opts.Branch != "" {
 		args = append(args, opts.Branch)
@@ -234,10 +236,10 @@ func (githubAdapter) fetchCommits(ctx context.Context, opts fetchOptions) ([]git
 	query := url.Values{}
 	query.Set("per_page", "100")
 	if opts.Since != nil {
-		query.Set("since", isoMillisFromTime(*opts.Since))
+		query.Set("since", jsdate.ISOString(opts.Since.UnixMilli()))
 	}
 	if opts.Until != nil {
-		query.Set("until", isoMillisFromTime(*opts.Until))
+		query.Set("until", jsdate.ISOString(opts.Until.UnixMilli()))
 	}
 	if opts.Branch != "" {
 		query.Set("sha", opts.Branch)
@@ -324,15 +326,15 @@ func (gitlabAdapter) fetchCommits(ctx context.Context, opts fetchOptions) ([]git
 		apiBase = "https://gitlab.com/api/v4"
 	}
 
-	projectID := encodeURIComponent(owner + "/" + repo)
+	projectID := jsstr.EncodeURIComponent(owner + "/" + repo)
 
 	query := url.Values{}
 	query.Set("per_page", "100")
 	if opts.Since != nil {
-		query.Set("since", isoMillisFromTime(*opts.Since))
+		query.Set("since", jsdate.ISOString(opts.Since.UnixMilli()))
 	}
 	if opts.Until != nil {
-		query.Set("until", isoMillisFromTime(*opts.Until))
+		query.Set("until", jsdate.ISOString(opts.Until.UnixMilli()))
 	}
 	if opts.Branch != "" {
 		query.Set("ref_name", opts.Branch)
@@ -424,25 +426,4 @@ func parseAPIDate(value string) (time.Time, error) {
 		return time.Time{}, errors.New("Invalid time value")
 	}
 	return parsed.UTC(), nil
-}
-
-// encodeURIComponent 复刻 JS 的 encodeURIComponent（GitLab 的 project id 用它）。
-// 未保留字符集与 ECMAScript 一致：字母数字加 `-_.!~*'()`，其余按 UTF-8 字节
-// 百分号编码。
-func encodeURIComponent(value string) string {
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
-	for i := 0; i < len(value); i++ {
-		c := value[i]
-		switch {
-		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9',
-			c == '-', c == '_', c == '.', c == '!', c == '~', c == '*', c == '\'', c == '(', c == ')':
-			b.WriteByte(c)
-		default:
-			b.WriteByte('%')
-			b.WriteByte(hex[c>>4])
-			b.WriteByte(hex[c&0x0f])
-		}
-	}
-	return b.String()
 }

@@ -1,33 +1,16 @@
 package collect
 
 import (
-	"encoding/json"
-	"errors"
-	"io"
 	"math"
-	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 )
 
-// 本文件是两条 POST 路由共用的请求体读取与 JS 值语义辅助。
-// 与 plans/request.go 同一思路：只镜像 route.ts 用到的可观测转换。
-
-// decodeJSON 复刻 `await request.json()`：读整个 body 再解析。
-// 解析失败（含尾随垃圾）与 route.ts 一样抛错，由各 handler 的 catch 分支处理。
-func decodeJSON(r *http.Request) (any, error) {
-	raw, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	var body any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-	return body, nil
-}
+// 本文件是两条 POST 路由共用的 JS 值语义辅助（`body?.sourceId`、`Number(value)`、
+// `String(value)`），只镜像 route.ts 用到的可观测转换。请求体解析在 jsjson，
+// `Number(string)` 文法在 jsparse，两者都是跨域共享的。
 
 // objectBody 把 body 折成字段视图：`body?.sourceId` 对标量/数组得到 undefined
 // （JS 的属性访问会把原始值装箱），只有 null/undefined 是 undefined。
@@ -69,10 +52,10 @@ func jsToNumberValue(v any) (float64, bool) {
 	case float64:
 		return value, true
 	case string:
-		return jsStringToNumber(value)
+		return jsparse.ParseNumber(value)
 	case []any:
 		// ToPrimitive(array) → Array.prototype.toString → join(',')
-		return jsStringToNumber(jsArrayString(value))
+		return jsparse.ParseNumber(jsArrayString(value))
 	default:
 		// 普通对象 → "[object Object]" → NaN
 		return 0, false
@@ -137,114 +120,4 @@ func jsNumberToString(v float64) string {
 		return strconv.FormatFloat(v, 'e', -1, 64)
 	}
 	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
-// jsStringToNumber 复刻 ECMAScript 的 ToNumber(字符串)：裁掉首尾空白、空串为 0、
-// 支持 ±Infinity 与 0x/0o/0b 字面量、十进制与指数写法；其余为 NaN。
-// 与 auth 域 jsToNumber 同一套文法，这里只需要「成功/NaN」两态。
-func jsStringToNumber(s string) (float64, bool) {
-	s = jsstr.Trim(s)
-	switch s {
-	case "":
-		return 0, true
-	case "Infinity", "+Infinity":
-		return math.Inf(1), true
-	case "-Infinity":
-		return math.Inf(-1), true
-	}
-
-	for _, prefix := range []struct {
-		token string
-		base  float64
-	}{
-		{"0x", 16}, {"0X", 16},
-		{"0o", 8}, {"0O", 8},
-		{"0b", 2}, {"0B", 2},
-	} {
-		if !strings.HasPrefix(s, prefix.token) {
-			continue
-		}
-		// JS 不允许带符号的进制前缀（Number("-0x10") 是 NaN）。
-		digits := s[len(prefix.token):]
-		if digits == "" {
-			return 0, false
-		}
-		var n float64
-		for i := 0; i < len(digits); i++ {
-			d, ok := radixDigit(prefix.base, digits[i])
-			if !ok {
-				return 0, false
-			}
-			n = n*prefix.base + d
-		}
-		return n, true
-	}
-
-	if !isJSDecimal(s) {
-		return 0, false
-	}
-	number, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		// 上溢到 ±Inf、下溢到 0 都与 JS 一致；其它错误按 NaN 处理。
-		if errors.Is(err, strconv.ErrRange) {
-			return number, true
-		}
-		return 0, false
-	}
-	return number, true
-}
-
-// isJSDecimal 判断是否符合 JS 的十进制数字文法：
-//
-//	[+-]? ( digits [ '.' digits? ] | '.' digits ) [ ('e'|'E') [+-]? digits ]
-func isJSDecimal(s string) bool {
-	i := 0
-	if i < len(s) && (s[i] == '+' || s[i] == '-') {
-		i++
-	}
-	intDigits := 0
-	for i < len(s) && isASCIIDigit(s[i]) {
-		i++
-		intDigits++
-	}
-	fracDigits := 0
-	if i < len(s) && s[i] == '.' {
-		i++
-		for i < len(s) && isASCIIDigit(s[i]) {
-			i++
-			fracDigits++
-		}
-	}
-	if intDigits == 0 && fracDigits == 0 {
-		return false
-	}
-	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
-		i++
-		if i < len(s) && (s[i] == '+' || s[i] == '-') {
-			i++
-		}
-		expDigits := 0
-		for i < len(s) && isASCIIDigit(s[i]) {
-			i++
-			expDigits++
-		}
-		if expDigits == 0 {
-			return false
-		}
-	}
-	return i == len(s)
-}
-
-func isASCIIDigit(b byte) bool { return b >= '0' && b <= '9' }
-
-func radixDigit(base float64, b byte) (float64, bool) {
-	switch {
-	case b >= '0' && b <= '9':
-		return float64(b - '0'), true
-	case base == 16 && b >= 'a' && b <= 'f':
-		return float64(b-'a') + 10, true
-	case base == 16 && b >= 'A' && b <= 'F':
-		return float64(b-'A') + 10, true
-	}
-	return 0, false
 }

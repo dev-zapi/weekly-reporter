@@ -140,3 +140,17 @@ func TestFromMillisTimeClip(t *testing.T) {
 func iso(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format("2006-01-02T15:04:05.000Z")
 }
+
+// ISOString 复刻 `new Date(ms).toISOString()`：UTC、毫秒三位、Z 后缀。
+func TestISOStringMatchesToISOString(t *testing.T) {
+	if got := ISOString(1700000000123); got != "2023-11-14T22:13:20.123Z" {
+		t.Fatalf("ISOString = %q", got)
+	}
+	if got := ISOStringFromUnix(1700000000); got != "2023-11-14T22:13:20.000Z" {
+		t.Fatalf("ISOStringFromUnix = %q", got)
+	}
+	// 1970 前的负秒按毫秒展开（不是整数除法后的秒）。
+	if got := ISOStringFromUnix(-1); got != "1969-12-31T23:59:59.000Z" {
+		t.Fatalf("ISOStringFromUnix(-1) = %q", got)
+	}
+}

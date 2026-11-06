@@ -13,6 +13,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
 
@@ -142,7 +143,7 @@ func getGitLabBranches(do func(*http.Request) (*http.Response, error), owner, re
 	if host == "" {
 		host = "https://gitlab.com"
 	}
-	projectPath := encodeURIComponent(owner + "/" + repo)
+	projectPath := jsstr.EncodeURIComponent(owner + "/" + repo)
 	request, err := http.NewRequest(http.MethodGet, host+"/api/v4/projects/"+projectPath+"/repository/branches?per_page=100", nil)
 	if err != nil {
 		return []string{}
@@ -179,28 +180,6 @@ func getGiteeBranches(do func(*http.Request) (*http.Response, error), owner, rep
 	}
 	jsSortStrings(names)
 	return names
-}
-
-// encodeURIComponent 复刻 ECMAScript 的 encodeURIComponent：不转义
-// A-Za-z0-9-_.!~*'()，其余按 UTF-8 字节 %XX。
-func encodeURIComponent(value string) string {
-	const unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
-	var builder strings.Builder
-	for i := 0; i < len(value); i++ {
-		b := value[i]
-		if strings.IndexByte(unreserved, b) >= 0 {
-			builder.WriteByte(b)
-			continue
-		}
-		builder.WriteByte('%')
-		builder.WriteString(hexByte(b))
-	}
-	return builder.String()
-}
-
-func hexByte(b byte) string {
-	const digits = "0123456789ABCDEF"
-	return string([]byte{digits[b>>4], digits[b&0x0f]})
 }
 
 // branchesHandler 复刻 GET /api/collect/sources/branches：
@@ -440,7 +419,7 @@ func getGitLabAuthors(do func(*http.Request) (*http.Response, error), owner, rep
 	if host == "" {
 		host = "https://gitlab.com"
 	}
-	projectPath := encodeURIComponent(owner + "/" + repo)
+	projectPath := jsstr.EncodeURIComponent(owner + "/" + repo)
 	request, err := http.NewRequest(http.MethodGet, host+"/api/v4/projects/"+projectPath+"/repository/commits?per_page=100", nil)
 	if err != nil {
 		return []authorInfo{}

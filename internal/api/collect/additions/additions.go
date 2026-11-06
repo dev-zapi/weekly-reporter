@@ -13,7 +13,6 @@ package additions
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/collect/collectpath"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -62,7 +62,7 @@ type scanReposResponse struct {
 // scanReposHandler 复刻 actions.ts 的 scanRepos(basePath, maxDepth = 3)。
 func scanReposHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSON(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			// 请求体不可解析：actions.ts 里等价于 expandInputPath 之前的参数
 			// 异常，整条逻辑落进 catch → 200 + 内嵌 error。
@@ -178,7 +178,7 @@ type gitLocalConfig struct {
 // 与 TS 一样**不做白名单校验**：白名单只属于 scanRepos；本 action 只去重并插入。
 func batchAddSourcesHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := decodeJSON(r)
+		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			log.Printf("collect batch-add-sources: decode body: %v", err)
 			writeBatchAddError(w, err.Error())
@@ -273,18 +273,4 @@ func batchAddSourcesHandler(deps Deps) http.HandlerFunc {
 
 func writeBatchAddError(w http.ResponseWriter, message string) {
 	respond.JSON(w, http.StatusOK, batchAddResponse{Success: false, AddedCount: 0, Error: message})
-}
-
-// decodeJSON 复刻 `await request.json()`：读整个 body 再解析。
-// json.Unmarshal 与 JSON.parse 一样拒绝尾随垃圾，数字折成 float64。
-func decodeJSON(r *http.Request) (any, error) {
-	raw, err := io.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	var body any
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-	return body, nil
 }
