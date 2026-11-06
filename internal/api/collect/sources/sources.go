@@ -127,7 +127,7 @@ func parseIntID(raw string) (int64, bool) {
 	return jsparse.ParseInt(raw)
 }
 
-// decodeJSONBody 在 jsvalue.go；handler 里的 500 日志统一走这里。
+// logAndError 是 handler 里 500 的统一写法（日志 + {error, code}）。
 func logAndError(w http.ResponseWriter, message, code string) {
 	log.Printf("[API] %s", message)
 	respond.Error(w, http.StatusInternalServerError, message, code)
