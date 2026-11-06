@@ -53,22 +53,14 @@ type Config struct {
 // Client 是一个绑定到单行 ai_config 的传输客户端。
 //
 // 不做连接池/超时策略：one-shot 直接吃请求 ctx，取消（客户端断连）由调用方传导。
+// provider 端点由 ai_config.api_url 决定，httptest 的 mock provider 因此不需要
+// 额外注入点。
 type Client struct {
 	cfg Config
-
-	// HTTP 只给测试替换；生产用 http.DefaultClient。
-	HTTP *http.Client
 }
 
 // New 包一个 ai_config 行。
 func New(cfg Config) *Client { return &Client{cfg: cfg} }
-
-func (c *Client) httpClient() *http.Client {
-	if c.HTTP != nil {
-		return c.HTTP
-	}
-	return http.DefaultClient
-}
 
 // ObjectRequest 是一次结构化输出的请求参数。
 //
@@ -136,7 +128,7 @@ func (c *Client) postJSON(ctx context.Context, url string, body any, headers map
 		req.Header.Set("x-trace-id", tc.TraceID)
 	}
 
-	res, err := c.httpClient().Do(req)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
