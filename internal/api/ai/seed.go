@@ -16,9 +16,12 @@ import (
 // system_prompts（那是 /api/prompts/system 的依赖，属同批模板/提示词票）。
 // 本域没有任何路由读 system_prompts，跳过它对这三条 one-shot 不可观测。
 //
-// 与 TS 的另一个小差异：dist 用模块级 `seeded` 标志只查一次 count。这里每次
-// 都查（一条 COUNT），换来的是「换库后仍会 seed」——对 HTTP 契约无影响，但让
-// 同一进程里的多个测试库互不串味。
+// 与 TS 的另外两处小差异（都不改变 HTTP 契约）：
+//   - dist 用模块级 `seeded` 标志只查一次 count。这里每次都查（一条 COUNT），
+//     换来「换库后仍会 seed」，让同一进程里的多个测试库互不串味。
+//   - INSERT 带 ON CONFLICT (key) DO NOTHING：两个请求并发看到空表时，TS 的
+//     第二条 INSERT 会撞唯一索引（被 ensureSeed 自己的 try/catch 吞掉），这里
+//     两条都成功。种子内容相同，结果一致。
 func (d *Deps) ensureSeededStyles(ctx context.Context) {
 	count, err := d.Queries.CountAIStylesForAI(ctx)
 	if err != nil {
