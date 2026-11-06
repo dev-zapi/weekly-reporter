@@ -75,6 +75,10 @@ func gitRemoteSyncHandler(deps Deps) http.HandlerFunc {
 
 		results, err := syncAllSources(r.Context(), deps.Queries, resync)
 		if err != nil {
+			if errors.Is(err, errSourceBusy) {
+				respond.Error(w, http.StatusConflict, "该仓库正在操作中，请稍后重试", "SOURCE_BUSY")
+				return
+			}
 			log.Printf("collect: sync all sources: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "同步失败", "SYNC_ERROR")
 			return
