@@ -219,6 +219,23 @@ func TestUnifyStyleReturnsUnifiedContentAndChangeCount(t *testing.T) {
 	}
 }
 
+// message 里的 changesCount 走 String(number)：指数区间必须是 JS 的 "1e-7"。
+func TestUnifyStyleMessageRendersNumbersLikeJavaScript(t *testing.T) {
+	h := setupPolish(t)
+	h.mock.setText(`{"unifiedContent":"统一后的内容","changesCount":1e-7}`)
+
+	rec := h.do("/api/ai/unify-style", `{"reportContent":"原文"}`, testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	var resp unifyResponse
+	decodeJSONInto(t, rec.Body.Bytes(), &resp)
+	if resp.Message != "Style unified with 1e-7 changes" {
+		t.Fatalf("message = %q", resp.Message)
+	}
+}
+
 func TestUnifyStyleUsesStyleOverrideWhenNoTemplate(t *testing.T) {
 	h := setupPolish(t)
 	h.mock.setText(`{"unifiedContent":"x","changesCount":0}`)
