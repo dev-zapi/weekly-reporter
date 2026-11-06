@@ -28,16 +28,15 @@ type branchSyncResult struct {
 }
 
 // syncResult 对应 SyncResult。字段顺序与 sync.ts 的对象字面量一致，保证响应体
-// 键序可对照（branches 只在成功分支出现）。
+// 键序可对照。warnings 只是类型里的可选字段、sync.ts 从不赋值，因此这里不复制。
 type syncResult struct {
-	SourceID     int64    `json:"sourceId"`
-	SourceName   string   `json:"sourceName"`
-	Status       string   `json:"status"`
-	CommitsCount int      `json:"commitsCount"`
-	EventsCount  int      `json:"eventsCount"`
-	Error        *string  `json:"error,omitempty"`
-	AutoDisabled *bool    `json:"autoDisabled,omitempty"`
-	Warnings     []string `json:"warnings,omitempty"`
+	SourceID     int64   `json:"sourceId"`
+	SourceName   string  `json:"sourceName"`
+	Status       string  `json:"status"`
+	CommitsCount int     `json:"commitsCount"`
+	EventsCount  int     `json:"eventsCount"`
+	Error        *string `json:"error,omitempty"`
+	AutoDisabled *bool   `json:"autoDisabled,omitempty"`
 	// Branches 只在成功分支出现（含空数组）；失败结果里 sync.ts 的对象字面量
 	// 没有这个键，所以用指针 + omitempty 表达。
 	Branches *[]branchSyncResult `json:"branches,omitempty"`
