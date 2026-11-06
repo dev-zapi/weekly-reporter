@@ -167,11 +167,12 @@ func updateHandler(deps Deps) http.HandlerFunc {
 		}
 
 		now := time.Now().Unix()
-		var row db.Template
 
+		// 两条分支写回同一组参数，只是取值规则不同：style-only 时 name/content
+		// 原样写回（与「不写」不可观测地区分），完整更新时取校验结果。drizzle 会
+		// 省略值为 undefined 的键，所以 body 是 {} 时等价于只更新 updated_at。
+		var row db.Template
 		if isStyleOnlyUpdate(body) {
-			// style-only：只写 ai_style（存在时）与 updated_at。drizzle 会省略
-			// 值为 undefined 的键，所以 body 是 {} 时只更新 updated_at。
 			aiStyle, ok := parseStyleOnlyBody(body)
 			if !ok {
 				respondValidation(w)

@@ -29,7 +29,7 @@ type Seeder struct {
 	seeded bool
 }
 
-// Ensure 复刻 ensureSeed()：幂等，首次调用 Olny 写入内置数据。
+// Ensure 复刻 ensureSeed()：幂等，只在首次调用时写入内置数据。
 func (s *Seeder) Ensure(ctx context.Context, queries *db.Queries) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
