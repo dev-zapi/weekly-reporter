@@ -42,16 +42,21 @@ type referrer struct {
 
 // commentReferrer 是计划条目评论侧的引用方，字段即 CommentReferrer 的
 // JSON 形状（createdAt 同样是 Date → ISO 串）。
+//
+// 字段顺序照 route.ts 序列化出来的键序：findCommentReferrers 先展开 select 的
+// 属性（commentId, author, createdAt, planItemId, scope, periodStart, periodEnd,
+// monthKey），最后补 excerpt。JSON 键序不参与语义比较，这里逐字对齐只为让产物
+// 与旧运行时逐字节相同，便于 diff 证据。
 type commentReferrer struct {
 	CommentID   int64   `json:"commentId"`
-	PlanItemID  int64   `json:"planItemId"`
-	Excerpt     string  `json:"excerpt"`
 	Author      *string `json:"author"`
 	CreatedAt   string  `json:"createdAt"`
+	PlanItemID  int64   `json:"planItemId"`
 	Scope       string  `json:"scope"`
 	PeriodStart string  `json:"periodStart"`
 	PeriodEnd   string  `json:"periodEnd"`
 	MonthKey    *string `json:"monthKey"`
+	Excerpt     string  `json:"excerpt"`
 }
 
 // getHandler 复刻 route.ts：
