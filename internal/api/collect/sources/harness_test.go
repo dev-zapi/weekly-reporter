@@ -158,14 +158,6 @@ type seedValues struct {
 	updatedAt      int64
 }
 
-func withStatus(status string) func(*seedValues) {
-	return func(v *seedValues) { v.status = status }
-}
-
-func withProjectScope(scope string) func(*seedValues) {
-	return func(v *seedValues) { v.projectScope = scope }
-}
-
 func withLastSync(at int64, status string) func(*seedValues) {
 	return func(v *seedValues) {
 		v.lastSyncAt = &at
@@ -178,10 +170,6 @@ func withNeverSynced() func(*seedValues) {
 		v.lastSyncAt = nil
 		v.lastSyncStatus = nil
 	}
-}
-
-func withDisabled() func(*seedValues) {
-	return func(v *seedValues) { v.enabled = 0 }
 }
 
 // sourceRow 是断言用的行快照。
