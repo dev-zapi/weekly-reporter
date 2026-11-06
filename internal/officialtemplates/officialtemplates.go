@@ -1,6 +1,14 @@
-package templates
+// Package officialtemplates 是 src/lib/official-templates.ts 里 `OFFICIAL_TEMPLATES`
+// 的单一 Go 副本。
+//
+// 为什么单独成包：B5 的模板域（GET /api/templates 的 `official` 字段、clone 路由
+// 的源模板查找）与 B6 的报告域（`getTemplateSelection` 把官方模板快照写进
+// report_variants）读的是同一份数据。放在任一域名下都会让另一个域反向依赖别人的
+// 路由包，修订模板内容时容易出现「改一处漏一处」的静默漂移（与
+// internal/api/aiseed、jsstr / jsdate / jsjson / jsparse 同一思路）。
+package officialtemplates
 
-// OfficialTemplate 是官方模板的响应形状（src/lib/official-templates.ts 的
+// OfficialTemplate 是官方模板的形状（src/lib/official-templates.ts 的
 // OfficialTemplate 接口）。tags 是字符串数组、id 带 `official-` 前缀，
 // clone 路由靠这个前缀分流。
 type OfficialTemplate struct {
@@ -12,11 +20,11 @@ type OfficialTemplate struct {
 	AiStyle     string   `json:"aiStyle"`
 }
 
-// officialTemplates 逐字移植 src/lib/official-templates.ts 的 OFFICIAL_TEMPLATES：
-// GET /api/templates 把它原样放进 `official` 字段，clone 路由按 id 查表。
+// All 逐字移植 src/lib/official-templates.ts 的 OFFICIAL_TEMPLATES：
+// GET /api/templates 把它原样放进 `official` 字段，clone 与报告路由按 id 查表。
 //
 // 顺序是契约的一部分（客户端按数组顺序渲染模板卡片），不要改成 map。
-var officialTemplates = []OfficialTemplate{
+var All = []OfficialTemplate{
 	{
 		ID:          "official-general",
 		Name:        "通用正式周报模板",
@@ -90,9 +98,9 @@ var officialTemplates = []OfficialTemplate{
 	},
 }
 
-// officialTemplateByID 复刻 `OFFICIAL_TEMPLATES.find(t => t.id === sourceId)`。
-func officialTemplateByID(id string) (OfficialTemplate, bool) {
-	for _, template := range officialTemplates {
+// ByID 复刻 `OFFICIAL_TEMPLATES.find(t => t.id === sourceId)`。
+func ByID(id string) (OfficialTemplate, bool) {
+	for _, template := range All {
 		if template.ID == id {
 			return template, true
 		}

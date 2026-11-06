@@ -20,6 +20,7 @@ import (
 	exportapi "github.com/dev-zapi/weekly-reporter/internal/api/export"
 	plansapi "github.com/dev-zapi/weekly-reporter/internal/api/plans"
 	promptsapi "github.com/dev-zapi/weekly-reporter/internal/api/prompts"
+	reportsapi "github.com/dev-zapi/weekly-reporter/internal/api/reports"
 	settingsapi "github.com/dev-zapi/weekly-reporter/internal/api/settings"
 	snippetsapi "github.com/dev-zapi/weekly-reporter/internal/api/snippets"
 	tagsapi "github.com/dev-zapi/weekly-reporter/internal/api/tags"
@@ -94,6 +95,11 @@ func NewRouter(opts Options) http.Handler {
 		// 同样扁平注册，静态段 /settings/ai/models 与 /settings/ai/test 与末段
 		// 路由 /settings/ai 共存。同批的 templates/prompts 与 ai/* 由另两张票注册。
 		settingsapi.Mount(r, settingsapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
+		// B6 的报告域非生成路由：/reports 的列表、CRUD、终版、预览、搜索、原稿
+		// 重建与生成会话读面。同批的生成路由（generate / turns / stop / accept /
+		// query-snapshots）由引擎票注册在同一前缀下；静态段 preview / search 与
+		// 更长的 generation-sessions 子路由都由 chi 原生优先匹配。
+		reportsapi.Mount(r, reportsapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里

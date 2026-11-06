@@ -14,6 +14,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/officialtemplates"
 )
 
 // templateJSON 是 templates 行的响应形状：键名与 drizzle 的属性名一致
@@ -62,9 +63,9 @@ func listHandler(deps Deps) http.HandlerFunc {
 			user = append(user, toTemplateJSON(row))
 		}
 		respond.JSON(w, http.StatusOK, struct {
-			Official []OfficialTemplate `json:"official"`
-			User     []templateJSON     `json:"user"`
-		}{Official: officialTemplates, User: user})
+			Official []officialtemplates.OfficialTemplate `json:"official"`
+			User     []templateJSON                       `json:"user"`
+		}{Official: officialtemplates.All, User: user})
 	}
 }
 
@@ -318,7 +319,7 @@ func cloneHandler(deps Deps) http.HandlerFunc {
 // 分支（500 CLONE_ERROR）。
 func resolveCloneSource(deps Deps, r *http.Request, sourceID string) (name, content, aiStyle string, found bool, err error) {
 	if strings.HasPrefix(sourceID, "official-") {
-		template, ok := officialTemplateByID(sourceID)
+		template, ok := officialtemplates.ByID(sourceID)
 		if !ok {
 			return "", "", "", false, nil
 		}
