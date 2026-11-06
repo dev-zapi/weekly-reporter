@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"math"
 	"strconv"
 
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -34,11 +33,7 @@ func GetTemplateSelection(ctx context.Context, queries *db.Queries, templateID s
 		if !ok {
 			return nil, nil
 		}
-		aiStyle := tpl.AiStyle
-		if aiStyle == "" {
-			aiStyle = "formal"
-		}
-		return &TemplateSelection{ID: tpl.ID, Name: tpl.Name, Content: tpl.Content, AiStyle: aiStyle}, nil
+		return &TemplateSelection{ID: tpl.ID, Name: tpl.Name, Content: tpl.Content, AiStyle: tpl.AiStyle}, nil
 	}
 
 	if len(templateID) < len("user-") || templateID[:len("user-")] != "user-" {
@@ -56,11 +51,8 @@ func GetTemplateSelection(ctx context.Context, queries *db.Queries, templateID s
 	if err != nil {
 		return nil, err
 	}
-	aiStyle := row.AiStyle
-	if aiStyle == "" {
-		aiStyle = "formal"
-	}
-	return &TemplateSelection{ID: templateID, Name: row.Name, Content: row.Content, AiStyle: aiStyle}, nil
+	// `row.aiStyle ?? 'formal'`：列是 NOT NULL，空串不是 nullish，保持原值。
+	return &TemplateSelection{ID: templateID, Name: row.Name, Content: row.Content, AiStyle: row.AiStyle}, nil
 }
 
 // WeekBounds 是 parseWeekBoundary 的产物：本地时区的当天首毫秒 / 末毫秒（Unix 秒）。
@@ -436,7 +428,8 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 			existing := findVariantRow(current, variant)
 			if existing != nil {
 				finalStatus := "none"
-				if existing.FinalContent != nil {
+				// `existing.finalContent ? 'stale' : 'none'`：空串也是假值。
+				if existing.FinalContent != nil && *existing.FinalContent != "" {
 					finalStatus = "stale"
 				}
 				if err := tx.UpdateReportVariantSourceForReportRoutes(ctx, db.UpdateReportVariantSourceForReportRoutesParams{
@@ -524,9 +517,4 @@ func boolToInt(value bool) int64 {
 		return 1
 	}
 	return 0
-}
-
-// roundMilliseconds 复刻 `Math.round(value)`（半值向 +∞）。
-func roundMilliseconds(value float64) int64 {
-	return int64(math.Floor(value + 0.5))
 }
