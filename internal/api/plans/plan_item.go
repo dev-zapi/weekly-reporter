@@ -483,7 +483,7 @@ func applyUpdateFields(
 }
 
 // deletePlanItemHandler 复刻 DELETE /api/plan-items/{id}：一个事务里
-// 清子项父链接 → 删入库的达成关联行 → 级联删评论与引用行 → 删条目。
+// 清子项父链接 → 删入库的兑现关联行 → 级联删评论与引用行 → 删条目。
 // deferredFromItemId 链是历史溯源，刻意不动（ADR-0019）。
 func deletePlanItemHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

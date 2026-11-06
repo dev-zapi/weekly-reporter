@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 月度回看（月度回看 tree）的完整断言集，逐条对照 src/app/api/plans/route.test.ts
+// 月度回看（Monthly Review）的完整断言集，逐条对照 src/app/api/plans/route.test.ts
 // 的 month-scope aggregation 分组。
 
 func childMap(t *testing.T, item map[string]any) map[int64]map[string]any {

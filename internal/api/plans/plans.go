@@ -107,7 +107,7 @@ func toPlanItemJSON(row db.PeriodPlanItem) planItemJSON {
 	}
 }
 
-// weekItemJSON 是 week 作用域的条目：行字段 + 达成数 + 计划侧评论数。
+// weekItemJSON 是 week 作用域的条目：行字段 + 兑现数 + 计划侧评论数。
 type weekItemJSON struct {
 	planItemJSON
 	FulfillmentCount int `json:"fulfillmentCount"`
@@ -150,7 +150,7 @@ type inheritedChildGroupJSON struct {
 	Items          []inheritedChildItemJSON `json:"items"`
 }
 
-// monthItemJSON 是月度回看的月条目：行字段 + 直接/间接达成数 + 评论数 + 子项树。
+// monthItemJSON 是月度回看的月条目：行字段 + 直接/间接兑现数 + 评论数 + 子项树。
 type monthItemJSON struct {
 	planItemJSON
 	DirectFulfillmentCount   int                       `json:"directFulfillmentCount"`
@@ -179,8 +179,8 @@ type attachCandidateGroupJSON struct {
 	Items       []candidateItemJSON `json:"items"`
 }
 
-// listPlansHandler 复刻 GET /api/plans：week 返回扁平列表（含达成/评论计数），
-// month 返回月度回看树（含直接/间接达成与可挂接候选）。
+// listPlansHandler 复刻 GET /api/plans：week 返回扁平列表（含兑现/评论计数），
+// month 返回月度回看树（含直接/间接兑现与可挂接候选）。
 func listPlansHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
@@ -312,7 +312,7 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		// week：每个条目补链式聚合的达成数与评论数。两者都是链式聚合：
+		// week：每个条目补链式聚合的兑现数与评论数。两者都是链式聚合：
 		// 顺延后继显示祖先的工作与笔记，与它展开的分区一致。
 		withCounts := make([]weekItemJSON, 0, len(items))
 		for _, item := range items {
@@ -464,7 +464,7 @@ func compareByPriorityThenPosition(a, b db.PeriodPlanItem) int {
 
 // composeMonthReview 复刻 composeMonthReview：
 //   - 月条目带自己的挂接周条目（含周归属）
-//   - 组合达成 = 直接（引用月条目，链式聚合）+ 间接（经挂接周条目，逐子链聚合）；
+//   - 组合兑现 = 直接（引用月条目，链式聚合）+ 间接（经挂接周条目，逐子链聚合）；
 //     两组来自同一个去重事件并集，重叠证据只算一次
 //   - 顺延的月后继还聚合其祖先月条目挂的周条目（与周条目顺延规则镜像），
 //     以带标签的只读分组暴露

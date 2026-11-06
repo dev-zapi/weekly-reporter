@@ -12,7 +12,7 @@ import (
 
 // 本文件移植 src/lib/plan-items.ts：优先级/象限标志校验、周期计划自动创建、
 // week→month 父链接校验，以及 src/lib/plan-references/fulfillment.ts 的
-// 顺延链与达成聚合、src/lib/plan-item-comments/db.ts 的链式评论读取。
+// 顺延链与兑现聚合、src/lib/plan-item-comments/db.ts 的链式评论读取。
 
 // planItemStatuses 逐值对应 PERIOD_PLAN_ITEM_STATUSES（schema 常量）。
 var planItemStatuses = []string{"planned", "in_progress", "done", "cancelled", "deferred"}
@@ -198,7 +198,7 @@ func fulfillmentEventIDs(ctx context.Context, q *db.Queries, itemIDs []int64) (m
 	return ids, nil
 }
 
-// fulfillmentCount 复刻 getFulfillmentCount：链上去重后的达成事件数。
+// fulfillmentCount 复刻 getFulfillmentCount：链上去重后的兑现事件数。
 func fulfillmentCount(ctx context.Context, q *db.Queries, itemID int64) (int, error) {
 	chain, err := fulfillmentChain(ctx, q, itemID)
 	if err != nil {

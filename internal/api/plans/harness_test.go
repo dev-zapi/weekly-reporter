@@ -187,7 +187,7 @@ func (h *harness) seedEvent(content, source string, eventTime int64) int64 {
 	return id
 }
 
-// seedPlanReference 写一条 event_plan_references 行（ADR-0019 的达成关联索引）。
+// seedPlanReference 写一条 event_plan_references 行（ADR-0019 的兑现关联索引）。
 func (h *harness) seedPlanReference(eventID, planItemID int64) {
 	h.t.Helper()
 
