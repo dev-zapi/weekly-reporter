@@ -40,12 +40,6 @@ func respondValidationDetails(w http.ResponseWriter, issues []zodIssue) {
 	})
 }
 
-// failWithMessage 写 {error, code} 的 500 形状。route.ts 里报告的查询失败都只
-// console.error + 500，没有 details。
-func failWithCode(w http.ResponseWriter, status int, message, code string) {
-	respond.Error(w, status, message, code)
-}
-
 // parseReportID 复刻 `Number.parseInt(params.id, 10)`；NaN 时 ok=false。
 func parseReportID(r *http.Request) (int64, bool) {
 	return jsparse.ParseInt10(chi.URLParam(r, "id"))
@@ -77,7 +71,7 @@ func listReportsHandler(deps Deps) http.HandlerFunc {
 			// better-sqlite3 把超出 int64 的 LIMIT/OFFSET 绑成 REAL → datatype
 			// mismatch → route.ts 的 catch 是 500 FETCH_ERROR。
 			log.Printf("GET /api/reports error: unbindable page=%v pageSize=%v", page, pageSize)
-			failWithCode(w, http.StatusInternalServerError, "Failed to fetch reports", "FETCH_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to fetch reports", "FETCH_ERROR")
 			return
 		}
 
@@ -87,7 +81,7 @@ func listReportsHandler(deps Deps) http.HandlerFunc {
 		})
 		if err != nil {
 			log.Printf("GET /api/reports error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to fetch reports", "FETCH_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to fetch reports", "FETCH_ERROR")
 			return
 		}
 
@@ -260,7 +254,7 @@ func createReportHandler(deps Deps) http.HandlerFunc {
 		if err != nil {
 			// route.ts 里 request.json() 抛错落进 catch：不是 ZodError → 500。
 			log.Printf("POST /api/reports error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
 			return
 		}
 
@@ -277,7 +271,7 @@ func createReportHandler(deps Deps) http.HandlerFunc {
 		}{Title: input.Title, WeekStart: input.WeekStart, WeekEnd: input.WeekEnd}, nowUnix())
 		if err != nil {
 			log.Printf("POST /api/reports error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
 			return
 		}
 
@@ -296,7 +290,7 @@ func previewHandler(deps Deps) http.HandlerFunc {
 		body, err := jsjson.DecodeBody(r)
 		if err != nil {
 			log.Printf("POST /api/reports/preview error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
 			return
 		}
 
@@ -309,7 +303,7 @@ func previewHandler(deps Deps) http.HandlerFunc {
 		variants, err := reportlib.PreviewReportSourceDrafts(r.Context(), deps.Queries, input.WeekStart, input.WeekEnd)
 		if err != nil {
 			log.Printf("POST /api/reports/preview error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
 			return
 		}
 		respond.JSON(w, http.StatusOK, struct {
@@ -338,7 +332,7 @@ func searchHandler(deps Deps) http.HandlerFunc {
 		})
 		if err != nil {
 			log.Printf("GET /api/reports/search error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Search failed", "SEARCH_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Search failed", "SEARCH_ERROR")
 			return
 		}
 		variantRows, err := deps.Queries.ListReportVariantsForReportRoutes(r.Context(), db.ListReportVariantsForReportRoutesParams{
@@ -347,7 +341,7 @@ func searchHandler(deps Deps) http.HandlerFunc {
 		})
 		if err != nil {
 			log.Printf("GET /api/reports/search error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Search failed", "SEARCH_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Search failed", "SEARCH_ERROR")
 			return
 		}
 		variantsByReport := make(map[int64][]reportlib.VariantJSON, len(variantRows))
@@ -382,7 +376,7 @@ func searchHandler(deps Deps) http.HandlerFunc {
 						parts = append(parts, "")
 					}
 				}
-				if !containsFold(joinWithNewline(parts), searchQuery) {
+				if !containsFold(strings.Join(parts, "\n"), searchQuery) {
 					continue
 				}
 			}
@@ -393,10 +387,6 @@ func searchHandler(deps Deps) http.HandlerFunc {
 			Reports []searchResultItem `json:"reports"`
 		}{Reports: results})
 	}
-}
-
-func joinWithNewline(parts []string) string {
-	return strings.Join(parts, "\n")
 }
 
 // containsFold 复刻 `text.toLowerCase().includes(query)`（query 已 lowercase）。
@@ -443,18 +433,18 @@ func getReportHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
 		bundle, err := reportlib.GetReportBundle(r.Context(), deps.Queries, reportID)
 		if err != nil {
 			log.Printf("GET /api/reports/[id] error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to fetch report", "FETCH_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to fetch report", "FETCH_ERROR")
 			return
 		}
 		if bundle == nil {
-			failWithCode(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
 			return
 		}
 
@@ -475,12 +465,13 @@ func getReportHandler(deps Deps) http.HandlerFunc {
 			break
 		}
 
+		response := bundleFrom(bundle)
+		// route.ts 在变体表为空时用伪造的个人版变体替换 variants。
+		response.Variants = variants
 		respond.JSON(w, http.StatusOK, struct {
-			reportlib.ReportJSON
-			Variants  []reportlib.VariantJSON  `json:"variants"`
-			Snapshots []reportlib.SnapshotJSON `json:"snapshots"`
-			Content   string                   `json:"content"`
-		}{ReportJSON: bundle.Report, Variants: variants, Snapshots: bundle.Snapshots, Content: content})
+			reportBundleJSON
+			Content string `json:"content"`
+		}{reportBundleJSON: response, Content: content})
 	}
 }
 
@@ -490,23 +481,23 @@ func updateReportHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
 		body, err := jsjson.DecodeBody(r)
 		if err != nil {
-			failWithCode(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
 			return
 		}
 
 		existing, err := deps.Queries.GetReportForReportRoutes(r.Context(), reportID)
 		if errors.Is(err, sql.ErrNoRows) {
-			failWithCode(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
 			return
 		}
 		if err != nil {
-			failWithCode(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
 			return
 		}
 
@@ -516,7 +507,7 @@ func updateReportHandler(deps Deps) http.HandlerFunc {
 			// `typeof body.title === 'string'`：null/数组/原始值都让 route.ts 抛
 			// TypeError（null）或回落到原值（其余）——统一按「保持原标题」处理。
 			if body == nil {
-				failWithCode(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
+				respond.Error(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
 				return
 			}
 		} else if value, present := object["title"]; present {
@@ -531,7 +522,7 @@ func updateReportHandler(deps Deps) http.HandlerFunc {
 			ID:        reportID,
 		})
 		if err != nil {
-			failWithCode(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to update report", "UPDATE_ERROR")
 			return
 		}
 		respond.JSON(w, http.StatusOK, reportlib.ReportToJSON(updated))
@@ -547,25 +538,25 @@ func deleteReportHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
 		_, err := deps.Queries.GetReportForReportRoutes(r.Context(), reportID)
 		if errors.Is(err, sql.ErrNoRows) {
-			failWithCode(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
 			return
 		}
 		if err != nil {
-			failWithCode(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
 			return
 		}
 
 		if _, err := deps.Queries.GetAcceptedGenerationProposalIDForReportRoutes(r.Context(), reportID); err == nil {
-			failWithCode(w, http.StatusConflict, auditRecordRequiredMessage, "AUDIT_RECORD_REQUIRED")
+			respond.Error(w, http.StatusConflict, auditRecordRequiredMessage, "AUDIT_RECORD_REQUIRED")
 			return
 		} else if !errors.Is(err, sql.ErrNoRows) {
-			failWithCode(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
 			return
 		}
 
@@ -599,7 +590,7 @@ func deleteReportHandler(deps Deps) http.HandlerFunc {
 		})
 		if err != nil {
 			log.Printf("DELETE /api/reports/[id] error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to delete report", "DELETE_ERROR")
 			return
 		}
 		respond.JSON(w, http.StatusOK, struct {
@@ -614,31 +605,34 @@ func regenerateSourceHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
 		bundle, err := reportlib.RegenerateSourceDrafts(r.Context(), deps.Queries, reportID, nowUnix())
 		if err != nil {
 			log.Printf("POST /api/reports/[id]/regenerate-source error: %v", err)
-			failWithCode(w, http.StatusInternalServerError, "Failed to regenerate source draft", "REGENERATE_ERROR")
+			respond.Error(w, http.StatusInternalServerError, "Failed to regenerate source draft", "REGENERATE_ERROR")
 			return
 		}
 		if bundle == nil {
-			failWithCode(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
 			return
 		}
-		respond.JSON(w, http.StatusOK, bundleResponse(bundle))
+		respond.JSON(w, http.StatusOK, bundleFrom(bundle))
 	}
 }
 
-// bundleResponse 是 GET /reports/{id} 与 regenerate-source 共用的 bundle 形状。
-func bundleResponse(bundle *reportlib.ReportBundle) any {
-	return struct {
-		reportlib.ReportJSON
-		Variants  []reportlib.VariantJSON  `json:"variants"`
-		Snapshots []reportlib.SnapshotJSON `json:"snapshots"`
-	}{ReportJSON: bundle.Report, Variants: bundle.Variants, Snapshots: bundle.Snapshots}
+// reportBundleJSON 是 getReportBundle 的响应形状（GET /reports/{id} 与
+// regenerate-source 共用）。
+type reportBundleJSON struct {
+	reportlib.ReportJSON
+	Variants  []reportlib.VariantJSON  `json:"variants"`
+	Snapshots []reportlib.SnapshotJSON `json:"snapshots"`
+}
+
+func bundleFrom(bundle *reportlib.ReportBundle) reportBundleJSON {
+	return reportBundleJSON{ReportJSON: bundle.Report, Variants: bundle.Variants, Snapshots: bundle.Snapshots}
 }
 
 // nowUnix 是 `new Date()` 落库后的 Unix 秒。

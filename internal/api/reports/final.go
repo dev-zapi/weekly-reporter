@@ -24,7 +24,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
@@ -43,7 +43,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			// 原始值上取属性得到 undefined，落进 INVALID_INPUT。
-			failWithCode(w, http.StatusBadRequest, "Final content and audience variant are required", "INVALID_INPUT")
+			respond.Error(w, http.StatusBadRequest, "Final content and audience variant are required", "INVALID_INPUT")
 			return
 		}
 
@@ -55,18 +55,18 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 		}
 		content, _ := object["content"].(string)
 		if variant == "" || trimJS(content) == "" {
-			failWithCode(w, http.StatusBadRequest, "Final content and audience variant are required", "INVALID_INPUT")
+			respond.Error(w, http.StatusBadRequest, "Final content and audience variant are required", "INVALID_INPUT")
 			return
 		}
 		if value, present := object["templateId"]; present {
 			if _, isString := value.(string); !isString {
-				failWithCode(w, http.StatusBadRequest, "templateId must be a string", "INVALID_INPUT")
+				respond.Error(w, http.StatusBadRequest, "templateId must be a string", "INVALID_INPUT")
 				return
 			}
 		}
 		if value, present := object["aiStyleKey"]; present {
 			if _, isString := value.(string); !isString {
-				failWithCode(w, http.StatusBadRequest, "aiStyleKey must be a string", "INVALID_INPUT")
+				respond.Error(w, http.StatusBadRequest, "aiStyleKey must be a string", "INVALID_INPUT")
 				return
 			}
 		}
@@ -83,7 +83,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			if selection == nil {
-				failWithCode(w, http.StatusBadRequest, "Unknown template: "+templateID, "VALIDATION_ERROR")
+				respond.Error(w, http.StatusBadRequest, "Unknown template: "+templateID, "VALIDATION_ERROR")
 				return
 			}
 			templateSnapshot = selection
@@ -94,7 +94,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 			styleKey, _ := value.(string)
 			styleRow, err := deps.Queries.GetAIStyleByKeyForAI(r.Context(), styleKey)
 			if errors.Is(err, sql.ErrNoRows) {
-				failWithCode(w, http.StatusBadRequest, "Unknown AI style: "+styleKey, "VALIDATION_ERROR")
+				respond.Error(w, http.StatusBadRequest, "Unknown AI style: "+styleKey, "VALIDATION_ERROR")
 				return
 			}
 			if err != nil {
@@ -120,7 +120,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 		if existing == nil && variant == "personal" {
 			_, err := deps.Queries.GetReportForReportRoutes(r.Context(), reportID)
 			if errors.Is(err, sql.ErrNoRows) {
-				failWithCode(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
+				respond.Error(w, http.StatusNotFound, "Report not found", "NOT_FOUND")
 				return
 			}
 			if err != nil {
@@ -142,7 +142,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		if existing == nil {
-			failWithCode(w, http.StatusNotFound, "Report variant not found", "VARIANT_NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Report variant not found", "VARIANT_NOT_FOUND")
 			return
 		}
 
@@ -150,7 +150,7 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 		if value, present := object["sourceRevision"]; present && value != nil {
 			revision, isInteger := jsInteger(value)
 			if !isInteger || revision != float64(existing.SourceRevision) {
-				failWithCode(w, http.StatusConflict, "The source draft has changed. Regenerate the final version from the latest draft.", "SOURCE_REVISION_CONFLICT")
+				respond.Error(w, http.StatusConflict, "The source draft has changed. Regenerate the final version from the latest draft.", "SOURCE_REVISION_CONFLICT")
 				return
 			}
 		}

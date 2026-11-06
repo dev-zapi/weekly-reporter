@@ -41,11 +41,11 @@ func (e *generationServiceError) Error() string { return e.Message }
 func failGeneration(w http.ResponseWriter, err error) {
 	var serviceError *generationServiceError
 	if errors.As(err, &serviceError) {
-		failWithCode(w, serviceError.Status, serviceError.Message, serviceError.Code)
+		respond.Error(w, serviceError.Status, serviceError.Message, serviceError.Code)
 		return
 	}
 	log.Printf("generation session route error: %v", err)
-	failWithCode(w, http.StatusInternalServerError, "Generation session operation failed", "GENERATION_SESSION_ERROR")
+	respond.Error(w, http.StatusInternalServerError, "Generation session operation failed", "GENERATION_SESSION_ERROR")
 }
 
 // ---- 响应形状 ----
@@ -204,7 +204,7 @@ func listSessionsHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
@@ -266,7 +266,7 @@ func createSessionHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		reportID, ok := parseReportID(r)
 		if !ok {
-			failWithCode(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid report ID", "INVALID_ID")
 			return
 		}
 
@@ -283,7 +283,7 @@ func createSessionHandler(deps Deps) http.HandlerFunc {
 				return
 			}
 			// 原始值上取属性得到 undefined，落进 INVALID_INPUT 校验分支。
-			failWithCode(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
+			respond.Error(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
 			return
 		}
 
@@ -295,7 +295,7 @@ func createSessionHandler(deps Deps) http.HandlerFunc {
 		}
 		templateID, templateIsString := object["templateId"].(string)
 		if variant == "" || !templateIsString || templateID == "" {
-			failWithCode(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
+			respond.Error(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
 			return
 		}
 
@@ -455,7 +455,7 @@ func getSessionHandler(deps Deps) http.HandlerFunc {
 		reportID, reportOK := parseReportID(r)
 		sessionID, sessionOK := parseSessionID(r)
 		if !reportOK || !sessionOK {
-			failWithCode(w, http.StatusBadRequest, "Invalid ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid ID", "INVALID_ID")
 			return
 		}
 
@@ -465,7 +465,7 @@ func getSessionHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 		if detail == nil {
-			failWithCode(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
 			return
 		}
 		respond.JSON(w, http.StatusOK, detail)
@@ -557,7 +557,7 @@ func renameSessionHandler(deps Deps) http.HandlerFunc {
 		reportID, reportOK := parseReportID(r)
 		sessionID, sessionOK := parseSessionID(r)
 		if !reportOK || !sessionOK {
-			failWithCode(w, http.StatusBadRequest, "Invalid ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "Invalid ID", "INVALID_ID")
 			return
 		}
 
@@ -573,18 +573,18 @@ func renameSessionHandler(deps Deps) http.HandlerFunc {
 				failGeneration(w, errors.New("TypeError: Cannot read properties of null (reading 'title')"))
 				return
 			}
-			failWithCode(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
+			respond.Error(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
 			return
 		}
 		title, isString := object["title"].(string)
 		if !isString {
-			failWithCode(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
+			respond.Error(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
 			return
 		}
 
 		trimmed := trimJS(title)
 		if trimmed == "" {
-			failWithCode(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
+			respond.Error(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
 			return
 		}
 		// `trimmed.slice(0, 120)`：slice 的边界是 UTF-16 码元。
@@ -597,7 +597,7 @@ func renameSessionHandler(deps Deps) http.HandlerFunc {
 			ReportID:  reportID,
 		})
 		if errors.Is(err, sql.ErrNoRows) {
-			failWithCode(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
 			return
 		}
 		if err != nil {
@@ -613,13 +613,13 @@ func archiveSessionHandler(deps Deps) http.HandlerFunc {
 		reportID, reportOK := parseReportID(r)
 		sessionID, sessionOK := parseSessionID(r)
 		if !reportOK || !sessionOK {
-			failWithCode(w, http.StatusBadRequest, "无效的ID", "INVALID_ID")
+			respond.Error(w, http.StatusBadRequest, "无效的ID", "INVALID_ID")
 			return
 		}
 
 		working, err := deps.Queries.GetWorkingGenerationTurnForReportRoutes(r.Context(), sessionID)
 		if err == nil && working.ID != 0 {
-			failWithCode(w, http.StatusConflict, "AI is still generating; stop the current turn first", "TURN_IN_PROGRESS")
+			respond.Error(w, http.StatusConflict, "AI is still generating; stop the current turn first", "TURN_IN_PROGRESS")
 			return
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -635,7 +635,7 @@ func archiveSessionHandler(deps Deps) http.HandlerFunc {
 			ReportID:   reportID,
 		})
 		if errors.Is(err, sql.ErrNoRows) {
-			failWithCode(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
+			respond.Error(w, http.StatusNotFound, "Generation session not found", "SESSION_NOT_FOUND")
 			return
 		}
 		if err != nil {
