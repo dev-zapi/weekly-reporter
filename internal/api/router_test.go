@@ -317,3 +317,83 @@ func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B5 的模板域路由必须真的挂在 /api 子路由上，且静态段 clone 不被
+// /templates/{id} 吃掉、{id}/render 仍可达。
+func TestB5TemplateRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/templates", "", http.StatusOK, `"official":`},
+		{http.MethodPost, "/api/templates", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+		{http.MethodGet, "/api/templates/999", "", http.StatusNotFound, `"code":"TEMPLATE_NOT_FOUND"`},
+		{http.MethodGet, "/api/templates/999/render", "", http.StatusGone, `"code":"TEMPLATE_RENDER_REMOVED"`},
+		{http.MethodPost, "/api/templates/clone", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B5 的 prompts 域路由必须真的挂在 /api 子路由上，且 {id} 子路由不被静态段遮蔽。
+func TestB5PromptRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/prompts/styles", "", http.StatusOK, `"styles":`},
+		{http.MethodGet, "/api/prompts/styles/999", "", http.StatusNotFound, `"code":"STYLE_NOT_FOUND"`},
+		{http.MethodGet, "/api/prompts/system", "", http.StatusOK, `"prompts":`},
+		{http.MethodPut, "/api/prompts/system", `{"key":"nope","promptText":"x"}`, http.StatusBadRequest, `"error":"Invalid prompt key"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
