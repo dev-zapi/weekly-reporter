@@ -15,7 +15,7 @@ import (
 func TestListCommentsRejectsNonNumericID(t *testing.T) {
 	h := newHarness(t)
 
-	status, _ := decode(t, h.do(http.MethodGet, "/api/plan-items/nope/comments", "", ""))
+	status, _ := decode(t, h.do(http.MethodGet, "/api/plan-items/nope/comments", "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -24,7 +24,7 @@ func TestListCommentsRejectsNonNumericID(t *testing.T) {
 func TestListCommentsReturns404WhenItemMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, _ := decode(t, h.do(http.MethodGet, "/api/plan-items/999/comments", "", ""))
+	status, _ := decode(t, h.do(http.MethodGet, "/api/plan-items/999/comments", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -34,7 +34,7 @@ func TestListCommentsEmptyForItemWithoutComments(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -51,7 +51,7 @@ func TestListCommentsOldestFirst(t *testing.T) {
 	h.seedComment(itemID, "First", nil, fixtureTime+86400)
 	h.seedComment(itemID, "Second", &agent, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -76,7 +76,7 @@ func TestListCommentsExcludesOtherItems(t *testing.T) {
 	h.seedComment(itemID, "Mine", nil, fixtureTime)
 	h.seedComment(otherID, "Theirs", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -100,7 +100,7 @@ func TestListCommentsAggregatesChainWithSourcePeriods(t *testing.T) {
 	h.seedComment(successor, "Successor follow-up", nil, fixtureTime+3600)
 	h.seedComment(original, "Original blocker", &agent, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", successor), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", successor), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -135,7 +135,7 @@ func TestListCommentsKeepsCommentsPinnedToOriginal(t *testing.T) {
 	h.seedComment(original, "Original note", nil, fixtureTime)
 	h.seedComment(successor, "Successor note", nil, fixtureTime+3600)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", original), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", original), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -160,7 +160,7 @@ func TestListCommentsLabelsMonthPeriods(t *testing.T) {
 	})
 	h.seedComment(original, "September decision", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", successor), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", successor), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -174,7 +174,7 @@ func TestListCommentsLabelsMonthPeriods(t *testing.T) {
 func TestCreateCommentRejectsNonNumericID(t *testing.T) {
 	h := newHarness(t)
 
-	status, _ := decode(t, h.do(http.MethodPost, "/api/plan-items/nope/comments", `{"content":"hello"}`, ""))
+	status, _ := decode(t, h.do(http.MethodPost, "/api/plan-items/nope/comments", `{"content":"hello"}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -183,7 +183,7 @@ func TestCreateCommentRejectsNonNumericID(t *testing.T) {
 func TestCreateCommentReturns404WhenItemMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, _ := decode(t, h.do(http.MethodPost, "/api/plan-items/999/comments", `{"content":"hello"}`, ""))
+	status, _ := decode(t, h.do(http.MethodPost, "/api/plan-items/999/comments", `{"content":"hello"}`, testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -193,7 +193,7 @@ func TestCreateCommentRejectsBlankContent(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
-	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{"content":"   "}`, ""))
+	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{"content":"   "}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -203,7 +203,7 @@ func TestCreateCommentRejectsMissingContent(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
-	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{}`, ""))
+	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -214,7 +214,7 @@ func TestCreateBrowserCommentTrimsAndStoresNullAuthor(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
 	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID),
-		`{"content":"  blocked on review  "}`, ""))
+		`{"content":"  blocked on review  "}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -224,7 +224,7 @@ func TestCreateBrowserCommentTrimsAndStoresNullAuthor(t *testing.T) {
 	}
 	assertField(t, "planItemId", body["planItemId"], itemID)
 
-	listStatus, listBody := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", ""))
+	listStatus, listBody := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", testPassword))
 	if listStatus != http.StatusOK {
 		t.Fatalf("status = %d", listStatus)
 	}
@@ -279,7 +279,7 @@ func TestCreateCommentParsesCitationsOnceAtWrite(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
 	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID),
-		`{"content":"blocked by @17 and @17 again — see %42 #review"}`, ""))
+		`{"content":"blocked by @17 and @17 again — see %42 #review"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -309,10 +309,10 @@ func TestCreateCommentDoesNotReparseOnRead(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
 	if status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID),
-		`{"content":"blocked by @17"}`, "")); status != http.StatusCreated {
+		`{"content":"blocked by @17"}`, testPassword)); status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
-	if status, _ := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", "")); status != http.StatusOK {
+	if status, _ := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID), "", testPassword)); status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
 	if got := h.countRows(`SELECT COUNT(*) FROM comment_references`); got != 1 {
@@ -325,7 +325,7 @@ func TestCreateCommentAcceptsDanglingCitation(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
 	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID),
-		`{"content":"was motivated by @999"}`, ""))
+		`{"content":"was motivated by @999"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -345,7 +345,7 @@ func TestCommentsRejectUpdateMethods(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
 	for _, method := range []string{http.MethodPut, http.MethodPatch} {
-		status, _ := decode(t, h.do(method, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{"content":"x"}`, ""))
+		status, _ := decode(t, h.do(method, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{"content":"x"}`, testPassword))
 		if status != http.StatusNotFound {
 			t.Fatalf("%s status = %d, want 404", method, status)
 		}
@@ -355,11 +355,11 @@ func TestCommentsRejectUpdateMethods(t *testing.T) {
 func TestDeleteCommentRejectsNonNumericIDs(t *testing.T) {
 	h := newHarness(t)
 
-	if status, _ := decode(t, h.do(http.MethodDelete, "/api/plan-items/nope/comments/1", "", "")); status != http.StatusBadRequest {
+	if status, _ := decode(t, h.do(http.MethodDelete, "/api/plan-items/nope/comments/1", "", testPassword)); status != http.StatusBadRequest {
 		t.Fatalf("item id status = %d", status)
 	}
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
-	if status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/nope", itemID), "", "")); status != http.StatusBadRequest {
+	if status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/nope", itemID), "", testPassword)); status != http.StatusBadRequest {
 		t.Fatalf("comment id status = %d", status)
 	}
 }
@@ -367,7 +367,7 @@ func TestDeleteCommentRejectsNonNumericIDs(t *testing.T) {
 func TestDeleteCommentReturns404WhenItemMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, _ := decode(t, h.do(http.MethodDelete, "/api/plan-items/999/comments/1", "", ""))
+	status, _ := decode(t, h.do(http.MethodDelete, "/api/plan-items/999/comments/1", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -377,7 +377,7 @@ func TestDeleteCommentReturns404WhenCommentMissing(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
 
-	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/999", itemID), "", ""))
+	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/999", itemID), "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -391,7 +391,7 @@ func TestDeleteCommentRejectsForeignComment(t *testing.T) {
 	})
 	commentID := h.seedComment(otherID, "blocked", nil, fixtureTime)
 
-	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", ""))
+	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -413,7 +413,7 @@ func TestDeleteCommentRemovesCitations(t *testing.T) {
 	}
 
 	status, body := decode(t, h.do(http.MethodDelete,
-		fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", ""))
+		fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -441,7 +441,7 @@ func TestCommentDetailExposesOnlyDelete(t *testing.T) {
 
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodPatch} {
 		status, _ := decode(t, h.do(method,
-			fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", ""))
+			fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID), "", testPassword))
 		if status != http.StatusNotFound {
 			t.Fatalf("%s status = %d, want 404", method, status)
 		}

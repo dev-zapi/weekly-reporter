@@ -12,7 +12,7 @@ import (
 func TestDeferReturns404WhenItemMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items/999/defer", "", ""))
+	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items/999/defer", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -26,7 +26,7 @@ func TestDeferWeekItemToNextWeek(t *testing.T) {
 	week1 := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: week1, text: "Task to defer", status: "in_progress"})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -59,7 +59,7 @@ func TestDeferInheritsPriorityAndFlags(t *testing.T) {
 		priority: "high", isImportant: true, isUrgent: true,
 	})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -86,7 +86,7 @@ func TestDeferKeepsDefaultPriorityAndFlags(t *testing.T) {
 	week1 := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: week1, text: "Default task"})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -102,7 +102,7 @@ func TestDeferMonthItemToNextMonth(t *testing.T) {
 		planID: month1, text: "Monthly task to defer", status: "in_progress", projectScope: "personal",
 	})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -135,7 +135,7 @@ func TestDeferInheritsParentLink(t *testing.T) {
 		planID: week1, text: "Weekly task", status: "in_progress", parentItemID: &monthItem,
 	})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -152,7 +152,7 @@ func TestDeferDropsParentLinkOutsideNewMonth(t *testing.T) {
 		planID: week1, text: "Weekly task", status: "in_progress", parentItemID: &monthItem,
 	})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -170,7 +170,7 @@ func TestDeferAppendsToEndOfTargetPeriod(t *testing.T) {
 	h.seedItem(itemSeed{planID: week2, text: "Existing task 1", position: 1})
 	h.seedItem(itemSeed{planID: week2, text: "Existing task 2", position: 2})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -185,7 +185,7 @@ func TestDeferRejectsAlreadyDeferredItem(t *testing.T) {
 		planID: week1, text: "Already deferred task", status: "deferred", deferredFromID: ptr(int64(999)),
 	})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -202,7 +202,7 @@ func TestDeferRejectsCompletedItem(t *testing.T) {
 	week1 := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: week1, text: "Done task", status: "done"})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -216,7 +216,7 @@ func TestDeferAllowsPlannedItem(t *testing.T) {
 	week1 := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: week1, text: "Planned task"})
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -231,7 +231,7 @@ func TestDeferCreatesNextPeriod(t *testing.T) {
 	if got := h.countRows(`SELECT COUNT(*) FROM period_plans`); got != 1 {
 		t.Fatalf("plans before = %d", got)
 	}
-	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, _ := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -246,7 +246,7 @@ func TestDeferLeavesCommentsPinnedToOriginal(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: week1, text: "Task with context", status: "in_progress"})
 	h.seedComment(itemID, "Blocked on review", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID), "", testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}

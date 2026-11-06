@@ -2,6 +2,7 @@ package plans_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -42,10 +43,38 @@ func texts(t *testing.T, rows []map[string]any) []string {
 	return out
 }
 
+// 7 条路由全部挂在 withAuth 之内：不带 Authorization 头一律 401，且不落到
+// 各 handler 自己的 400/404 分支。
+func TestPlanRoutesRequireAuth(t *testing.T) {
+	h := newHarness(t)
+	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
+	itemID := h.seedItem(itemSeed{planID: planID, text: "Test item"})
+	commentID := h.seedComment(itemID, "note", nil, fixtureTime)
+
+	cases := []struct{ method, path string }{
+		{http.MethodGet, "/api/plans?scope=week"},
+		{http.MethodPost, "/api/plan-items"},
+		{http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID)},
+		{http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID)},
+		{http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID)},
+		{http.MethodGet, fmt.Sprintf("/api/plan-items/%d/comments", itemID)},
+		{http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID)},
+		{http.MethodDelete, fmt.Sprintf("/api/plan-items/%d/comments/%d", itemID, commentID)},
+		{http.MethodPost, fmt.Sprintf("/api/plan-items/%d/defer", itemID)},
+		{http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", itemID)},
+	}
+	for _, tc := range cases {
+		rec := h.do(tc.method, tc.path, `{"text":"x"}`, "")
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s status = %d, want 401", tc.method, tc.path, rec.Code)
+		}
+	}
+}
+
 func TestPlansRequiresScope(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans", "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -57,7 +86,7 @@ func TestPlansRequiresScope(t *testing.T) {
 func TestPlansRejectsInvalidScope(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=invalid", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=invalid", "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -69,7 +98,7 @@ func TestPlansRejectsInvalidScope(t *testing.T) {
 func TestPlansWeekWithoutPlanIsEmpty(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -87,7 +116,7 @@ func TestPlansWeekReturnsPlanWithItems(t *testing.T) {
 	h.seedItem(itemSeed{planID: planID, text: "Task 1", position: 1})
 	h.seedItem(itemSeed{planID: planID, text: "Task 2", status: "done", projectScope: "personal", position: 2})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -114,7 +143,7 @@ func TestPlansIncludesFulfillmentCount(t *testing.T) {
 	h.seedPlanReference(e2, item1)
 	h.seedPlanReference(e3, item2)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -129,7 +158,7 @@ func TestPlansQueriesByWeekStartAndEnd(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t,
-		h.do(http.MethodGet, "/api/plans?scope=week&weekStart=2026-10-12&weekEnd=2026-10-18", "", ""))
+		h.do(http.MethodGet, "/api/plans?scope=week&weekStart=2026-10-12&weekEnd=2026-10-18", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -144,7 +173,7 @@ func TestPlansCanonicalizesNonMondayWeekStart(t *testing.T) {
 
 	// 周三 2026-10-14 .. 周二 2026-10-20（不始于周一的原始区间）必须解析到规范周。
 	status, body := decode(t,
-		h.do(http.MethodGet, "/api/plans?scope=week&weekStart=2026-10-14&weekEnd=2026-10-20", "", ""))
+		h.do(http.MethodGet, "/api/plans?scope=week&weekStart=2026-10-14&weekEnd=2026-10-20", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -156,7 +185,7 @@ func TestPlansCanonicalizesNonMondayWeekStart(t *testing.T) {
 func TestPlansWeekRejectsInvalidDateFormat(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-13-01", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-13-01", "", testPassword))
 	// DATE_REGEX 通过，但 new Date(...) 是 Invalid Date：date-fns 的 format 抛错 → 500。
 	if status != http.StatusInternalServerError {
 		t.Fatalf("status = %d, body = %v", status, body)
@@ -171,7 +200,7 @@ func TestPlansReportsFetchErrorOnDatabaseFailure(t *testing.T) {
 	h := newHarness(t)
 	h.breakDB()
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
 	if status != http.StatusInternalServerError {
 		t.Fatalf("status = %d", status)
 	}
@@ -182,7 +211,7 @@ func TestPlansReportsFetchErrorOnDatabaseFailure(t *testing.T) {
 func TestPlansWeekRequiresDateOrWeekPair(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week", "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -195,7 +224,7 @@ func TestPlansMonthByKey(t *testing.T) {
 	h := newHarness(t)
 	h.seedPlan("month", "2026-10-01", "2026-10-31", ptr("2026-10"))
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -209,7 +238,7 @@ func TestPlansMonthByDate(t *testing.T) {
 	h := newHarness(t)
 	planID := h.seedPlan("month", "2026-10-01", "2026-10-31", ptr("2026-10"))
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -225,7 +254,7 @@ func TestPlansSortsItemsByPosition(t *testing.T) {
 	h.seedItem(itemSeed{planID: planID, text: "First", position: 1})
 	h.seedItem(itemSeed{planID: planID, text: "Second", position: 2})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -245,7 +274,7 @@ func TestPlansGroupsByPriorityThenPosition(t *testing.T) {
 	h.seedItem(itemSeed{planID: planID, text: "High first", priority: "high", position: 1})
 	h.seedItem(itemSeed{planID: planID, text: "Normal first", priority: "normal", position: 1})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -263,7 +292,7 @@ func TestPlansQuadrantFlagsDoNotAffectOrdering(t *testing.T) {
 	h.seedItem(itemSeed{planID: planID, text: "High unflagged", priority: "high", position: 2})
 	h.seedItem(itemSeed{planID: planID, text: "Normal flagged", priority: "normal", isImportant: true, position: 3})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -290,7 +319,7 @@ func TestPlansIncludesCommentCount(t *testing.T) {
 	h.seedComment(withComments, "first", nil, fixtureTime)
 	h.seedComment(withComments, "second", ptr("agent"), fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -310,7 +339,7 @@ func TestPlansAggregatesCommentCountsAcrossDeferralChain(t *testing.T) {
 	h.seedComment(original, "ancestor note", nil, fixtureTime)
 	h.seedComment(successor, "successor note", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -328,7 +357,7 @@ func TestPlansWeekShapeHasNoMonthKeys(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	h.seedItem(itemSeed{planID: planID, text: "Task 1"})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=week&date=2026-10-15", "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}

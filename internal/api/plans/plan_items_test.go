@@ -11,7 +11,7 @@ import (
 func TestCreatePlanItemRequiresTarget(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items", `{"text":"Test item"}`, ""))
+	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items", `{"text":"Test item"}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -25,7 +25,7 @@ func TestCreatePlanItemRejectsEmptyText(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":""}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":""}`, planID), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -39,7 +39,7 @@ func TestCreatePlanItemRejectsWhitespaceText(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"   "}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"   "}`, planID), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -53,7 +53,7 @@ func TestCreatePlanItemWithExistingPlan(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Complete feature X","projectScope":"work"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Complete feature X","projectScope":"work"}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -69,7 +69,7 @@ func TestCreatePlanItemAcceptsProvidedPriority(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Urgent task","priority":"high"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Urgent task","priority":"high"}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -81,7 +81,7 @@ func TestCreatePlanItemDefaultsPriorityToNormal(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Normal task"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Normal task"}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -93,7 +93,7 @@ func TestCreatePlanItemRejectsInvalidPriority(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","priority":"urgent"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","priority":"urgent"}`, planID), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -108,7 +108,7 @@ func TestCreatePlanItemDefaultsQuadrantFlagsOff(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Plain task"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Plain task"}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -121,7 +121,7 @@ func TestCreatePlanItemWithBothQuadrantFlags(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Quadrant one task","isImportant":true,"isUrgent":true}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Quadrant one task","isImportant":true,"isUrgent":true}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -134,7 +134,7 @@ func TestCreatePlanItemAcceptsLowPriorityWithBothFlags(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Deferred but important","priority":"low","isImportant":true,"isUrgent":true}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Deferred but important","priority":"low","isImportant":true,"isUrgent":true}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -148,7 +148,7 @@ func TestCreatePlanItemRejectsNonBooleanImportant(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","isImportant":"yes"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","isImportant":"yes"}`, planID), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -162,7 +162,7 @@ func TestCreatePlanItemRejectsNonBooleanUrgent(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","isUrgent":1}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task","isUrgent":1}`, planID), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -176,7 +176,7 @@ func TestCreatePlanItemDefaultsProjectScopeToWork(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task"}`, planID), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -188,14 +188,14 @@ func TestCreatePlanItemAutoIncrementsPosition(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status1, body1 := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task 1"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task 1"}`, planID), testPassword))
 	if status1 != http.StatusCreated {
 		t.Fatalf("status = %d", status1)
 	}
 	assertField(t, "first position", body1["position"], 1)
 
 	status2, body2 := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task 2"}`, planID), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Task 2"}`, planID), testPassword))
 	if status2 != http.StatusCreated {
 		t.Fatalf("status = %d", status2)
 	}
@@ -206,7 +206,7 @@ func TestCreatePlanItemEnsuresWeekPlan(t *testing.T) {
 	h := newHarness(t)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, ""))
+		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -231,7 +231,7 @@ func TestCreatePlanItemEnsuresMonthPlan(t *testing.T) {
 	h := newHarness(t)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"month","month":"2026-10","text":"Monthly task"}`, ""))
+		`{"scope":"month","month":"2026-10","text":"Monthly task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -254,7 +254,7 @@ func TestCreatePlanItemReusesExistingPlan(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, ""))
+		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -271,7 +271,7 @@ func TestCreatePlanItemAcceptsWeekToMonthParent(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan, monthItem), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan, monthItem), testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -283,7 +283,7 @@ func TestCreatePlanItemRejectsMissingParent(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":9999}`, weekPlan), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":9999}`, weekPlan), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -299,7 +299,7 @@ func TestCreatePlanItemRejectsNonMonthParent(t *testing.T) {
 	weekPlan2 := h.seedPlan("week", "2026-10-19", "2026-10-25", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan2, weekParent), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan2, weekParent), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -315,7 +315,7 @@ func TestCreatePlanItemRejectsParentOutsideMonth(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan, monthItem), ""))
+		fmt.Sprintf(`{"periodPlanId":%d,"text":"Weekly task","parentItemId":%d}`, weekPlan, monthItem), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -328,7 +328,7 @@ func TestCreatePlanItemRejectsUnknownPlan(t *testing.T) {
 	h := newHarness(t)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"periodPlanId":9999,"text":"Task"}`, ""))
+		`{"periodPlanId":9999,"text":"Task"}`, testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -340,7 +340,7 @@ func TestCreatePlanItemRejectsUnknownPlan(t *testing.T) {
 func TestCreatePlanItemInvalidJSONIs500(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items", `{"text":`, ""))
+	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items", `{"text":`, testPassword))
 	if status != http.StatusInternalServerError {
 		t.Fatalf("status = %d", status)
 	}

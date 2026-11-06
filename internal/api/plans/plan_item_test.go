@@ -12,7 +12,7 @@ import (
 func TestGetPlanItemReturns404WhenMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plan-items/999", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plan-items/999", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -26,7 +26,7 @@ func TestGetPlanItemReturnsItem(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Test item"})
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -45,7 +45,7 @@ func TestGetPlanItemReturnsPeriodAndDeferralChain(t *testing.T) {
 	item20 := h.seedItem(itemSeed{planID: plan2, text: "Deferred once", status: "deferred", deferredFromID: &item10})
 	item30 := h.seedItem(itemSeed{planID: plan3, text: "Deferred twice", deferredFromID: &item20})
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", item30), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", item30), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -71,7 +71,7 @@ func TestGetPlanItemIncludesReferrers(t *testing.T) {
 	eventID := h.seedEvent(fmt.Sprintf("Did work on %%%d", itemID), "manual", fixtureTime)
 	h.seedPlanReference(eventID, itemID)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -89,7 +89,7 @@ func TestGetPlanItemEmptyReferrers(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Unreferenced item"})
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -101,7 +101,7 @@ func TestGetPlanItemEmptyReferrers(t *testing.T) {
 func TestUpdatePlanItemReturns404WhenMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodPut, "/api/plan-items/999", `{"text":"Updated"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, "/api/plan-items/999", `{"text":"Updated"}`, testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -115,7 +115,7 @@ func TestUpdatePlanItemRejectsEmptyText(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Original"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":""}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":""}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -129,7 +129,7 @@ func TestUpdatePlanItemText(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Original"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -141,7 +141,7 @@ func TestUpdatePlanItemStatus(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"status":"done"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"status":"done"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -153,7 +153,7 @@ func TestUpdatePlanItemRejectsInvalidStatus(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"status":"archived"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"status":"archived"}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -167,7 +167,7 @@ func TestUpdatePlanItemPriority(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task", priority: "normal"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"priority":"high"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"priority":"high"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -180,7 +180,7 @@ func TestUpdatePlanItemKeepsOmittedPriority(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task", priority: "low"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -192,7 +192,7 @@ func TestUpdatePlanItemRejectsInvalidPriority(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"priority":"urgent"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"priority":"urgent"}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -208,7 +208,7 @@ func TestUpdatePlanItemQuadrantFlagsIndependently(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task", isImportant: true})
 
 	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID),
-		`{"isImportant":false,"isUrgent":true}`, ""))
+		`{"isImportant":false,"isUrgent":true}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -224,7 +224,7 @@ func TestUpdatePlanItemKeepsOmittedFlags(t *testing.T) {
 		planID: planID, text: "Task", priority: "low", isImportant: true, isUrgent: true,
 	})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"text":"Updated text"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -239,7 +239,7 @@ func TestUpdatePlanItemRejectsNonBooleanImportant(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"isImportant":"yes"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"isImportant":"yes"}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -253,7 +253,7 @@ func TestUpdatePlanItemRejectsNullUrgent(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"isUrgent":null}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"isUrgent":null}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -267,7 +267,7 @@ func TestUpdatePlanItemProjectScope(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"projectScope":"personal"}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"projectScope":"personal"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -279,7 +279,7 @@ func TestUpdatePlanItemPosition(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"position":5}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID), `{"position":5}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -294,7 +294,7 @@ func TestUpdatePlanItemParentLink(t *testing.T) {
 	weekItem := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task"})
 
 	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem),
-		fmt.Sprintf(`{"parentItemId":%d}`, monthItem), ""))
+		fmt.Sprintf(`{"parentItemId":%d}`, monthItem), testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -306,7 +306,7 @@ func TestUpdatePlanItemRejectsMissingParent(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	weekItem := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task"})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem), `{"parentItemId":9999}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem), `{"parentItemId":9999}`, testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -322,7 +322,7 @@ func TestUpdatePlanItemRejectsNonMonthParent(t *testing.T) {
 	weekItem := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task", position: 2})
 
 	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem),
-		fmt.Sprintf(`{"parentItemId":%d}`, weekParent), ""))
+		fmt.Sprintf(`{"parentItemId":%d}`, weekParent), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -339,7 +339,7 @@ func TestUpdatePlanItemRejectsParentOutsideMonth(t *testing.T) {
 	weekItem := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task"})
 
 	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem),
-		fmt.Sprintf(`{"parentItemId":%d}`, monthItem), ""))
+		fmt.Sprintf(`{"parentItemId":%d}`, monthItem), testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d", status)
 	}
@@ -355,7 +355,7 @@ func TestUpdatePlanItemClearsParentWithNull(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	weekItem := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task", parentItemID: &monthItem})
 
-	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem), `{"parentItemId":null}`, ""))
+	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", weekItem), `{"parentItemId":null}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -370,7 +370,7 @@ func TestUpdatePlanItemMultipleFields(t *testing.T) {
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Original"})
 
 	status, body := decode(t, h.do(http.MethodPut, fmt.Sprintf("/api/plan-items/%d", itemID),
-		`{"text":"Updated","status":"in_progress","projectScope":"personal"}`, ""))
+		`{"text":"Updated","status":"in_progress","projectScope":"personal"}`, testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -382,7 +382,7 @@ func TestUpdatePlanItemMultipleFields(t *testing.T) {
 func TestDeletePlanItemReturns404WhenMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodDelete, "/api/plan-items/999", "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, "/api/plan-items/999", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -396,7 +396,7 @@ func TestDeletePlanItem(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "To delete"})
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -413,7 +413,7 @@ func TestDeletePlanItemClearsChildParents(t *testing.T) {
 	weekPlan := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	child := h.seedItem(itemSeed{planID: weekPlan, text: "Weekly task", parentItemID: &parent})
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", parent), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", parent), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -438,7 +438,7 @@ func TestDeletePlanItemPreservesDeferralChain(t *testing.T) {
 	original := h.seedItem(itemSeed{planID: planID, text: "Original task", status: "deferred"})
 	carried := h.seedItem(itemSeed{planID: planID, text: "Carried task", deferredFromID: &original, position: 2})
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", original), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", original), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -465,7 +465,7 @@ func TestDeletePlanItemClearsInboundReferences(t *testing.T) {
 	eventID := h.seedEvent(content, "manual", fixtureTime)
 	h.seedPlanReference(eventID, itemID)
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -492,7 +492,7 @@ func TestDeletePlanItemReturnsOnlyDeletedFlag(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Unreferenced item"})
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -513,7 +513,7 @@ func TestDeletePlanItemClearsAllInboundReferences(t *testing.T) {
 	h.seedPlanReference(e1, itemID)
 	h.seedPlanReference(e2, itemID)
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -535,7 +535,7 @@ func TestDeletePlanItemLeavesOtherReferencesIntact(t *testing.T) {
 	h.seedPlanReference(eventID, item1)
 	h.seedPlanReference(eventID, item2)
 
-	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", item1), "", ""))
+	status, body := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", item1), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -565,7 +565,7 @@ func TestDeletePlanItemCascadesComments(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", ""))
+	status, _ := decode(t, h.do(http.MethodDelete, fmt.Sprintf("/api/plan-items/%d", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}

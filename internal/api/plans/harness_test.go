@@ -25,9 +25,6 @@ type harness struct {
 	router http.Handler
 	sqlDB  *sql.DB
 	conn   *db.Queries
-	// defaultToken 是认证开启时浏览器面的口令（启动密码）；关闭认证的装配为空。
-	// 传空 token 的 do 会带上它，相当于「浏览器登录成功的请求」。
-	defaultToken string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -49,10 +46,11 @@ func newHarness(t *testing.T) *harness {
 		Queries: conn,
 	})
 
-	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn, defaultToken: testPassword}
+	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn}
 }
 
-// do 发一个请求。body 为空表示无请求体；token 为空表示不带 Authorization 头。
+// do 发一个请求。body 为空表示无请求体；token 为空表示不带 Authorization 头
+// （与 B1/B2 夹具一致，401 边界因此可以直接断言）。
 func (h *harness) do(method, path, body, token string) *httptest.ResponseRecorder {
 	h.t.Helper()
 
@@ -62,9 +60,6 @@ func (h *harness) do(method, path, body, token string) *httptest.ResponseRecorde
 	} else {
 		req = httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-	}
-	if token == "" {
-		token = h.defaultToken
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)

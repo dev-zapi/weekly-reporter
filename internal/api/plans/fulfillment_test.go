@@ -12,7 +12,7 @@ import (
 func TestFulfillmentReturns404WhenItemMissing(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plan-items/999/fulfillment", "", ""))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plan-items/999/fulfillment", "", testPassword))
 	if status != http.StatusNotFound {
 		t.Fatalf("status = %d", status)
 	}
@@ -26,7 +26,7 @@ func TestFulfillmentReturnsEmptyEvents(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 	itemID := h.seedItem(itemSeed{planID: planID, text: "Test item"})
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -47,7 +47,7 @@ func TestFulfillmentReturnsReferencingEvents(t *testing.T) {
 	h.seedPlanReference(e1, itemID)
 	h.seedPlanReference(e2, itemID)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", itemID), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", itemID), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -84,7 +84,7 @@ func TestFulfillmentAggregatesDeferralChain(t *testing.T) {
 	h.seedPlanReference(e2, item20)
 	h.seedPlanReference(e3, item30)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", item30), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", item30), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -106,7 +106,7 @@ func TestFulfillmentDeduplicatesChainEvidence(t *testing.T) {
 	h.seedPlanReference(eventID, original)
 	h.seedPlanReference(eventID, successor)
 
-	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", successor), "", ""))
+	status, body := decode(t, h.do(http.MethodGet, fmt.Sprintf("/api/plan-items/%d/fulfillment", successor), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
