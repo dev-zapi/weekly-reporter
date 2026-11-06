@@ -223,7 +223,30 @@ func TestCompatStepSurfacesInBandErrors(t *testing.T) {
 	}
 }
 
-// TestCompatStepReturnsStatusErrorForNon2xx 非 2xx 不重试（400），错误要带状态码。
+// TestCompatStepWritesNaNTemperatureAsNull AI 风格温度解析失败（NaN）时与
+// JSON.stringify 语义一致：body 里写 null 而不是省略。
+func TestCompatStepWritesNaNTemperatureAsNull(t *testing.T) {
+	fixture := newStepFixtureServer(t, sseLines([][2]string{
+		compatChunk(`{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`),
+		compatDone(),
+	}))
+	provider := aiclient.NewStepProvider(aiclient.Config{
+		Protocol: aiclient.ProtocolOpenAICompatible,
+		BaseURL:  fixture.server.URL + "/v1",
+		Model:    "m",
+	}, nil)
+	if _, err := provider.RunStep(context.Background(), aiclient.StepRequest{
+		Messages:    []aiclient.TranscriptMessage{{Role: "user", Text: "hi"}},
+		Temperature: nan(),
+	}, func(aiclient.Event) error { return nil }); err != nil {
+		t.Fatalf("RunStep: %v", err)
+	}
+	temperature, present := fixture.bodies[0]["temperature"]
+	if !present || temperature != nil {
+		t.Fatalf("temperature = %v (present=%v), want null", temperature, present)
+	}
+}
+
 func TestCompatStepReturnsStatusErrorForNon2xx(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

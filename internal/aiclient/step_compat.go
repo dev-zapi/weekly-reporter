@@ -351,6 +351,9 @@ func (p *compatStepProvider) handleChunk(
 		}
 		call, seen := pending[index]
 		if !seen {
+			if deltaCall.Type != "" && deltaCall.Type != "function" {
+				return fmt.Errorf("invalid tool call delta: expected function type, got %q", deltaCall.Type)
+			}
 			if deltaCall.ID == "" || deltaCall.Function.Name == "" {
 				return fmt.Errorf("invalid tool call delta: missing id or name")
 			}

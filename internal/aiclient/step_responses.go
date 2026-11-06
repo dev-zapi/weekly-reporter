@@ -63,16 +63,20 @@ func (p *responsesStepProvider) RunStep(ctx context.Context, req StepRequest, em
 		return nil, err
 	}
 
-	client := openai.NewClient(
-		append([]option.RequestOption{
-			option.WithAPIKey(p.cfg.APIKey),
-			option.WithBaseURL(origin.String()),
-			option.WithMiddleware(func(r *http.Request, next option.MiddlewareNext) (*http.Response, error) {
-				r.URL = target
-				return next(r)
-			}),
-		}, traceRequestOptions(ctx)...)...,
-	)
+	options := append([]option.RequestOption{
+		option.WithAPIKey(p.cfg.APIKey),
+		option.WithBaseURL(origin.String()),
+		option.WithMiddleware(func(r *http.Request, next option.MiddlewareNext) (*http.Response, error) {
+			r.URL = target
+			return next(r)
+		}),
+	}, traceRequestOptions(ctx)...)
+	if _, isNull := temperatureJSON(req.Temperature); isNull && !isOpenAIReasoningModel(p.cfg.Model) {
+		// JSON.stringify(NaN) === null：保持与 AI SDK 相同的 body 形状。
+		options = append(options, option.WithJSONSet("temperature", nil))
+	}
+
+	client := openai.NewClient(options...)
 	stream := client.Responses.NewStreaming(ctx, body)
 	defer stream.Close()
 
