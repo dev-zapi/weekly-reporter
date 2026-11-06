@@ -1,17 +1,15 @@
-// Package aiclient 是 AI 适配层的骨架：把一行 ai_config 变成一次「结构化一次性
-// 输出」调用，即 Vercel AI SDK `generateObject` + zod 的 Go 对应物。
+// Package aiclient 是 AI 适配层：把一行 ai_config 变成模型调用。
 //
-// B5（本票）只需 one-shot 路径：三个 `ai/*` 路由各发一次非流式请求，要求模型返回
-// 一个符合 JSON Schema 的对象。ADR-0027 定型的 stepRequest / stepResult / runStep
-// 流式 adapter 面（step 级事件归一化、tool-loop、reasoning 字段、items 回放开关）
-// 属于 B6 的范围，这里刻意不预实现。
+// 两条路径：
+//   - one-shot（B5）：`generateObject` + zod 的 Go 对应物，三个 `ai/*` 路由使用；
+//   - 流式 step adapter（B6，step.go / step_*.go）：ADR-0027 定型的
+//     StepRequest / StepResult / RunStep 面——step 级事件归一化、三协议
+//     streaming 解析、tool-call 增量与 reasoning 字段，供生成引擎消费。
 //
 // 协议选择照 src/lib/ai/provider.ts 的 createModelFromConfig：
 //   - "anthropic"         → Anthropic Messages API
 //   - "openai-compatible" → OpenAI Chat Completions（兼容代理）
 //   - 其它（含 "openai"） → OpenAI Responses API
-//
-// 只移植 one-shot 需要的传输细节；响应体解析见各协议的 generate* 方法。
 //
 // 传输语义：postJSON 复刻 AI SDK 的默认重试（`maxRetries=2`，初始 2s、指数退避
 // ×2，尊重 Retry-After，仅对 408/409/429/5xx 与网络错误重试）；baseURL 的尾斜杠
