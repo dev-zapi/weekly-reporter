@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -138,11 +139,17 @@ func bindInt64(value float64) (int64, bool) {
 }
 
 // jsNumberOrNull 复刻 JSON.stringify(number)：NaN / ±Infinity 输出 null。
+// 数值本身按 JS 的 Number#toString 形态输出（1e21 起才用指数形式），避免 Go 在
+// 1e6 这类量级上提前切成 1e+06。
 func jsNumberOrNull(value float64) any {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
-		return nil
+		return json.RawMessage("null")
 	}
-	return value
+	absolute := math.Abs(value)
+	if value == math.Trunc(value) && absolute < 1e21 {
+		return json.RawMessage(strconv.FormatFloat(value, 'f', -1, 64))
+	}
+	return json.RawMessage(strconv.FormatFloat(value, 'g', -1, 64))
 }
 
 // createHandler 复刻 POST：zod 校验 → 别名唯一性 → 状态推导 → 插入 → 201。
