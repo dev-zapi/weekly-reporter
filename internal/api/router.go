@@ -18,6 +18,7 @@ import (
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
 	exportapi "github.com/dev-zapi/weekly-reporter/internal/api/export"
 	plansapi "github.com/dev-zapi/weekly-reporter/internal/api/plans"
+	settingsapi "github.com/dev-zapi/weekly-reporter/internal/api/settings"
 	snippetsapi "github.com/dev-zapi/weekly-reporter/internal/api/snippets"
 	tagsapi "github.com/dev-zapi/weekly-reporter/internal/api/tags"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
@@ -32,8 +33,8 @@ type Options struct {
 	Auth    auth.Options
 	Queries *db.Queries
 	SPA     http.Handler
-	// HTTPClient 是采集域远端 provider 的 fetch 替身；nil = http.DefaultClient。
-	// 只给 httptest 打桩用，生产装配不传。
+	// HTTPClient 是采集域远端 provider 的 fetch 替身，也用于 settings/ai 的
+	// provider 探测；nil = http.DefaultClient。只给 httptest 打桩用，生产装配不传。
 	HTTPClient func(*http.Request) (*http.Response, error)
 }
 
@@ -77,6 +78,10 @@ func NewRouter(opts Options) http.Handler {
 		// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由，三段前缀
 		// 都扁平注册在 /collect 之下。
 		collectapi.Mount(r, collectapi.Deps{Queries: opts.Queries})
+		// B5 的 settings/ai 配置面：三条路由读写单行 ai_config 并做 provider 探测。
+		// 同样扁平注册，静态段 /settings/ai/models 与 /settings/ai/test 与末段
+		// 路由 /settings/ai 共存。同批的 templates/prompts 与 ai/* 由另两张票注册。
+		settingsapi.Mount(r, settingsapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
