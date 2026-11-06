@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -178,10 +179,24 @@ func jsonTypeName(value any) string {
 	return "unknown"
 }
 
-// numberFromQuery 复刻 `Number(searchParams.get(x) || ”)` 并报告是否为整数。
-// 只用于 branches / emails 的 sourceId：Number(”) === 0、Number('7.5') 非整数、
-// Number('abc') 是 NaN。十六进制/二进制/八进制前缀与 Infinity 与 JS 一致。
+// numberFromQuery 复刻 `Number(searchParams.get(x) || ”)`，第二个返回值是
+// `Number.isInteger`。只用于 branches / emails 的 sourceId：Number(”) === 0、
+// Number('7.5') 非整数、Number('abc') 是 NaN。十六进制/二进制/八进制前缀与
+// Infinity 与 JS 一致（Number('Infinity') 大小写敏感）。
 func numberFromQuery(raw string) (float64, bool) {
+	value, ok := parseJSNumber(raw)
+	if !ok {
+		return math.NaN(), false
+	}
+	return value, isInteger(value)
+}
+
+func isInteger(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value == math.Trunc(value)
+}
+
+// parseJSNumber 复刻 `Number(string)`：空串是 0，非法串是 NaN。
+func parseJSNumber(raw string) (float64, bool) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return 0, true
@@ -214,11 +229,7 @@ func numberFromQuery(raw string) (float64, bool) {
 
 // jsSortStrings 复刻 `Array.prototype.sort()` 的默认比较：按 UTF-16 码元升序。
 func jsSortStrings(values []string) {
-	for i := 1; i < len(values); i++ {
-		for j := i; j > 0 && jsStringLess(values[j], values[j-1]); j-- {
-			values[j], values[j-1] = values[j-1], values[j]
-		}
-	}
+	sort.SliceStable(values, func(i, j int) bool { return jsStringLess(values[i], values[j]) })
 }
 
 func jsStringLess(a, b string) bool {
