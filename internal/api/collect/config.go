@@ -66,12 +66,20 @@ func (c sourceConfig) authorEmails() []any {
 }
 
 // hasAuthorEmail 复刻 `source.config?.authorEmails && authorEmails.length > 0`。
+// JS 的 `.length` 对字符串同样成立，所以配置里若误存了字符串也按非空处理。
 func (c sourceConfig) hasAuthorEmail() bool {
+	if raw, ok := c[keyAuthorEmails].(string); ok {
+		return jsstr.UTF16Len(raw) > 0
+	}
 	return len(c.authorEmails()) > 0
 }
 
-// includesAuthorEmail 复刻 `authorEmails.includes(email)`：严格相等，不做大小写折叠。
+// includesAuthorEmail 复刻 `authorEmails.includes(email)`：对数组是严格相等，
+// 对字符串（配置误存）是子串判断——与 JS 的 String.prototype.includes 一致。
 func (c sourceConfig) includesAuthorEmail(email string) bool {
+	if raw, ok := c[keyAuthorEmails].(string); ok {
+		return strings.Contains(raw, email)
+	}
 	for _, value := range c.authorEmails() {
 		if text, ok := value.(string); ok && text == email {
 			return true

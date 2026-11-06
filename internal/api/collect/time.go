@@ -1,6 +1,7 @@
 package collect
 
 import (
+	"math"
 	"time"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
@@ -10,9 +11,9 @@ import (
 // JS 侧输出一律经 toISOString()。
 
 // unixSeconds 复刻 drizzle 的 mapToDriverValue：Math.floor(ms / 1000)。
-// time.Time 自身精度到纳秒，这里先截到毫秒再除，与 `new Date()` 的毫秒精度一致。
+// 用 floor 而不是整数除法：负数时间戳（1970 前）两者的舍入方向不同。
 func unixSeconds(t time.Time) int64 {
-	return t.UnixMilli() / 1000
+	return int64(math.Floor(float64(t.UnixMilli()) / 1000))
 }
 
 // isoMillisFromTime 复刻 `date.toISOString()`：UTC、毫秒三位、Z 后缀。
