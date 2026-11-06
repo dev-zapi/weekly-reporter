@@ -40,6 +40,8 @@ const (
 const (
 	defaultOpenAIBaseURL    = "https://api.openai.com/v1"
 	defaultAnthropicBaseURL = "https://api.anthropic.com/v1"
+	// anthropicPublicAPIURL 是 @ai-sdk/anthropic 里被特殊处理的那个裸域名。
+	anthropicPublicAPIURL = "https://api.anthropic.com"
 )
 
 // Config 是 ai_config 行里一次性调用需要的四列。
@@ -149,6 +151,17 @@ func (c *Client) baseURL(fallback string) string {
 	base := strings.TrimRight(c.cfg.BaseURL, "/")
 	if base == "" {
 		return fallback
+	}
+	return base
+}
+
+// anthropicBaseURL 复刻 @ai-sdk/anthropic 的 normalizeBaseURL：未配置 baseURL
+// 时用默认值；配置的恰好是 `https://api.anthropic.com`（无 /v1）时补上 /v1，
+// 其余自定义地址原样使用（兼容代理要的就是它自己那一段路径）。
+func (c *Client) anthropicBaseURL() string {
+	base := c.baseURL(defaultAnthropicBaseURL)
+	if base == anthropicPublicAPIURL {
+		return anthropicPublicAPIURL + "/v1"
 	}
 	return base
 }

@@ -104,7 +104,7 @@ func (c *Client) generateAnthropic(ctx context.Context, req ObjectRequest) (stri
 		}
 	}
 
-	raw, err := c.postJSON(ctx, c.baseURL(defaultAnthropicBaseURL)+"/messages", body, headers)
+	raw, err := c.postJSON(ctx, c.anthropicBaseURL()+"/messages", body, headers)
 	if err != nil {
 		return "", err
 	}
