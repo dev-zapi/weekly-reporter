@@ -144,3 +144,81 @@ func TestSliceUTF16(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// 以下期望值由 src/lib/reports/source-draft.ts 的 buildSourceDraft 直接跑出
+// （同一输入 → 同一输出），固化排序、分组与过滤的逐字节对等。
+func TestBuildSourceDraftMatchesTSOutput(t *testing.T) {
+	base := int64(1767225600) // 2026-01-01T00:00:00Z
+
+	cases := []struct {
+		name     string
+		events   []reports.DraftEvent
+		variant  string
+		scopes   map[int64]template.ProjectScope
+		expected string
+	}{
+		{
+			name:     "single manual event",
+			events:   []reports.DraftEvent{draftEvent(1, base+100, "manual", "手动", nil, "")},
+			variant:  "leadership",
+			expected: "- 手动",
+		},
+		{
+			name: "repo group sorts events by time desc",
+			events: []reports.DraftEvent{
+				draftEvent(1, base+100, "git-local", "a", nil, "r"),
+				draftEvent(2, base+200, "git-local", "b", nil, "r"),
+				draftEvent(3, base+50, "git-local", "c", nil, "r"),
+			},
+			variant:  "personal",
+			expected: "- **r**\n  - b\n  - a\n  - c",
+		},
+		{
+			name: "leadership keeps manual before work and drops personal",
+			events: []reports.DraftEvent{
+				draftEvent(1, base+100, "git-local", "w", ptr(1), "wr"),
+				draftEvent(2, base+90, "git-local", "p", ptr(2), "pr"),
+				draftEvent(3, base+80, "manual", "m", nil, ""),
+			},
+			variant:  "leadership",
+			scopes:   map[int64]template.ProjectScope{1: template.ScopeWork, 2: template.ScopePersonal},
+			expected: "- m\n- **wr**\n  - w",
+		},
+		{
+			name: "personal keeps every scope",
+			events: []reports.DraftEvent{
+				draftEvent(1, base+100, "git-local", "w", ptr(1), "wr"),
+				draftEvent(2, base+90, "git-local", "p", ptr(2), "pr"),
+				draftEvent(3, base+80, "manual", "m", nil, ""),
+			},
+			variant:  "personal",
+			scopes:   map[int64]template.ProjectScope{1: template.ScopeWork, 2: template.ScopePersonal},
+			expected: "- m\n- **wr**\n  - w\n- **pr**\n  - p",
+		},
+		{
+			name:     "empty repo name falls out of the repo group",
+			events:   []reports.DraftEvent{draftEvent(1, base+100, "github", "x", ptr(1), "")},
+			variant:  "personal",
+			scopes:   map[int64]template.ProjectScope{1: template.ScopeWork},
+			expected: "- x",
+		},
+		{
+			name: "unmapped source ranks below work",
+			events: []reports.DraftEvent{
+				draftEvent(1, base+100, "git-remote-github", "s", ptr(9), "r1"),
+				draftEvent(2, base+100, "git-local", "t", ptr(1), "r0"),
+			},
+			variant:  "leadership",
+			scopes:   map[int64]template.ProjectScope{1: template.ScopeWork},
+			expected: "- **r0**\n  - t",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := reports.BuildSourceDraft(tc.events, tc.variant, tc.scopes); got != tc.expected {
+				t.Fatalf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}

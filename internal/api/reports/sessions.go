@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -276,7 +277,13 @@ func createSessionHandler(deps Deps) http.HandlerFunc {
 		}
 		object, isObject := body.(map[string]any)
 		if !isObject {
-			failGeneration(w, errors.New("request body is not an object"))
+			if body == nil {
+				// `body.variant` 在 null 上是 TypeError，route.ts 的 catch 回 500。
+				failGeneration(w, errors.New("TypeError: Cannot read properties of null (reading 'variant')"))
+				return
+			}
+			// 原始值上取属性得到 undefined，落进 INVALID_INPUT 校验分支。
+			failWithCode(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
 			return
 		}
 
@@ -561,7 +568,12 @@ func renameSessionHandler(deps Deps) http.HandlerFunc {
 		}
 		object, isObject := body.(map[string]any)
 		if !isObject {
-			failGeneration(w, errors.New("request body is not an object"))
+			if body == nil {
+				// `body.title` 在 null 上是 TypeError，route.ts 的 catch 回 500。
+				failGeneration(w, errors.New("TypeError: Cannot read properties of null (reading 'title')"))
+				return
+			}
+			failWithCode(w, http.StatusBadRequest, "Session title is required", "INVALID_TITLE")
 			return
 		}
 		title, isString := object["title"].(string)
@@ -825,11 +837,12 @@ func ensureSeededStyles(r *http.Request, deps Deps) {
 // styleFromRow 复刻 `String(style.temperature)`：库里是 TEXT，TS 先 parseFloat 再
 // 按 JS 的 Number#toString 写成字符串（"0.30" → "0.3"）。
 func styleFromRow(row db.AiStyle) aiStyle {
-	temperature := row.Temperature
+	// parseFloat 失败在 JS 里是 NaN，String(NaN) 是 "NaN"（不是原始文本）。
+	temperature := math.NaN()
 	if parsed, ok := jsnum.ParseFloat(row.Temperature); ok {
-		temperature = jsnum.FormatNumber(parsed)
+		temperature = parsed
 	}
-	return aiStyle{Label: row.Label, SystemPrompt: row.SystemPrompt, Temperature: temperature}
+	return aiStyle{Label: row.Label, SystemPrompt: row.SystemPrompt, Temperature: jsnum.FormatNumber(temperature)}
 }
 
 // timeFromUnix 把 Unix 秒折回 time.Time（会话标题的时间标签用）。
