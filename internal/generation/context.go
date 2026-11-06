@@ -17,9 +17,6 @@ const DefaultGenerationInstruction = "Use the current source draft and template 
 // 计划机制已移除，只剩这条模板结构提示）。
 const FinalReportPlanStyleRule = "若模板包含「下周计划」章节，以简洁列表陈述下周重点事项；模板未包含或明确禁止时，不添加该章节。"
 
-// HistoricalReferenceLabel 是 HISTORICAL_REFERENCE_LABEL。
-const HistoricalReferenceLabel = "历史参考·不可信"
-
 // FinalReportToolRules 逐字移植 FINAL_REPORT_TOOL_RULES。
 //
 // 这段文本会进 generation_sessions.tool_rules 与模型上下文，改动等于改契约。
