@@ -3,6 +3,7 @@ package reports_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -419,7 +420,8 @@ func (h *harness) seedProposal(sessionID int64, status string, sourceRevision in
 }
 
 // 请求体不是合法 JSON / 是 null 时，route.ts 的 catch 都是 500 SAVE_FINAL_ERROR
-// 且带 details（诊断字段）。
+// 且带 details（诊断字段）。details 是 String(error)：null-body 的 TypeError
+// 保留自己的名字，普通错误带 "Error: " 前缀。
 func TestSaveFinalMalformedBody(t *testing.T) {
 	h := newHarness(t)
 	reportID, _ := seedFinalFixture(t, h)
@@ -432,5 +434,24 @@ func TestSaveFinalMalformedBody(t *testing.T) {
 		if !contains(rec.Body.String(), `"code":"SAVE_FINAL_ERROR"`) || !contains(rec.Body.String(), `"details":`) {
 			t.Fatalf("body %q: response = %s", body, rec.Body.String())
 		}
+	}
+
+	var response struct {
+		Details string `json:"details"`
+	}
+	rec := h.do(http.MethodPut, "/api/reports/"+itoa(reportID)+"/final", "null")
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode null body: %v", err)
+	}
+	if response.Details != "TypeError: Cannot read properties of null (reading 'variant')" {
+		t.Fatalf("null details = %q", response.Details)
+	}
+
+	rec = h.do(http.MethodPut, "/api/reports/"+itoa(reportID)+"/final", "not-json")
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode malformed body: %v", err)
+	}
+	if !strings.HasPrefix(response.Details, "Error: ") {
+		t.Fatalf("malformed details = %q, want String(error) prefix", response.Details)
 	}
 }

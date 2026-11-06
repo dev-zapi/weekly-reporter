@@ -245,6 +245,21 @@ func TestGenerateReportValidationAndErrorBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("null body details are the String(error) TypeError", func(t *testing.T) {
+		h := newHarness(t)
+		rec := h.do(http.MethodPost, "/api/reports/1/generate", `null`)
+		if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), `"code":"GENERATION_ERROR"`) {
+			t.Fatalf("status/body = %d %s", rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Details string `json:"details"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &body)
+		if body.Details != "TypeError: Cannot read properties of null (reading 'variant')" {
+			t.Fatalf("details = %q", body.Details)
+		}
+	})
+
 	t.Run("report not found", func(t *testing.T) {
 		h := newHarness(t)
 		rec := h.do(http.MethodPost, "/api/reports/999/generate", `{"variant":"personal","templateId":"user-1"}`)
@@ -310,8 +325,8 @@ func TestGenerateReportValidationAndErrorBranches(t *testing.T) {
 			Details string `json:"details"`
 		}
 		_ = json.Unmarshal(rec.Body.Bytes(), &body)
-		if body.Details == "" {
-			t.Fatalf("details missing: %s", rec.Body.String())
+		if !strings.HasPrefix(body.Details, "Error: ") {
+			t.Fatalf("details = %q, want String(error) prefix", body.Details)
 		}
 	})
 }

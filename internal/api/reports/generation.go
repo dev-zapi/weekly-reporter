@@ -94,7 +94,7 @@ func generateReportHandler(deps Deps) http.HandlerFunc {
 		object, isObject := body.(map[string]any)
 		if !isObject {
 			if body == nil {
-				failGenerate(w, errors.New("TypeError: Cannot read properties of null (reading 'variant')"))
+				failGenerate(w, newJSTypeError("Cannot read properties of null (reading 'variant')"))
 				return
 			}
 			respond.Error(w, http.StatusBadRequest, "Select an audience variant and template", "INVALID_INPUT")
@@ -190,6 +190,8 @@ func generateReportHandler(deps Deps) http.HandlerFunc {
 }
 
 // failGenerate 复刻 route.ts 的 catch：AIConfigError → 400，其余 500 + details。
+// details 与 PUT final 走同一规则（jsErrorString），保证两条生成路由的
+// `String(error)` 形态一致。
 func failGenerate(w http.ResponseWriter, err error) {
 	if errors.Is(err, errAINotConfigured) {
 		respond.Error(w, http.StatusBadRequest, errAINotConfigured.Error(), "AI_NOT_CONFIGURED")
@@ -200,7 +202,7 @@ func failGenerate(w http.ResponseWriter, err error) {
 		Error   string `json:"error"`
 		Code    string `json:"code"`
 		Details string `json:"details"`
-	}{Error: "Failed to generate final report", Code: "GENERATION_ERROR", Details: err.Error()})
+	}{Error: "Failed to generate final report", Code: "GENERATION_ERROR", Details: jsErrorString(err)})
 }
 
 type generateFinalReportInput struct {

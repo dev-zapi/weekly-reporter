@@ -38,8 +38,9 @@ func saveFinalHandler(deps Deps) http.HandlerFunc {
 		object, isObject := body.(map[string]any)
 		if !isObject {
 			if body == nil {
-				// `body.variant` 在 null 上是 TypeError，route.ts 的 catch 回 500。
-				saveFinalFailure(w, errors.New("TypeError: Cannot read properties of null (reading 'variant')"))
+				// `body.variant` 在 null 上是 TypeError，route.ts 的 catch 回 500；
+				// String(error) 带着 TypeError 名字，不要叠加 "Error: "。
+				saveFinalFailure(w, newJSTypeError("Cannot read properties of null (reading 'variant')"))
 				return
 			}
 			// 原始值上取属性得到 undefined，落进 INVALID_INPUT。
@@ -281,12 +282,14 @@ func findVariant(r *http.Request, deps Deps, reportID int64, variant string) (*r
 }
 
 // saveFinalFailure 复刻 route.ts 的 catch：500 + SAVE_FINAL_ERROR + details。
+// details 是 `String(error)`：普通 Error 实例带 "Error: " 前缀，显式标记的
+// TypeError 等保留自己的名字。
 func saveFinalFailure(w http.ResponseWriter, err error) {
 	respond.JSON(w, http.StatusInternalServerError, struct {
 		Error   string `json:"error"`
 		Code    string `json:"code"`
 		Details string `json:"details"`
-	}{Error: "Failed to save final version", Code: "SAVE_FINAL_ERROR", Details: "Error: " + err.Error()})
+	}{Error: "Failed to save final version", Code: "SAVE_FINAL_ERROR", Details: jsErrorString(err)})
 }
 
 // jsInteger 复刻 `Number.isInteger(value)`（JSON 值域）。
