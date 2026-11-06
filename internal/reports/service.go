@@ -1,0 +1,532 @@
+package reports
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"math"
+	"strconv"
+
+	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/officialtemplates"
+	"github.com/dev-zapi/weekly-reporter/internal/template"
+)
+
+// 本文件移植 src/lib/reports/service.ts。所有时间列在库里都是 Unix 秒
+// （drizzle 的 integer mode:'timestamp'），读出的 Date 只在响应序列化时使用。
+
+// TemplateSelection 是 getTemplateSelection 的结果。
+type TemplateSelection struct {
+	// ID 是请求里用的模板标识：官方模板直接是 `official-*`，用户模板是 `user-<id>`。
+	ID      string
+	Name    string
+	Content string
+	AiStyle string
+}
+
+// GetTemplateSelection 复刻 getTemplateSelection(templateId)：
+//   - `official-` 前缀只在官方种子里查；
+//   - `user-` 前缀把剩余部分按 JS 的 parseInt 解析后查 templates 表；
+//   - 其它前缀（含空串）一律 nil。
+func GetTemplateSelection(ctx context.Context, queries *db.Queries, templateID string) (*TemplateSelection, error) {
+	if len(templateID) >= len("official-") && templateID[:len("official-")] == "official-" {
+		tpl, ok := officialtemplates.ByID(templateID)
+		if !ok {
+			return nil, nil
+		}
+		aiStyle := tpl.AiStyle
+		if aiStyle == "" {
+			aiStyle = "formal"
+		}
+		return &TemplateSelection{ID: tpl.ID, Name: tpl.Name, Content: tpl.Content, AiStyle: aiStyle}, nil
+	}
+
+	if len(templateID) < len("user-") || templateID[:len("user-")] != "user-" {
+		return nil, nil
+	}
+	numericID, ok := parseUserTemplateID(templateID[len("user-"):])
+	if !ok {
+		return nil, nil
+	}
+
+	row, err := queries.GetTemplateForTemplateRoutes(ctx, numericID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	aiStyle := row.AiStyle
+	if aiStyle == "" {
+		aiStyle = "formal"
+	}
+	return &TemplateSelection{ID: templateID, Name: row.Name, Content: row.Content, AiStyle: aiStyle}, nil
+}
+
+// WeekBounds 是 parseWeekBoundary 的产物：本地时区的当天首毫秒 / 末毫秒（Unix 秒）。
+//
+// date-fns 的 parseISO 对纯日期按**本地时间**解释（不是 ECMAScript 的 UTC 规则），
+// startOfDay / endOfDay 也作用在本地日历日上。Weekly reporter 的周报始终以
+// 本地日历周为单位，所以这里刻意不复用 jsdate（它的 `new Date('2026-08-10')`
+// 是 UTC 语义），只在解析阶段借用它的过期检查。
+type WeekBounds struct {
+	// Valid=false 对应 TS 里 parseISO 得到的 Invalid Date：BETWEEN 变成恒假，
+	// 查询照常执行并返回空集。
+	Valid bool
+	Start int64
+	End   int64
+}
+
+// ParseWeekBounds 复刻 parseWeekBoundary(weekStart, false) / (weekEnd, true)。
+func ParseWeekBounds(weekStart, weekEnd string) (start, end WeekBounds) {
+	start = dayBoundary(weekStart, false)
+	end = dayBoundary(weekEnd, true)
+	return start, end
+}
+
+// dayBoundary 把 `YYYY-MM-DD` 折成本地时区当天首/末毫秒。
+//
+// 输入形状由冻结契约保证：validations.ts 的 DATE_REGEX 只放行 `YYYY-MM-DD`，
+// week_start / week_end 的全部写入路径（创建报告、预览）都经过它。date-fns 的
+// parseISO 比这更宽（`2026`、`2026-08`、带时间的 ISO 串也接受，且按本地时区
+// 解释纯日期），这里只复刻冻结契约里可达的形态——与 jsdate 包对 V8 宽松解析器
+// 的有意收窄同一思路。
+//
+// 日历合法性与 parseISO 一致：`2026-02-30` 是 Invalid Date（V8 的 date-only
+// 解析同样拒绝），于是 TS 里 BETWEEN(NaN, …) 恒假、返回空集。
+func dayBoundary(value string, endOfDay bool) WeekBounds {
+	year, month, day, ok := ParseISODate(value)
+	if !ok {
+		return WeekBounds{}
+	}
+	if !endOfDay {
+		instant := localDateInstant(year, month, day, 0, 0, 0, 0)
+		return WeekBounds{Valid: true, Start: instant.Unix()}
+	}
+	instant := localDateInstant(year, month, day, 23, 59, 59, 999*int64(1e6))
+	return WeekBounds{Valid: true, End: instant.Unix()}
+}
+
+// ParseISODate 解析严格的 `YYYY-MM-DD` 并做日历范围校验。
+func ParseISODate(value string) (year, month, day int, ok bool) {
+	if len(value) != len("2006-01-02") || value[4] != '-' || value[7] != '-' {
+		return 0, 0, 0, false
+	}
+	for _, index := range []int{0, 1, 2, 3, 5, 6, 8, 9} {
+		if value[index] < '0' || value[index] > '9' {
+			return 0, 0, 0, false
+		}
+	}
+	year, _ = strconv.Atoi(value[0:4])
+	month, _ = strconv.Atoi(value[5:7])
+	day, _ = strconv.Atoi(value[8:10])
+	if month < 1 || month > 12 || day < 1 || day > DaysInMonth(year, month) {
+		return 0, 0, 0, false
+	}
+	return year, month, day, true
+}
+
+// daysInMonth 按公历（含闰年规则）返回当月天数。
+func DaysInMonth(year, month int) int {
+	switch month {
+	case 4, 6, 9, 11:
+		return 30
+	case 2:
+		if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+			return 29
+		}
+		return 28
+	}
+	return 31
+}
+
+// SourceScopes 复刻 getSourceScopes()：采集源 id → 项目范围映射。
+func SourceScopes(ctx context.Context, queries *db.Queries) (map[int64]template.ProjectScope, error) {
+	rows, err := queries.ListCollectSourceScopesForReportRoutes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scopes := make(map[int64]template.ProjectScope, len(rows))
+	for _, row := range rows {
+		scopes[row.ID] = template.ProjectScope(row.ProjectScope)
+	}
+	return scopes, nil
+}
+
+// findEventsForWeek 复刻 findEventsForWeek：BETWEEN 两个本地日边界。
+//
+// 任一边界无效时 drizzle 仍然发出 `event_time BETWEEN ? AND ?`，只是绑定了
+// NaN/null，条件恒假——这里用一个不可能成立的区间表达同一结果（返回空集）。
+func findEventsForWeek(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]db.ListRawEventsBetweenForReportRoutesRow, error) {
+	start, end := ParseWeekBounds(weekStart, weekEnd)
+	if !start.Valid || !end.Valid {
+		return nil, nil
+	}
+	return queries.ListRawEventsBetweenForReportRoutes(ctx, db.ListRawEventsBetweenForReportRoutesParams{
+		FromEventTime: start.Start,
+		ToEventTime:   end.End,
+	})
+}
+
+// draftEventsFromRows 把 raw_events 行折成原稿输入。
+func draftEventsFromRows(rows []db.ListRawEventsBetweenForReportRoutesRow) []DraftEvent {
+	events := make([]DraftEvent, 0, len(rows))
+	for _, row := range rows {
+		id := row.ID
+		sourceID, repo := eventMetadataFacts(row.Metadata)
+		events = append(events, DraftEvent{
+			ID:        &id,
+			EventTime: row.EventTime,
+			Source:    row.Source,
+			Content:   row.Content,
+			SourceID:  sourceID,
+			Repo:      repo,
+		})
+	}
+	return events
+}
+
+// VariantDrafts 是 variantSourceDrafts 的结果：两个受众的原稿。
+type VariantDrafts struct {
+	Leadership string
+	Personal   string
+}
+
+// VariantSourceDrafts 复刻 variantSourceDrafts。
+func VariantSourceDrafts(events []DraftEvent, sourceScopes map[int64]template.ProjectScope) VariantDrafts {
+	return VariantDrafts{
+		Leadership: BuildSourceDraft(events, "leadership", sourceScopes),
+		Personal:   BuildSourceDraft(events, "personal", sourceScopes),
+	}
+}
+
+// PreviewVariant 是 previewReportSourceDrafts 的元素（顺序 = AUDIENCE_VARIANTS）。
+type PreviewVariant struct {
+	Variant     string `json:"variant"`
+	SourceDraft string `json:"sourceDraft"`
+}
+
+// PreviewReportSourceDrafts 复刻 previewReportSourceDrafts。
+func PreviewReportSourceDrafts(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]PreviewVariant, error) {
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, weekStart, weekEnd)
+	if err != nil {
+		return nil, err
+	}
+	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+	return []PreviewVariant{
+		{Variant: "leadership", SourceDraft: drafts.Leadership},
+		{Variant: "personal", SourceDraft: drafts.Personal},
+	}, nil
+}
+
+func collectSourceDraftInputs(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]db.ListRawEventsBetweenForReportRoutesRow, map[int64]template.ProjectScope, error) {
+	events, err := findEventsForWeek(ctx, queries, weekStart, weekEnd)
+	if err != nil {
+		return nil, nil, err
+	}
+	scopes, err := SourceScopes(ctx, queries)
+	if err != nil {
+		return nil, nil, err
+	}
+	return events, scopes, nil
+}
+
+// CreatedReport 是 createReportWithSourceDrafts 的返回值：报告行、两个变体行与
+// 第 1 版快照（都按 drizzle 的属性名序列化成 camelCase）。
+type CreatedReport struct {
+	Report    ReportJSON
+	Variants  []VariantJSON
+	Snapshots []SnapshotJSON
+}
+
+// CreateReportWithSourceDrafts 复刻 createReportWithSourceDrafts：一个事务里写
+// report + 快照 + 两个变体，返回时再按 (reportId, sourceRevision=1) 读回快照。
+//
+// now 由调用方给出，便于测试固定时间戳。
+func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, input struct {
+	Title     string
+	WeekStart string
+	WeekEnd   string
+}, now int64) (CreatedReport, error) {
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, input.WeekStart, input.WeekEnd)
+	if err != nil {
+		return CreatedReport{}, err
+	}
+	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+
+	created := CreatedReport{}
+	err = queries.InTx(ctx, func(tx *db.Queries) error {
+		report, err := tx.InsertReport(ctx, db.InsertReportParams{
+			Title:           input.Title,
+			Content:         drafts.Personal, // 旧版列表/搜索客户端仍读这一列
+			WeekStart:       input.WeekStart,
+			WeekEnd:         input.WeekEnd,
+			AiStyleOverride: nil,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		})
+		if err != nil {
+			return err
+		}
+
+		for _, event := range events {
+			classification := ClassifyEventForVariants(metadataSourceID(event.Metadata), scopes)
+			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
+				ReportID:           report.ID,
+				RawEventID:         &event.ID,
+				EventTime:          event.EventTime,
+				Source:             event.Source,
+				Content:            event.Content,
+				Metadata:           metadataPointer(event.Metadata),
+				ProjectScope:       scopeString(classification.ProjectScope),
+				LeadershipIncluded: boolToInt(classification.LeadershipIncluded),
+				PersonalIncluded:   boolToInt(classification.PersonalIncluded),
+				SourceRevision:     1,
+				CreatedAt:          now,
+			}); err != nil {
+				return err
+			}
+		}
+
+		variants := make([]int64, 0, len(AudienceVariants))
+		for _, variant := range AudienceVariants {
+			id, err := tx.InsertReportVariantForReportRoutes(ctx, db.InsertReportVariantForReportRoutesParams{
+				ReportID:       report.ID,
+				Variant:        variant,
+				SourceDraft:    draftFor(drafts, variant),
+				FinalStatus:    "none",
+				SourceRevision: 1,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			})
+			if err != nil {
+				return err
+			}
+			variants = append(variants, id)
+		}
+
+		created.Report = ReportToJSON(report)
+		variantRows, err := tx.ListReportVariantsForReportRoutes(ctx, db.ListReportVariantsForReportRoutesParams{
+			IDFilter:     int64(0),
+			ReportFilter: int64(1),
+			ReportID:     report.ID,
+		})
+		if err != nil {
+			return err
+		}
+		created.Variants = VariantsToJSON(variantRows)
+		return nil
+	})
+	if err != nil {
+		return CreatedReport{}, err
+	}
+
+	snapshots, err := queries.ListReportSnapshotsForReportRoutes(ctx, db.ListReportSnapshotsForReportRoutesParams{
+		ReportID:       created.Report.ID,
+		SourceRevision: 1,
+	})
+	if err != nil {
+		return CreatedReport{}, err
+	}
+	created.Snapshots = SnapshotsToJSON(snapshots)
+	return created, nil
+}
+
+// ReportBundle 是 getReportBundle 的结果：报告行 + 全部变体 + 当前版本快照。
+type ReportBundle struct {
+	Report    ReportJSON
+	Variants  []VariantJSON
+	Snapshots []SnapshotJSON
+}
+
+// GetReportBundle 复刻 getReportBundle：currentRevision = max(0, ...变体的
+// sourceRevision)，快照只取该版本。
+func GetReportBundle(ctx context.Context, queries *db.Queries, reportID int64) (*ReportBundle, error) {
+	report, err := queries.GetReportForReportRoutes(ctx, reportID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	variantRows, err := queries.ListReportVariantsForReportRoutes(ctx, db.ListReportVariantsForReportRoutesParams{
+		IDFilter:     int64(0),
+		ReportFilter: int64(1),
+		ReportID:     reportID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	currentRevision := int64(0)
+	for _, variant := range variantRows {
+		if variant.SourceRevision > currentRevision {
+			currentRevision = variant.SourceRevision
+		}
+	}
+
+	snapshots, err := queries.ListReportSnapshotsForReportRoutes(ctx, db.ListReportSnapshotsForReportRoutesParams{
+		ReportID:       reportID,
+		SourceRevision: currentRevision,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &ReportBundle{
+		Report:    ReportToJSON(report),
+		Variants:  VariantsToJSON(variantRows),
+		Snapshots: SnapshotsToJSON(snapshots),
+	}, nil
+}
+
+// RegenerateSourceDrafts 复刻 regenerateSourceDrafts：重算两个受众的原稿，
+// 版本号 +1、旧终版标 stale，并把个人版原稿写回 reports.content。
+func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID int64, now int64) (*ReportBundle, error) {
+	report, err := queries.GetReportForReportRoutes(ctx, reportID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, report.WeekStart, report.WeekEnd)
+	if err != nil {
+		return nil, err
+	}
+	drafts := VariantSourceDrafts(draftEventsFromRows(events), scopes)
+
+	err = queries.InTx(ctx, func(tx *db.Queries) error {
+		current, err := tx.ListReportVariantsForReportRoutes(ctx, db.ListReportVariantsForReportRoutesParams{
+			IDFilter:     int64(0),
+			ReportFilter: int64(1),
+			ReportID:     reportID,
+		})
+		if err != nil {
+			return err
+		}
+		nextRevision := int64(0)
+		for _, variant := range current {
+			if variant.SourceRevision > nextRevision {
+				nextRevision = variant.SourceRevision
+			}
+		}
+		nextRevision++
+
+		for _, event := range events {
+			classification := ClassifyEventForVariants(metadataSourceID(event.Metadata), scopes)
+			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
+				ReportID:           reportID,
+				RawEventID:         &event.ID,
+				EventTime:          event.EventTime,
+				Source:             event.Source,
+				Content:            event.Content,
+				Metadata:           metadataPointer(event.Metadata),
+				ProjectScope:       scopeString(classification.ProjectScope),
+				LeadershipIncluded: boolToInt(classification.LeadershipIncluded),
+				PersonalIncluded:   boolToInt(classification.PersonalIncluded),
+				SourceRevision:     nextRevision,
+				CreatedAt:          now,
+			}); err != nil {
+				return err
+			}
+		}
+
+		for _, variant := range AudienceVariants {
+			existing := findVariantRow(current, variant)
+			if existing != nil {
+				finalStatus := "none"
+				if existing.FinalContent != nil {
+					finalStatus = "stale"
+				}
+				if err := tx.UpdateReportVariantSourceForReportRoutes(ctx, db.UpdateReportVariantSourceForReportRoutesParams{
+					SourceDraft:    draftFor(drafts, variant),
+					SourceRevision: nextRevision,
+					FinalStatus:    finalStatus,
+					UpdatedAt:      now,
+					ID:             existing.ID,
+				}); err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := tx.InsertReportVariantForReportRoutes(ctx, db.InsertReportVariantForReportRoutesParams{
+				ReportID:       reportID,
+				Variant:        variant,
+				SourceDraft:    draftFor(drafts, variant),
+				FinalStatus:    "none",
+				SourceRevision: nextRevision,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}); err != nil {
+				return err
+			}
+		}
+
+		_, err = tx.UpdateReportContentForReportRoutes(ctx, db.UpdateReportContentForReportRoutesParams{
+			Content:   drafts.Personal,
+			UpdatedAt: now,
+			ID:        reportID,
+		})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return GetReportBundle(ctx, queries, reportID)
+}
+
+// GetReportVariant 复刻 getReportVariant：按 (reportId, variant) 取一行。
+func GetReportVariant(ctx context.Context, queries *db.Queries, reportID int64, variant string) (*VariantJSON, error) {
+	rows, err := queries.ListReportVariantsForReportRoutes(ctx, db.ListReportVariantsForReportRoutesParams{
+		IDFilter:     int64(0),
+		ReportFilter: int64(1),
+		ReportID:     reportID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range VariantsToJSON(rows) {
+		if row.Variant == variant {
+			return &row, nil
+		}
+	}
+	return nil, nil
+}
+
+func findVariantRow(rows []db.ListReportVariantsForReportRoutesRow, variant string) *db.ListReportVariantsForReportRoutesRow {
+	for i := range rows {
+		if rows[i].Variant == variant {
+			return &rows[i]
+		}
+	}
+	return nil
+}
+
+func draftFor(drafts VariantDrafts, variant string) string {
+	if variant == "leadership" {
+		return drafts.Leadership
+	}
+	return drafts.Personal
+}
+
+func scopeString(scope *template.ProjectScope) *string {
+	if scope == nil {
+		return nil
+	}
+	value := string(*scope)
+	return &value
+}
+
+func boolToInt(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+// roundMilliseconds 复刻 `Math.round(value)`（半值向 +∞）。
+func roundMilliseconds(value float64) int64 {
+	return int64(math.Floor(value + 0.5))
+}
