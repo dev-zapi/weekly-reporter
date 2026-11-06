@@ -539,3 +539,47 @@ func TestB6ReportRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B6 的 e2e 造数路由必须真的挂在 /api 子路由上，并且鉴权先于 E2E_FIXTURES 门控
+// （与 TS 的 withAuth(HOF) 同序）。这里用「关认证」的装配断言路由存在 + 门控语义：
+// 未设 E2E_FIXTURES 时回本路由的 {error:"Not found"}（不是通配兜底）。
+func TestB6FixturesRouteIsMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodPost, `{"action":"historical","marker":"m"}`, http.StatusNotFound, `"error":"Not found"`},
+		{http.MethodDelete, `{"reportIds":[1]}`, http.StatusNotFound, `"error":"Not found"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			t.Setenv("E2E_FIXTURES", "")
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, "/api/e2e/fixtures", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+
+	// 门控打开时同一条路由进入业务分支（historical 回 201）。
+	t.Setenv("E2E_FIXTURES", "1")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/e2e/fixtures", strings.NewReader(`{"action":"historical","marker":"m"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
+	}
+}
