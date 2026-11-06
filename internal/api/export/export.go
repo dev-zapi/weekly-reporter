@@ -4,7 +4,6 @@
 package export
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"log"
@@ -56,8 +55,9 @@ func exportHandler() http.HandlerFunc {
 			variant = "leadership"
 		}
 
-		// `body.format ?? 'markdown'` 只对 null/undefined 兜底；其它 JSON 值原样回显，
-		// 所以用 RawMessage 保留请求里的字面量（数字、字符串、false 等）。
+		// `body.format ?? 'markdown'` 只对 null/undefined 兜底；其它 JSON 值原样回显。
+		// decodeAny 把数字折成 float64（等同 JSON.parse），这里再 marshal 回去，
+		// 与 route.ts 的 JSON.stringify 语义一致。
 		format := json.RawMessage(`"markdown"`)
 		if raw, present := object["format"]; present && raw != nil {
 			encoded, err := json.Marshal(raw)
@@ -81,16 +81,17 @@ func fail(w http.ResponseWriter) {
 	respond.Error(w, http.StatusInternalServerError, "Export failed", "EXPORT_ERROR")
 }
 
-// decodeAny 复刻 `await request.json()`。
+// decodeAny 复刻 `await request.json()`：读整个 body 再解析。
+// json.Unmarshal 与 JSON.parse 一样拒绝尾随垃圾，并把数字折成 float64（JS 的
+// JSON.parse 产出的就是 IEEE-754 double）。不能用 Decoder.Decode：它只解析第一个
+// JSON 值，`{"content":"x"} trailing` 会被当成合法请求，而 route.ts 会抛错进 catch。
 func decodeAny(r *http.Request) (any, error) {
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
 	var body any
-	if err := dec.Decode(&body); err != nil {
+	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
 	return body, nil

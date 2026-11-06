@@ -133,21 +133,31 @@ func TestExportEchoesArbitraryFormatValue(t *testing.T) {
 	}
 }
 
+// request.json() 用 JSON.parse，尾随垃圾同样抛错 → catch → 500 EXPORT_ERROR。
 func TestExportRejectsInvalidJSONWith500(t *testing.T) {
-	h := newHarness(t)
+	cases := []string{
+		"not-json",
+		`{"content":"x"} trailing`,
+	}
+	for _, body := range cases {
+		t.Run(body, func(t *testing.T) {
+			h := newHarness(t)
 
-	rec := h.do("not-json", testPassword)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
-	}
-	var resp struct {
-		Code string `json:"code"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if resp.Code != "EXPORT_ERROR" {
-		t.Fatalf("code = %q", resp.Code)
+			rec := h.do(body, testPassword)
+			if rec.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
+			}
+			var resp struct {
+				Error string `json:"error"`
+				Code  string `json:"code"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			if resp.Error != "Export failed" || resp.Code != "EXPORT_ERROR" {
+				t.Fatalf("resp = %+v", resp)
+			}
+		})
 	}
 }
 
