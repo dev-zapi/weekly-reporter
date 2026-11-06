@@ -26,7 +26,7 @@ func fetchLocalSource(r *http.Request, deps Deps, sourceID float64) (localFetchR
 	}
 	id := int64(sourceID)
 
-	row, err := deps.Queries.GetCollectSource(ctx, id)
+	row, err := deps.Queries.GetCollectSourceForExecution(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		message := "采集源不存在"
 		return localFetchResult{SourceID: sourceID, SourceName: "", Status: "failed", Error: &message}, nil

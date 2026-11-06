@@ -71,7 +71,7 @@ type sourceRecord struct {
 	Status *string
 }
 
-func sourceRecordFromGet(row db.GetCollectSourceRow) (sourceRecord, error) {
+func sourceRecordFromGet(row db.GetCollectSourceForExecutionRow) (sourceRecord, error) {
 	config, err := parseSourceConfig(row.Config)
 	if err != nil {
 		return sourceRecord{}, err
@@ -87,7 +87,7 @@ func sourceRecordFromList(row db.ListEnabledCollectSourcesRow) (sourceRecord, er
 	return sourceRecord{ID: row.ID, Type: row.Type, Name: row.Name, Config: config, Status: row.Status}, nil
 }
 
-// sourcePatch 收集 UpdateCollectSource 的 nullable 参数：nil 表示「本次不改」。
+// sourcePatch 收集 UpdateCollectSourceForExecution 的 nullable 参数：nil 表示「本次不改」。
 type sourcePatch struct {
 	Config         sourceConfig
 	Status         *string
@@ -106,7 +106,7 @@ func applySourcePatch(ctx context.Context, queries *db.Queries, sourceID int64, 
 		text := string(encoded)
 		configText = &text
 	}
-	return queries.UpdateCollectSource(ctx, db.UpdateCollectSourceParams{
+	return queries.UpdateCollectSourceForExecution(ctx, db.UpdateCollectSourceForExecutionParams{
 		Config:         configText,
 		Status:         patch.Status,
 		LastSyncAt:     patch.LastSyncAt,
@@ -128,7 +128,7 @@ func syncSource(ctx context.Context, queries *db.Queries, sourceID int64, resync
 
 // syncSourceUnlocked 是 sync.ts 的相主体。
 func syncSourceUnlocked(ctx context.Context, queries *db.Queries, sourceID int64, resync bool) (syncResult, error) {
-	row, err := queries.GetCollectSource(ctx, sourceID)
+	row, err := queries.GetCollectSourceForExecution(ctx, sourceID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return failedResult(sourceID, "", "采集源不存在", nil), nil
 	}

@@ -7,7 +7,7 @@
 -- value back to TEXT so SQLite stores it with TEXT affinity (drizzle does the
 -- same with JSON.stringify).
 
--- name: GetCollectSource :one
+-- name: GetCollectSourceForExecution :one
 SELECT id, type, name, CAST(config AS BLOB) AS config, enabled, last_sync_at, last_sync_status, created_at, updated_at, status, project_scope
 FROM collect_sources
 WHERE id = ?
@@ -19,10 +19,12 @@ FROM collect_sources
 WHERE status = 'enabled'
 ORDER BY id;
 
--- UpdateCollectSource mirrors the sync engine's partial drizzle updates: only the
--- listed fields are rewritten, updated_at always is. sqlc.narg keeps "absent"
--- (NULL) distinct from a real value.
--- name: UpdateCollectSource :exec
+-- UpdateCollectSourceForExecution mirrors the sync engine's partial drizzle
+-- updates: only the listed fields are rewritten, updated_at always is. sqlc.narg
+-- keeps "absent" (NULL) distinct from a real value. The ForExecution suffix
+-- keeps these names clear of the CRUD domain's collect_sources.sql queries
+-- (#103) over the same table.
+-- name: UpdateCollectSourceForExecution :exec
 UPDATE collect_sources
 SET config = COALESCE(CAST(sqlc.narg('config') AS TEXT), config),
     status = COALESCE(sqlc.narg('status'), status),

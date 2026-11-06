@@ -9,7 +9,7 @@ import (
 	"context"
 )
 
-const getCollectSource = `-- name: GetCollectSource :one
+const getCollectSourceForExecution = `-- name: GetCollectSourceForExecution :one
 
 SELECT id, type, name, CAST(config AS BLOB) AS config, enabled, last_sync_at, last_sync_status, created_at, updated_at, status, project_scope
 FROM collect_sources
@@ -17,7 +17,7 @@ WHERE id = ?
 LIMIT 1
 `
 
-type GetCollectSourceRow struct {
+type GetCollectSourceForExecutionRow struct {
 	ID             int64   `json:"id"`
 	Type           string  `json:"type"`
 	Name           string  `json:"name"`
@@ -39,9 +39,9 @@ type GetCollectSourceRow struct {
 // to BLOB so it scans into json.RawMessage, and every write path casts the bound
 // value back to TEXT so SQLite stores it with TEXT affinity (drizzle does the
 // same with JSON.stringify).
-func (q *Queries) GetCollectSource(ctx context.Context, id int64) (GetCollectSourceRow, error) {
-	row := q.db.QueryRowContext(ctx, getCollectSource, id)
-	var i GetCollectSourceRow
+func (q *Queries) GetCollectSourceForExecution(ctx context.Context, id int64) (GetCollectSourceForExecutionRow, error) {
+	row := q.db.QueryRowContext(ctx, getCollectSourceForExecution, id)
+	var i GetCollectSourceForExecutionRow
 	err := row.Scan(
 		&i.ID,
 		&i.Type,
@@ -176,7 +176,7 @@ func (q *Queries) ListRawEventMetadataBySourceID(ctx context.Context, sourceID i
 	return items, nil
 }
 
-const updateCollectSource = `-- name: UpdateCollectSource :exec
+const updateCollectSourceForExecution = `-- name: UpdateCollectSourceForExecution :exec
 UPDATE collect_sources
 SET config = COALESCE(CAST(?1 AS TEXT), config),
     status = COALESCE(?2, status),
@@ -186,7 +186,7 @@ SET config = COALESCE(CAST(?1 AS TEXT), config),
 WHERE id = ?6
 `
 
-type UpdateCollectSourceParams struct {
+type UpdateCollectSourceForExecutionParams struct {
 	Config         *string `json:"config"`
 	Status         *string `json:"status"`
 	LastSyncAt     *int64  `json:"last_sync_at"`
@@ -195,11 +195,13 @@ type UpdateCollectSourceParams struct {
 	ID             int64   `json:"id"`
 }
 
-// UpdateCollectSource mirrors the sync engine's partial drizzle updates: only the
-// listed fields are rewritten, updated_at always is. sqlc.narg keeps "absent"
-// (NULL) distinct from a real value.
-func (q *Queries) UpdateCollectSource(ctx context.Context, arg UpdateCollectSourceParams) error {
-	_, err := q.db.ExecContext(ctx, updateCollectSource,
+// UpdateCollectSourceForExecution mirrors the sync engine's partial drizzle
+// updates: only the listed fields are rewritten, updated_at always is. sqlc.narg
+// keeps "absent" (NULL) distinct from a real value. The ForExecution suffix
+// keeps these names clear of the CRUD domain's collect_sources.sql queries
+// (#103) over the same table.
+func (q *Queries) UpdateCollectSourceForExecution(ctx context.Context, arg UpdateCollectSourceForExecutionParams) error {
+	_, err := q.db.ExecContext(ctx, updateCollectSourceForExecution,
 		arg.Config,
 		arg.Status,
 		arg.LastSyncAt,
