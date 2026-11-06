@@ -212,50 +212,6 @@ func numberFromQuery(raw string) (float64, bool) {
 	return n, true
 }
 
-// jsString 复刻 `String(value)`，用于把 JSON 值拼进 URL 查询参数。
-func jsString(v any) string {
-	switch value := v.(type) {
-	case nil:
-		return "null"
-	case bool:
-		if value {
-			return "true"
-		}
-		return "false"
-	case float64:
-		return jsNumberString(value)
-	case string:
-		return value
-	case []any:
-		parts := make([]string, 0, len(value))
-		for _, item := range value {
-			if item == nil {
-				parts = append(parts, "")
-				continue
-			}
-			parts = append(parts, jsString(item))
-		}
-		return strings.Join(parts, ",")
-	default:
-		return "[object Object]"
-	}
-}
-
-// jsNumberString 复刻 JS 的 Number#toString（只覆盖查询参数里会遇到的形态）。
-func jsNumberString(value float64) string {
-	switch {
-	case math.IsNaN(value):
-		return "NaN"
-	case math.IsInf(value, 1):
-		return "Infinity"
-	case math.IsInf(value, -1):
-		return "-Infinity"
-	case value == math.Trunc(value) && math.Abs(value) < 1e21:
-		return strconv.FormatFloat(value, 'f', -1, 64)
-	}
-	return strconv.FormatFloat(value, 'g', -1, 64)
-}
-
 // jsSortStrings 复刻 `Array.prototype.sort()` 的默认比较：按 UTF-16 码元升序。
 func jsSortStrings(values []string) {
 	for i := 1; i < len(values); i++ {
