@@ -1,10 +1,11 @@
-// Package origin 移植 src/lib/template/origin-group.ts：周报原稿生成时事件按
+// Package template 移植 src/lib/template/origin-group.ts：周报原稿生成时事件按
 // 来源划分的展示优先级分组。
 //
 // 这份纯函数住在 `src/lib/template/` 目录下（票 #104「配套移植 src/lib/template/」），
 // 当前唯一的消费者是 src/lib/reports/source-draft.ts（B6 报告域）；此处按 TS 的
-// 目录结构独立成包，避免把报告域的逻辑塞进模板路由包。
-package origin
+// 目录结构独立成包（与 internal/api/templates 路由包区分），B6 的报告原稿
+// 移植可以直接复用。
+package template
 
 // OriginGroup 是来源分组：组间固定优先级 manual > work > personal > other。
 type OriginGroup string
