@@ -345,7 +345,7 @@ func (e *Engine) StreamTurn(w http.ResponseWriter, r *http.Request, prepared *Pr
 				content = "调用 查询周报内容。历史参考·不可信。"
 			}
 			if err := appendPart("assistant", "tool-call", &content, map[string]any{
-				"toolName": event.ToolName, "toolCallId": event.ToolCallID, "input": decodedInput(event.Input),
+				"toolName": event.ToolName, "toolCallId": event.ToolCallID, "input": toolCallInput(event.Input),
 			}); err != nil {
 				return err
 			}

@@ -209,7 +209,7 @@ func (e *Engine) executeTool(ctx context.Context, session *db.GenerationSession,
 			message := "本轮已经提交过候选终版"
 			return toolExecution{
 				Output:       map[string]any{"error": message},
-				Input:        decodedInput(call.Input),
+				Input:        toolCallInput(call.Input),
 				ToolErrored:  true,
 				ErrorMessage: message,
 			}
@@ -219,14 +219,14 @@ func (e *Engine) executeTool(ctx context.Context, session *db.GenerationSession,
 			message := err.Error()
 			return toolExecution{
 				Output:       map[string]any{"error": message},
-				Input:        decodedInput(call.Input),
+				Input:        toolCallInput(call.Input),
 				ToolErrored:  true,
 				ErrorMessage: message,
 			}
 		}
 		return toolExecution{
 			Output:   map[string]any{"proposalId": record.ID, "status": "ready"},
-			Input:    decodedInput(call.Input),
+			Input:    toolCallInput(call.Input),
 			Proposal: record,
 		}
 	}
@@ -249,6 +249,14 @@ func validationFailure(call aiclient.StepToolCall, err error) toolExecution {
 		ErrorMessage: message,
 		Snapshot:     call.Name == reportListToolName || call.Name == reportContentToolName,
 	}
+}
+
+// toolCallInput 复刻成功校验后的 tool-call part.input：空入参被规范成 {}。
+func toolCallInput(raw string) any {
+	if strings.TrimSpace(raw) == "" {
+		return map[string]any{}
+	}
+	return decodedInput(raw)
 }
 
 // decodedInput 复刻 AI SDK tool-call part 的 input：能解析成 JSON 就用解析值，
