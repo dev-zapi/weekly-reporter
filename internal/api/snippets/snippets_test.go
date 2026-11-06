@@ -173,6 +173,17 @@ func TestSnippetsPostRejectsEmptyContent(t *testing.T) {
 	}
 }
 
+// route.ts 只判 `!body.content`（不做 trim），所以纯空白内容会被接受——
+// 与 events / export 的 trim 语义不同。照抄这个差异，不顺手「修好」。
+func TestSnippetsPostAcceptsWhitespaceOnlyContent(t *testing.T) {
+	h := newHarness(t)
+
+	rec := h.do(http.MethodPost, "/api/snippets", `{"content":"   "}`, testPassword)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
+	}
+}
+
 func TestSnippetsPostRejectsContentLongerThan500(t *testing.T) {
 	h := newHarness(t)
 
