@@ -10,6 +10,7 @@ import (
 
 	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
 	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
+	collectapi "github.com/dev-zapi/weekly-reporter/internal/api/collect"
 	collectadditionsapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/additions"
 	collectsourcesapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/sources"
 	eventsapi "github.com/dev-zapi/weekly-reporter/internal/api/events"
@@ -72,6 +73,10 @@ func NewRouter(opts Options) http.Handler {
 		// 同样扁平注册，静态段 branches/emails/lookup/bulk-* 优先于 /{id}。
 		// 同批另外两张票（git 执行面、两条增补路由）在集成分支汇合。
 		collectsourcesapi.Mount(r, collectsourcesapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
+		// B4 的采集域：git 执行面（本地 Fetch / 远端同步）与目录补全白名单扫描。
+		// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由，三段前缀
+		// 都扁平注册在 /collect 之下。
+		collectapi.Mount(r, collectapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
