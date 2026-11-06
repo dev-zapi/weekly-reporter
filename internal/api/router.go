@@ -11,6 +11,7 @@ import (
 	auditapi "github.com/dev-zapi/weekly-reporter/internal/api/audit"
 	authapi "github.com/dev-zapi/weekly-reporter/internal/api/auth"
 	heatmapapi "github.com/dev-zapi/weekly-reporter/internal/api/events/heatmap"
+	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/buildinfo"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -42,6 +43,7 @@ func NewRouter(opts Options) http.Handler {
 		authapi.Mount(r, authapi.Deps{Queries: opts.Queries})
 		auditapi.Mount(r, auditapi.Deps{Queries: opts.Queries})
 		heatmapapi.Mount(r, heatmapapi.Deps{Queries: opts.Queries})
+		referencesapi.Mount(r, referencesapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
