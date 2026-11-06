@@ -92,8 +92,16 @@ func lookupSource(r *http.Request, deps Deps, sourceID float64) (db.CollectSourc
 	if err != nil {
 		return db.CollectSourceRecord{}, false, err
 	}
-	return row.Record(), true, nil
+	record := row.Record()
+	if !isValidStoredConfig(record.Config) {
+		// drizzle 的 findFirst 会 JSON.parse config；损坏的行让整条路由进 catch。
+		return db.CollectSourceRecord{}, false, errInvalidStoredConfig
+	}
+	return record, true, nil
 }
+
+// errInvalidStoredConfig 表示存量 config 不是合法 JSON（route.ts 的 findFirst 会抛错）。
+var errInvalidStoredConfig = errors.New("collect sources: stored config is not valid JSON")
 
 func runGit(dir string, args ...string) (string, error) {
 	command := exec.Command("git", args...)
