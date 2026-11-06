@@ -53,6 +53,7 @@ func (p *anthropicStepProvider) RunStep(ctx context.Context, req StepRequest, em
 
 	accumulated := anthropic.BetaMessage{}
 	pending := map[int64]*anthropicPendingBlock{}
+	var order []int64
 	var toolCalls []StepToolCall
 
 	flushToolCall := func(index int64, overrideInput string) error {
@@ -106,6 +107,7 @@ func (p *anthropicStepProvider) RunStep(ctx context.Context, req StepRequest, em
 			block := event.ContentBlock
 			if block.Type == "tool_use" {
 				pending[event.Index] = &anthropicPendingBlock{id: block.ID, name: block.Name}
+				order = append(order, event.Index)
 				if err := emit(Event{Kind: EventToolInputStart, ToolCallID: block.ID, ToolName: block.Name}); err != nil {
 					return nil, err
 				}
@@ -147,8 +149,8 @@ func (p *anthropicStepProvider) RunStep(ctx context.Context, req StepRequest, em
 		return nil, streamError(ctx, err)
 	}
 
-	// 兜底：流结束仍未收到 content_block_stop 的 tool_use 块也要收尾。
-	for index := range pending {
+	// 兜底：流结束仍未收到 content_block_stop 的 tool_use 块也要按序收尾。
+	for _, index := range order {
 		if err := flushToolCall(index, ""); err != nil {
 			return nil, err
 		}
