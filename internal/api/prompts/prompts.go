@@ -1,6 +1,11 @@
-// Package prompts 把 AI 配置域路由（`/api/prompts/*`）挂到 chi 的 /api 子路由上。
-// 行为逐条对照 src/app/api/prompts 下的 route.ts，服务端逻辑移植自
-// src/lib/ai/{styles,seed}.ts（ADR-0005：风格与系统提示词都是数据库实体）。
+// Package prompts 把提示词管理域路由（`/api/prompts/*`：AI 风格与系统提示词）挂到
+// chi 的 /api 子路由上。行为逐条对照 src/app/api/prompts 下的 route.ts，服务端
+// 逻辑移植自 src/lib/ai/{styles,seed}.ts（ADR-0005：风格与系统提示词都是数据库
+// 实体）。
+//
+// 域语言照 CONTEXT.md：「提示词管理」指的是 AI 风格与系统提示词；「AI 配置」
+// （ai_config 单行：协议格式/API URL/API Key/模型名）是 internal/api/settings
+// 的域，两者不混用。
 package prompts
 
 import (
@@ -14,7 +19,7 @@ type Deps struct {
 	Queries *db.Queries
 }
 
-// Mount 把 AI 配置域注册到 /api 子路由上。
+// Mount 把提示词管理域注册到 /api 子路由上。
 //
 // 路由表与 src/app/api/prompts 目录一一对应：
 //

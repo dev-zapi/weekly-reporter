@@ -81,9 +81,9 @@ func NewRouter(opts Options) http.Handler {
 		// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由，三段前缀
 		// 都扁平注册在 /collect 之下。
 		collectapi.Mount(r, collectapi.Deps{Queries: opts.Queries})
-		// B5 的模板与 AI 配置域数据面（tickets #104）：/templates 与 /prompts。
+		// B5 的模板与提示词域数据面（tickets #104）：/templates 与 /prompts。
 		// 同样扁平注册，静态段 clone 优先于 /templates/{id}，/templates/{id}/render
-		// 按段数与之共存。同批的 settings/ai 与 ai/* 由另两张票注册。
+		// 按段数与之共存。同批的 settings/ai（AI 配置域）与 ai/* 由另两张票注册。
 		templatesapi.Mount(r, templatesapi.Deps{Queries: opts.Queries})
 		promptsapi.Mount(r, promptsapi.Deps{Queries: opts.Queries})
 		// B5 的 AI 三个 one-shot：/ai/expand-section、/ai/polish-event、
