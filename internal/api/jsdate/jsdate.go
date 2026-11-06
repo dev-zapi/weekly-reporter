@@ -227,3 +227,14 @@ func (p Parsed) IsValid() bool { return p.Valid }
 
 // FromUnix 把 epoch 秒折成毫秒（Go 侧存储单位是秒）。
 func FromUnix(sec int64) Parsed { return Parsed{Millis: sec * 1000, Valid: true} }
+
+// ISOString 复刻 `Date.prototype.toISOString()`：UTC、毫秒三位、Z 后缀。
+func ISOString(millis int64) string {
+	return time.UnixMilli(millis).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+// ISOStringFromUnix 复刻 `new Date(seconds * 1000).toISOString()`，用于 drizzle
+// timestamp 列（Unix 秒）的响应序列化。
+func ISOStringFromUnix(seconds int64) string {
+	return ISOString(seconds * 1000)
+}

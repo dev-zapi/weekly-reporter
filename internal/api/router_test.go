@@ -181,6 +181,41 @@ func TestB3DomainRoutesAreMounted(t *testing.T) {
 	}
 }
 
+// B4 的两条增补路由必须真的挂在 /api 子路由上（唯一 additive 变更，blueprint
+// §2.8）。这里只断言「路由存在 + 200 + 业务对象形状」，不碰文件系统：scan-repos
+// 用白名单外的 /etc（业务错误也是 200 + 内嵌 error），batch-add 用空列表。
+func TestB4AdditiveRoutesAreMounted(t *testing.T) {
+	// 白名单含 $HOME；固定 HOME，确保 /etc 在任何宿主上都落在白名单外。
+	t.Setenv("HOME", "/home/test")
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		expect string
+	}{
+		{http.MethodPost, "/api/collect/scan-repos", `{"basePath":"/etc"}`, `"error":"不允许访问此目录"`},
+		{http.MethodPost, "/api/collect/batch-add-sources", `{"repos":[]}`, `"success":true`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
 // 通配兜底本身保持 B0 形状：未注册的 /api 路径仍然回 {error:"Not Found"}。
 func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 	queries := db.New(dbtest.New(t))
@@ -194,5 +229,91 @@ func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 	}
 	if strings.TrimSpace(rec.Body.String()) != `{"error":"Not Found"}` {
 		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+// B4 采集源数据面的 11 个 handler 必须真的挂在 /api 子路由上，且静态段
+// （branches/emails/lookup/bulk-*）不被 /collect/sources/{id} 吃掉。
+func TestB4CollectSourcesRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/collect/sources", "", http.StatusOK, `"sources":[]`},
+		{http.MethodGet, "/api/collect/sources/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodGet, "/api/collect/sources/abc", "", http.StatusBadRequest, `"code":"INVALID_ID"`},
+		{http.MethodGet, "/api/collect/sources/branches", "", http.StatusOK, `"branches":[]`},
+		{http.MethodGet, "/api/collect/sources/emails", "", http.StatusOK, `"authors":[]`},
+		{http.MethodGet, "/api/collect/sources/lookup?type=git-local&path=/x", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodPost, "/api/collect/sources/bulk-delete", `{"ids":[]}`, http.StatusBadRequest, `"code":"INVALID_IDS"`},
+		{http.MethodPost, "/api/collect/sources/bulk-update-scope", `{"ids":[]}`, http.StatusBadRequest, `"code":"INVALID_IDS"`},
+		{http.MethodPost, "/api/collect/sources", `{"type":"nope"}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B4 的采集执行面（本地 Fetch / 远端同步 / 目录扫描）必须真的挂在 /api 子路由上。
+// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由：它们由集成分支
+// 一并带入，这里只断言本票的三条 + 鉴权边界。
+func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		// 关认证也照样是业务 400/500，而不是通配的 "Not Found"。
+		{http.MethodPost, "/api/collect/git-local/fetch", `{}`, http.StatusBadRequest, `"code":"INVALID_ID"`},
+		{http.MethodPost, "/api/collect/git-remote/sync", `{"sourceId":999}`, http.StatusInternalServerError, `"code":"SYNC_FAILED"`},
+		{http.MethodGet, "/api/collect/scan-path?path=/etc", "", http.StatusForbidden, `"code":"FORBIDDEN"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
 	}
 }

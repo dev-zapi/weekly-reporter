@@ -122,3 +122,53 @@ func TestParseIntWithOverflowFlagsDoubleRounding(t *testing.T) {
 		})
 	}
 }
+
+// ParseNumber 复刻 Number(string)。期望值来自 Node 实测；重点是 Go 的
+// strconv.ParseFloat 会接受而 JS 视为 NaN 的写法（"inf"、"nan"、"1_0"）必须被
+// 文法校验拦住。
+func TestParseNumberMatchesJavaScript(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+		ok   bool
+	}{
+		{"7", 7, true},
+		{"", 0, true},
+		{"   ", 0, true},
+		{" 3 ", 3, true},
+		{"-7.5", -7.5, true},
+		{".5", 0.5, true},
+		{"1e3", 1000, true},
+		{"0x10", 16, true},
+		{"0b101", 5, true},
+		{"0o17", 15, true},
+		{"Infinity", math.Inf(1), true},
+		{"+Infinity", math.Inf(1), true},
+		{"-Infinity", math.Inf(-1), true},
+		{"abc", 0, false},
+		{"0x", 0, false},
+		{"-0x10", 0, false}, // JS 不允许带符号的进制前缀
+		{"1_0", 0, false},   // Go 的下划线分隔符不是 JS 文法
+		{"inf", 0, false},   // Go 接受、JS 是 NaN
+		{"nan", 0, false},
+		{"1.", 1, true},
+		{"1e", 0, false},
+		// JS 的 trim 集合：U+FEFF 是空白、U+0085 不是（Go 的 TrimSpace 恰好相反）。
+		{"\ufeff7", 7, true},
+		{"\u00857", 0, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			got, ok := ParseNumber(tc.in)
+			if ok != tc.ok {
+				t.Fatalf("ParseNumber(%q) ok = %t, want %t", tc.in, ok, tc.ok)
+			}
+			if !ok {
+				return
+			}
+			if got != tc.want && !(math.IsInf(tc.want, 0) && math.IsInf(got, int(math.Copysign(1, tc.want)))) {
+				t.Fatalf("ParseNumber(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
