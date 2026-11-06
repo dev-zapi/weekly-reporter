@@ -209,6 +209,19 @@ func TestScanReposMarksAlreadyAddedGitLocalSources(t *testing.T) {
 	}
 }
 
+// 显式 maxDepth: null 不触发默认参数（JS 的默认参数只对 undefined 生效），
+// `currentDepth > null` 折算为 `> 0`，所以连深度 1 的子目录都不下钻。
+func TestScanReposTreatsNullMaxDepthAsZero(t *testing.T) {
+	h := newHarness(t)
+	root := buildRepoTree(t)
+
+	rec := h.post("/api/collect/scan-repos", `{"basePath":`+jsonString(root)+`,"maxDepth":null}`)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	assertPathsEqual(t, repoPaths(t, decodeBody(t, rec)), []string{})
+}
+
 // 白名单：$HOME / /opt / /srv / /var / /tmp 之外一律拒绝，回 200 + 内嵌 error。
 func TestScanReposRejectsPathsOutsideTheWhitelist(t *testing.T) {
 	h := newHarness(t)

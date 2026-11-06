@@ -191,6 +191,28 @@ func TestBatchAddSourcesAcceptsAnEmptyList(t *testing.T) {
 	}
 }
 
+// 显式 authorEmails: null 原样落库（TS 的 JSON.stringify 保留 null，
+// 只有 undefined 才省略键）。
+func TestBatchAddSourcesKeepsExplicitNullAuthorEmails(t *testing.T) {
+	h := newHarness(t)
+
+	rec := h.post("/api/collect/batch-add-sources", `{"repos":[{"path":"/tmp/ws/alpha","name":"alpha","authorEmails":null}]}`)
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if message, ok := decodeBody(t, rec)["error"]; ok {
+		t.Fatalf("unexpected error: %v", message)
+	}
+
+	rows := h.gitLocalRows(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want 1", len(rows))
+	}
+	if rows[0].Config != `{"owner":"/tmp/ws/alpha","authorEmails":null,"branches":[]}` {
+		t.Fatalf("config = %s", rows[0].Config)
+	}
+}
+
 // 响应里 config 的 authorEmails 缺省时与 JSON.stringify 一致：键被省略
 // （actions.ts 的 values 里 authorEmails: undefined）。
 func TestBatchAddSourcesOmitsMissingAuthorEmails(t *testing.T) {
