@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 )
 
 // 本文件是各 handler 共用的请求体读取与 JS 值语义辅助。
@@ -92,45 +94,6 @@ func asString(v any) (string, bool) {
 	return value, ok
 }
 
-// parseIntBase10 复刻 `parseInt(value, 10)`：跳过前导空白、可选正负号、
-// 连续十进制数字；没有数字返回 NaN（ok=false）。与 jsparse.ParseInt 的差别是
-// radix 固定 10（"0x10" 解析为 0）。B2 snippets 域已有同一实现，这里因为它是
-// 本域 5 个 handler 的公共前置检查而保留包内副本（不跨域导出）。
-func parseIntBase10(value string) (int64, bool) {
-	i := 0
-	for i < len(value) && isASCIISpace(value[i]) {
-		i++
-	}
-	negative := false
-	if i < len(value) && (value[i] == '+' || value[i] == '-') {
-		negative = value[i] == '-'
-		i++
-	}
-	var n int64
-	digits := 0
-	for i < len(value) && value[i] >= '0' && value[i] <= '9' {
-		d := int64(value[i] - '0')
-		if n > (1<<63-1-d)/10 {
-			n = 1<<63 - 1
-		} else {
-			n = n*10 + d
-		}
-		digits++
-		i++
-	}
-	if digits == 0 {
-		return 0, false
-	}
-	if negative {
-		return -n, true
-	}
-	return n, true
-}
-
-func isASCIISpace(b byte) bool {
-	switch b {
-	case ' ', '\t', '\n', '\r', '\v', '\f':
-		return true
-	}
-	return false
-}
+// parseIntBase10 复刻 `parseInt(value, 10)`：语义唯一实现见 jsparse.ParseInt10，
+// 这里保留包内别名只是为了不把 jsparse 的调用散到每个 handler。
+func parseIntBase10(value string) (int64, bool) { return jsparse.ParseInt10(value) }

@@ -15,7 +15,15 @@ import "math"
 // 溢出（例如 20 位数字）在 JS 里是有限浮点数、查库必然查不到，这里饱和到
 // MaxInt64，最终落到与 TS 相同的 404 / 空列表 / 默认值分支，不引入额外分支。
 func ParseInt(value string) (int64, bool) {
-	n, ok, _ := ParseIntWithOverflow(value)
+	n, ok, _ := parseIntRadix(value, 0)
+	return n, ok
+}
+
+// ParseInt10 复刻 JavaScript `parseInt(value, 10)`：radix 固定十进制，所以不识别
+// `0x` 前缀（"0x10" 解析为 0，'0' 之后遇到 'x' 就停）。route.ts 里的
+// `parseInt(id, 10)` 全是这种形态，snippets 与 plans 域共用这一份。
+func ParseInt10(value string) (int64, bool) {
+	n, ok, _ := parseIntRadix(value, 10)
 	return n, ok
 }
 
@@ -26,6 +34,11 @@ func ParseInt(value string) (int64, bool) {
 // 整条查询报错 → 500 FETCH_ERROR。只饱和到 MaxInt64 会让这一档静默变成「空列表
 // 200」，与冻结状态码不符，所以调用方需要这个区分。
 func ParseIntWithOverflow(value string) (n int64, ok, overflow bool) {
+	return parseIntRadix(value, 0)
+}
+
+// parseIntRadix 是上面三个入口的共同实现；fixedRadix=0 表示「按 `0x` 前缀推断」。
+func parseIntRadix(value string, fixedRadix int64) (n int64, ok, overflow bool) {
 	i := 0
 	// parseInt 会跳过前导空白。
 	for i < len(value) && isJSSpace(value[i]) {
@@ -38,22 +51,26 @@ func ParseIntWithOverflow(value string) (n int64, ok, overflow bool) {
 		i++
 	}
 
-	radix := int64(10)
-	if i+1 < len(value) && value[i] == '0' && (value[i+1] == 'x' || value[i+1] == 'X') {
-		radix = 16
-		i += 2
+	radix := fixedRadix
+	if radix == 0 {
+		radix = 10
+		if i+1 < len(value) && value[i] == '0' && (value[i+1] == 'x' || value[i+1] == 'X') {
+			radix = 16
+			i += 2
+		}
 	}
 
+	var magnitude int64
 	digits := 0
 	for i < len(value) {
 		d, ok := digitValue(value[i], radix)
 		if !ok {
 			break
 		}
-		if n > (math.MaxInt64-int64(d))/radix {
-			n = math.MaxInt64
+		if magnitude > (math.MaxInt64-int64(d))/radix {
+			magnitude = math.MaxInt64
 		} else {
-			n = n*radix + int64(d)
+			magnitude = magnitude*radix + int64(d)
 		}
 		digits++
 		i++
@@ -63,11 +80,11 @@ func ParseIntWithOverflow(value string) (n int64, ok, overflow bool) {
 	}
 	// [2^62, 2^63) 区间 double 的间距是 1024，2^63-512 舍入到 2^63。
 	const doubleOverflowThreshold = math.MaxInt64 - 511 // = 2^63 - 512
-	overflow = n >= doubleOverflowThreshold
+	overflow = magnitude >= doubleOverflowThreshold
 	if negative {
-		return -n, true, overflow
+		return -magnitude, true, overflow
 	}
-	return n, true, overflow
+	return magnitude, true, overflow
 }
 
 // isJSSpace 覆盖 JS 会跳过的 ASCII 空白。非 ASCII 空白（如 U+00A0）在路径 / 查询
