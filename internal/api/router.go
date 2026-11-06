@@ -14,6 +14,7 @@ import (
 	collectapi "github.com/dev-zapi/weekly-reporter/internal/api/collect"
 	collectadditionsapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/additions"
 	collectsourcesapi "github.com/dev-zapi/weekly-reporter/internal/api/collect/sources"
+	e2eapi "github.com/dev-zapi/weekly-reporter/internal/api/e2e"
 	eventsapi "github.com/dev-zapi/weekly-reporter/internal/api/events"
 	heatmapapi "github.com/dev-zapi/weekly-reporter/internal/api/events/heatmap"
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
@@ -94,6 +95,10 @@ func NewRouter(opts Options) http.Handler {
 		// 同样扁平注册，静态段 /settings/ai/models 与 /settings/ai/test 与末段
 		// 路由 /settings/ai 共存。同批的 templates/prompts 与 ai/* 由另两张票注册。
 		settingsapi.Mount(r, settingsapi.Deps{Queries: opts.Queries, HTTPClient: opts.HTTPClient})
+		// B6 的 e2e 造数面：POST/DELETE /e2e/fixtures（ADR-0029 原样移植）。它由
+		// E2E_FIXTURES=1 门控，auth/审计照常走上面 /api 的中间件链。同批其余 B6
+		// 路由（reports 与生成引擎）由另几张票注册。
+		e2eapi.Mount(r, e2eapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里
