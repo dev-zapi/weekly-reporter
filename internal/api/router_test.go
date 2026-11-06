@@ -317,3 +317,173 @@ func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B5 的模板域路由必须真的挂在 /api 子路由上，且静态段 clone 不被
+// /templates/{id} 吃掉、{id}/render 仍可达。
+func TestB5TemplateRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/templates", "", http.StatusOK, `"official":`},
+		{http.MethodPost, "/api/templates", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+		{http.MethodGet, "/api/templates/999", "", http.StatusNotFound, `"code":"TEMPLATE_NOT_FOUND"`},
+		{http.MethodGet, "/api/templates/999/render", "", http.StatusGone, `"code":"TEMPLATE_RENDER_REMOVED"`},
+		{http.MethodPost, "/api/templates/clone", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B5 的 prompts 域路由必须真的挂在 /api 子路由上，且 {id} 子路由不被静态段遮蔽。
+func TestB5PromptRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/prompts/styles", "", http.StatusOK, `"styles":`},
+		{http.MethodGet, "/api/prompts/styles/999", "", http.StatusNotFound, `"code":"STYLE_NOT_FOUND"`},
+		{http.MethodGet, "/api/prompts/system", "", http.StatusOK, `"prompts":`},
+		{http.MethodPut, "/api/prompts/system", `{"key":"nope","promptText":"x"}`, http.StatusBadRequest, `"error":"Invalid prompt key"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B5 的 AI 三个 one-shot 必须真的挂在 /api 子路由上。三条都是 POST，且校验都在
+// 风格查询与模型调用之前——所以不用 mock provider 也能断言「路由存在 + 业务 400」
+// 而不是被 B0 的 `/api/*` 通配兜底吃掉。
+func TestB5AIRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{
+			http.MethodPost, "/api/ai/expand-section",
+			`{"existingItems":[],"events":[]}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+		{
+			http.MethodPost, "/api/ai/polish-event",
+			`{}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+		{
+			http.MethodPost, "/api/ai/unify-style",
+			`{}`,
+			http.StatusBadRequest, `"code":"INVALID_INPUT"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B5 的 settings/ai 配置面必须真的挂在 /api 子路由上：静态段 /settings/ai/models
+// 与 /settings/ai/test 不被末段路由 /settings/ai 吃掉，未配置时的业务错误也都
+// 落到本域的 {error, code} 而不是通配的 "Not Found"。
+func TestB5SettingsRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/settings/ai", "", http.StatusOK, `"configured":false`},
+		{http.MethodGet, "/api/settings/ai/models", "", http.StatusBadRequest, `"code":"AI_NOT_CONFIGURED"`},
+		// anthropic 协议不探测 provider，所以这条挂载断言不发网络请求。
+		{http.MethodPost, "/api/settings/ai/models", `{"protocol":"anthropic","apiUrl":"https://api.anthropic.com","apiKey":"k"}`, http.StatusOK, `"supported":false`},
+		{http.MethodPost, "/api/settings/ai/test", "", http.StatusBadRequest, `"code":"AI_NOT_CONFIGURED"`},
+		{http.MethodDelete, "/api/settings/ai", "", http.StatusOK, `"configured":false`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
