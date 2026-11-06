@@ -84,3 +84,28 @@ func TestGitRemoteSyncReturnsConflictWhenSourceIsBusy(t *testing.T) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
+
+// 全量同步遇到忙碌源时也会把 SourceOperationBusyError 传回路由 → 409。
+func TestGitRemoteSyncAllSourcesReturnsConflictWhenBusy(t *testing.T) {
+	sqlDB := dbtest.New(t)
+	queries := db.New(sqlDB)
+
+	id := seedLocalSource(t, sqlDB, filepath.Join(t.TempDir(), "repo"))
+	if !acquireSourceOperation(id) {
+		t.Fatal("could not acquire lock")
+	}
+	defer releaseSourceOperation(id)
+
+	handler := gitRemoteSyncHandler(Deps{Queries: queries})
+	req := httptest.NewRequest(http.MethodPost, "/api/collect/git-remote/sync", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409 (body %s)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"code":"SOURCE_BUSY"`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
