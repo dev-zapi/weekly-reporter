@@ -285,7 +285,7 @@ func serveReportQuery(w http.ResponseWriter, ctx context.Context, q *db.Queries,
 	}
 	// 超出 int64 的 JS 整数（Number.isInteger(1e20) 为真）不可能是任何报告的 id：
 	// drizzle 按 REAL 绑定后查不到行，落进同一个 404 分支。
-	if targetValue > math.MaxInt64 {
+	if targetValue >= math.MaxInt64 {
 		respond.Error(w, http.StatusNotFound, "Target report not found", "REPORT_NOT_FOUND")
 		return
 	}
@@ -476,7 +476,8 @@ func positiveIntegerList(value any) (queryIDs []int64, count int) {
 			continue
 		}
 		count++
-		if number <= math.MaxInt64 {
+		// 2^63 本身已超出 int64（float64 精确表示），绑定会溢出，跳过即可。
+		if number < math.MaxInt64 {
 			queryIDs = append(queryIDs, int64(number))
 		}
 	}

@@ -433,6 +433,12 @@ func TestFixturesReportQueryTargetValidation(t *testing.T) {
 	if body["error"] != "Target report not found" || body["code"] != "REPORT_NOT_FOUND" {
 		t.Fatalf("unknown target: body = %#v", body)
 	}
+
+	// Number.isInteger(1e20) 为真但超出 int64：查不到行，同样是 404。
+	rec = h.authed(http.MethodPost, fixturesPath, `{"action":"report-query","marker":"q","targetReportId":1e20}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("huge target: status = %d, want 404 (body %s)", rec.Code, rec.Body.String())
+	}
 	if n := h.countRows(`SELECT COUNT(*) FROM reports`); n != 0 {
 		t.Fatalf("reports = %d, want 0", n)
 	}
@@ -538,6 +544,19 @@ func TestFixturesDeleteInputHandling(t *testing.T) {
 	rec = h.authed(http.MethodDelete, fixturesPath, `{"reportIds":[999999]}`)
 	if got := h.number(h.decode(rec), "deleted"); got != 1 {
 		t.Fatalf("deleted = %d, want 1 for a nonexistent id", got)
+	}
+
+	// 超出 int64 的正整数仍是 Number.isInteger 的成员：计数包含它，但绑定不了
+	// 也就不删任何行（SQLite 拿 REAL 与 integer 列比较同样匹配不到）。
+	rec = h.authed(http.MethodDelete, fixturesPath, `{"reportIds":[1e20]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("huge id: status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if got := h.number(h.decode(rec), "deleted"); got != 1 {
+		t.Fatalf("deleted = %d, want 1 for an out-of-range id", got)
+	}
+	if n := h.countRows(`SELECT COUNT(*) FROM reports`); n != len(reports) {
+		t.Fatalf("reports = %d, want %d after out-of-range delete", n, len(reports))
 	}
 }
 
