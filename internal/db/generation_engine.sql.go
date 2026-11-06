@@ -224,6 +224,40 @@ func (q *Queries) GetLatestQuerySnapshotForToolForGenerationEngine(ctx context.C
 	return id, err
 }
 
+const insertGenerationMessagePartForGenerationEngine = `-- name: InsertGenerationMessagePartForGenerationEngine :one
+INSERT INTO generation_message_parts (session_id, turn_id, sequence, role, part_type, content, data, created_at)
+VALUES (?1, ?2, ?3, ?4,
+        ?5, ?6, CAST(?7 AS TEXT), ?8)
+RETURNING id
+`
+
+type InsertGenerationMessagePartForGenerationEngineParams struct {
+	SessionID int64   `json:"session_id"`
+	TurnID    *int64  `json:"turn_id"`
+	Sequence  int64   `json:"sequence"`
+	Role      string  `json:"role"`
+	PartType  string  `json:"part_type"`
+	Content   *string `json:"content"`
+	Data      *string `json:"data"`
+	CreatedAt int64   `json:"created_at"`
+}
+
+func (q *Queries) InsertGenerationMessagePartForGenerationEngine(ctx context.Context, arg InsertGenerationMessagePartForGenerationEngineParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, insertGenerationMessagePartForGenerationEngine,
+		arg.SessionID,
+		arg.TurnID,
+		arg.Sequence,
+		arg.Role,
+		arg.PartType,
+		arg.Content,
+		arg.Data,
+		arg.CreatedAt,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
 const insertGenerationProposalForGenerationEngine = `-- name: InsertGenerationProposalForGenerationEngine :one
 INSERT INTO generation_proposals
   (session_id, turn_id, content, summary, source_revision, status, public_summary, baseline_content, created_at)
@@ -408,6 +442,24 @@ type UpdateGenerationSessionUpdatedAtForGenerationEngineParams struct {
 
 func (q *Queries) UpdateGenerationSessionUpdatedAtForGenerationEngine(ctx context.Context, arg UpdateGenerationSessionUpdatedAtForGenerationEngineParams) error {
 	_, err := q.db.ExecContext(ctx, updateGenerationSessionUpdatedAtForGenerationEngine, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateGenerationStatusPartForGenerationEngine = `-- name: UpdateGenerationStatusPartForGenerationEngine :exec
+UPDATE generation_message_parts
+SET content = ?, data = CAST(?2 AS TEXT)
+WHERE turn_id = ?3 AND part_type = 'status'
+`
+
+type UpdateGenerationStatusPartForGenerationEngineParams struct {
+	Content *string `json:"content"`
+	Data    string  `json:"data"`
+	TurnID  *int64  `json:"turn_id"`
+}
+
+// finishGenerationTurn rewrites the turn's status part in place.
+func (q *Queries) UpdateGenerationStatusPartForGenerationEngine(ctx context.Context, arg UpdateGenerationStatusPartForGenerationEngineParams) error {
+	_, err := q.db.ExecContext(ctx, updateGenerationStatusPartForGenerationEngine, arg.Content, arg.Data, arg.TurnID)
 	return err
 }
 

@@ -31,8 +31,20 @@ RETURNING *;
 -- name: UpdateGenerationSessionUpdatedAtForGenerationEngine :exec
 UPDATE generation_sessions SET updated_at = ? WHERE id = ?;
 
+-- name: InsertGenerationMessagePartForGenerationEngine :one
+INSERT INTO generation_message_parts (session_id, turn_id, sequence, role, part_type, content, data, created_at)
+VALUES (sqlc.arg('session_id'), sqlc.narg('turn_id'), sqlc.arg('sequence'), sqlc.arg('role'),
+        sqlc.arg('part_type'), sqlc.narg('content'), CAST(sqlc.narg('data') AS TEXT), sqlc.arg('created_at'))
+RETURNING id;
+
 -- name: UpdateGenerationMessagePartContentForGenerationEngine :exec
 UPDATE generation_message_parts SET content = ? WHERE id = ?;
+
+-- finishGenerationTurn rewrites the turn's status part in place.
+-- name: UpdateGenerationStatusPartForGenerationEngine :exec
+UPDATE generation_message_parts
+SET content = ?, data = CAST(sqlc.arg('data') AS TEXT)
+WHERE turn_id = sqlc.arg('turn_id') AND part_type = 'status';
 
 -- name: InsertGenerationProposalForGenerationEngine :one
 INSERT INTO generation_proposals
