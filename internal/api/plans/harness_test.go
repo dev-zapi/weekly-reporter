@@ -52,19 +52,6 @@ func newHarness(t *testing.T) *harness {
 	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn, defaultToken: testPassword}
 }
 
-// newOpenHarness 是关闭认证后的装配：PAT 模式相关的用例自己另建带 token 的请求。
-func newOpenHarness(t *testing.T) *harness {
-	t.Helper()
-
-	sqlDB := dbtest.New(t)
-	conn := db.New(sqlDB)
-	router := api.NewRouter(api.Options{
-		Auth:    auth.Options{Disabled: true},
-		Queries: conn,
-	})
-	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn}
-}
-
 // do 发一个请求。body 为空表示无请求体；token 为空表示不带 Authorization 头。
 func (h *harness) do(method, path, body, token string) *httptest.ResponseRecorder {
 	h.t.Helper()

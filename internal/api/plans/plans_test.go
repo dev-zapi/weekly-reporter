@@ -166,6 +166,19 @@ func TestPlansWeekRejectsInvalidDateFormat(t *testing.T) {
 	}
 }
 
+// DB 故障落进 route.ts 的 catch：500 + {error, code}，不是空列表。
+func TestPlansReportsFetchErrorOnDatabaseFailure(t *testing.T) {
+	h := newHarness(t)
+	h.breakDB()
+
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", ""))
+	if status != http.StatusInternalServerError {
+		t.Fatalf("status = %d", status)
+	}
+	assertField(t, "error", body["error"], "Failed to fetch plans")
+	assertField(t, "code", body["code"], "FETCH_ERROR")
+}
+
 func TestPlansWeekRequiresDateOrWeekPair(t *testing.T) {
 	h := newHarness(t)
 
