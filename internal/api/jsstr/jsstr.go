@@ -4,6 +4,11 @@
 // 为唯一事实源，而 Go 的 len()/TrimSpace 与 JS 的 string.length/trim 在 Unicode
 // 边界上不同（CJK 字节数 ≠ UTF-16 单元数；JS 的 \s 与 unicode.IsSpace 的集合也
 // 不完全相同）。与 internal/api/jsparse 同一思路：只镜像可观测语义，不引入新行为。
+//
+// 消费者早已跨出路由层：B6 起 internal/engine、internal/generation 与
+// internal/reports 也直接消费本包（UTF-16 截断与 trim 语义）。包放在
+// internal/api 下是 B2 时的历史位置；按蓝图 §4 的分层，它是跨域共享的 JS
+// 语义层，计划在 B7/cutover 前机械挪到中立位置。
 package jsstr
 
 import (

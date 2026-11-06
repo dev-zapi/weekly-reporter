@@ -15,6 +15,9 @@
 // `Jan 10 2024` 等写法（其中 date-only 形态按本地时间解释，与严格格式的 UTC
 // 不同）。这些形态都没有出现在任何冻结契约的消费者与 e2e 里，本包统一按
 // Invalid Date 处理，只复刻 route.ts 在正常输入下的可观测分支。
+//
+// 消费者同样跨出路由层：B6 起 internal/engine、internal/generation 与
+// internal/reports 直接消费本包（时间戳与 ISO 串换算）。
 package jsdate
 
 import (
