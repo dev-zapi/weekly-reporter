@@ -185,6 +185,8 @@ func TestB3DomainRoutesAreMounted(t *testing.T) {
 // §2.8）。这里只断言「路由存在 + 200 + 业务对象形状」，不碰文件系统：scan-repos
 // 用白名单外的 /etc（业务错误也是 200 + 内嵌 error），batch-add 用空列表。
 func TestB4AdditiveRoutesAreMounted(t *testing.T) {
+	// 白名单含 $HOME；固定 HOME，确保 /etc 在任何宿主上都落在白名单外。
+	t.Setenv("HOME", "/home/test")
 	queries := db.New(dbtest.New(t))
 	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
 
