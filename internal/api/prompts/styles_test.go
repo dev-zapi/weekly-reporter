@@ -461,3 +461,33 @@ func TestStylesSetDefault(t *testing.T) {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
+
+// DB 故障：ensureSeed 只记录错误（TS 的两个 try/catch），随后的列表查询
+// 落到 route.ts 的 catch → 500 FETCH_ERROR。
+func TestStylesGetReturns500OnDatabaseError(t *testing.T) {
+	h := newHarness(t)
+	h.breakDB()
+
+	rec := h.authed(http.MethodGet, "/api/prompts/styles", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decode[errorResponse](t, rec.Body.Bytes())
+	if resp.Error != "Failed to load styles" || resp.Code != "FETCH_ERROR" {
+		t.Fatalf("body = %+v", resp)
+	}
+}
+
+func TestSystemPromptsGetReturns500OnDatabaseError(t *testing.T) {
+	h := newHarness(t)
+	h.breakDB()
+
+	rec := h.authed(http.MethodGet, "/api/prompts/system", "")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	resp := decode[errorResponse](t, rec.Body.Bytes())
+	if resp.Error != "Failed to load system prompts" || resp.Code != "FETCH_ERROR" {
+		t.Fatalf("body = %+v", resp)
+	}
+}
