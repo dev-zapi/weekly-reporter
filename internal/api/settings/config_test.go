@@ -30,12 +30,12 @@ func TestGetAISettingsConfigured(t *testing.T) {
 	// modelListCache / modelListCachedAt 是 drizzle json/timestamp mode：NULL 在
 	// 响应里是 null，且两个键都必须存在。
 	assertExactJSON(t, rec, map[string]any{
-		"configured":       true,
-		"protocol":         "openai-compatible",
-		"apiUrl":           "https://api.example.com/v1",
-		"apiKeyConfigured": true,
-		"model":            "gpt-4o-mini",
-		"modelListCache":   nil,
+		"configured":        true,
+		"protocol":          "openai-compatible",
+		"apiUrl":            "https://api.example.com/v1",
+		"apiKeyConfigured":  true,
+		"model":             "gpt-4o-mini",
+		"modelListCache":    nil,
 		"modelListCachedAt": nil,
 	})
 }
@@ -74,6 +74,16 @@ func TestGetAISettingsEmptyAPIKeyIsNotConfigured(t *testing.T) {
 func TestGetAISettingsDBFailure(t *testing.T) {
 	h := newHarness(t)
 	h.breakDB()
+
+	rec := h.do(http.MethodGet, "/api/settings/ai", "", testPassword)
+	h.assertError(rec, http.StatusInternalServerError, "Failed to load AI settings", "FETCH_ERROR")
+}
+
+// drizzle 的 json mode 在读取时会 JSON.parse：库里的缓存列不是合法 JSON 时整条
+// 查询抛错，落到 GET 的 catch（500 FETCH_ERROR）。
+func TestGetAISettingsInvalidCachedJSON(t *testing.T) {
+	h := newHarness(t)
+	h.seedAIConfig("openai", "https://api.example.com/v1", "k", "m", strPtr(`{not json`), nil, 1, 2)
 
 	rec := h.do(http.MethodGet, "/api/settings/ai", "", testPassword)
 	h.assertError(rec, http.StatusInternalServerError, "Failed to load AI settings", "FETCH_ERROR")
@@ -211,6 +221,48 @@ func TestPutAISettingsValidation(t *testing.T) {
 		rec := h.do(http.MethodPut, "/api/settings/ai",
 			`{"protocol":7,"apiUrl":"https://api.example.com/v1","apiKey":"k","model":"m"}`, testPassword)
 		h.assertError(rec, http.StatusBadRequest, "Invalid protocol", "INVALID_INPUT")
+	})
+
+	// 0 是 falsy，跳过白名单检查；?? 不会回落到默认值，于是 0 被 better-sqlite3
+	// 绑成 REAL，TEXT affinity 落库成 "0.0"。
+	t.Run("zero protocol keeps its driver value", func(t *testing.T) {
+		h := newHarness(t)
+		rec := h.do(http.MethodPut, "/api/settings/ai",
+			`{"protocol":0,"apiUrl":"https://api.example.com/v1","apiKey":"k","model":"m"}`, testPassword)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+		}
+		body := decodeObject(t, rec)
+		if body["protocol"] != "0.0" {
+			t.Fatalf("protocol = %v, want the driver's \"0.0\"", body["protocol"])
+		}
+		if row := h.aiConfig(); row.Protocol != "0.0" {
+			t.Fatalf("stored protocol = %q", row.Protocol)
+		}
+	})
+
+	// false 也是 falsy，但 better-sqlite3 拒绑布尔 → 外层 catch → 500。
+	t.Run("boolean protocol is unbindable", func(t *testing.T) {
+		h := newHarness(t)
+		rec := h.do(http.MethodPut, "/api/settings/ai",
+			`{"protocol":false,"apiUrl":"https://api.example.com/v1","apiKey":"k","model":"m"}`, testPassword)
+		h.assertError(rec, http.StatusInternalServerError, "Failed to save AI settings", "SAVE_ERROR")
+		if h.aiConfigCount() != 0 {
+			t.Fatal("unbindable protocol must not write a row")
+		}
+	})
+
+	// 空串是 falsy，跳过白名单；?? 只吞 null/undefined，所以存的是空串。
+	t.Run("empty protocol stays empty", func(t *testing.T) {
+		h := newHarness(t)
+		rec := h.do(http.MethodPut, "/api/settings/ai",
+			`{"protocol":"","apiUrl":"https://api.example.com/v1","apiKey":"k","model":"m"}`, testPassword)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+		}
+		if body := decodeObject(t, rec); body["protocol"] != "" {
+			t.Fatalf("protocol = %v, want empty string", body["protocol"])
+		}
 	})
 }
 

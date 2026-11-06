@@ -317,3 +317,46 @@ func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B5 的 settings/ai 配置面必须真的挂在 /api 子路由上：静态段 /settings/ai/models
+// 与 /settings/ai/test 不被末段路由 /settings/ai 吃掉，未配置时的业务错误也都
+// 落到本域的 {error, code} 而不是通配的 "Not Found"。
+func TestB5SettingsRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/settings/ai", "", http.StatusOK, `"configured":false`},
+		{http.MethodGet, "/api/settings/ai/models", "", http.StatusBadRequest, `"code":"AI_NOT_CONFIGURED"`},
+		// anthropic 协议不探测 provider，所以这条挂载断言不发网络请求。
+		{http.MethodPost, "/api/settings/ai/models", `{"protocol":"anthropic","apiUrl":"https://api.anthropic.com","apiKey":"k"}`, http.StatusOK, `"supported":false`},
+		{http.MethodPost, "/api/settings/ai/test", "", http.StatusBadRequest, `"code":"AI_NOT_CONFIGURED"`},
+		{http.MethodDelete, "/api/settings/ai", "", http.StatusOK, `"configured":false`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}

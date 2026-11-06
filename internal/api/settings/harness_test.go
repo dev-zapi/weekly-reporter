@@ -155,16 +155,16 @@ func (h *harness) seedAIConfig(protocol, apiURL, apiKey, model string, cache *st
 
 // aiConfigRow 是直接读库的投影，用来断言写路径（含 model_list_cache 的存储类型）。
 type aiConfigRow struct {
-	ID                int64
-	Protocol          string
-	APIURL            string
-	APIKey            string
-	Model             string
-	CacheType         string
-	Cache             string
-	CacheCachedAt     *int64
-	CreatedAt         int64
-	UpdatedAt         int64
+	ID            int64
+	Protocol      string
+	APIURL        string
+	APIKey        string
+	Model         string
+	CacheType     string
+	Cache         string
+	CacheCachedAt *int64
+	CreatedAt     int64
+	UpdatedAt     int64
 }
 
 func (h *harness) aiConfig() *aiConfigRow {

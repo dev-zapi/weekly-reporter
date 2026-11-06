@@ -166,6 +166,25 @@ func TestConnectionTestTransportError(t *testing.T) {
 	}
 }
 
+// 存量 apiUrl 不是绝对 URL 时 fetch 直接抛（Node: "Failed to parse URL from ..."），
+// 同样落进 {ok:false, error}；此时不会发出任何出站请求。
+func TestConnectionTestRelativeURLIsNotFetched(t *testing.T) {
+	h := newHarness(t)
+	h.seedAIConfig("openai-compatible", "not-a-url", "k", "m", nil, nil, 1, 2)
+
+	rec := h.do(http.MethodPost, "/api/settings/ai/test", "", testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	assertExactJSON(t, rec, map[string]any{
+		"ok":    false,
+		"error": "Failed to parse URL from not-a-url/chat/completions",
+	})
+	if reqs := h.providerRequests(); len(reqs) != 0 {
+		t.Fatalf("no request should leave the process: %+v", reqs)
+	}
+}
+
 func TestConnectionTestDBFailure(t *testing.T) {
 	h := newHarness(t)
 	h.breakDB()

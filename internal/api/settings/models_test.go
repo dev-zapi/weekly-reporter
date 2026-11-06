@@ -307,3 +307,41 @@ func TestPostModelsMalformedBody(t *testing.T) {
 		t.Fatalf("error = %v, want a message", body["error"])
 	}
 }
+
+// 探测成功但写缓存前读库失败 → 落到 POST 的 catch（200 + error）。
+func TestPostModelsCacheWriteFailure(t *testing.T) {
+	h := newHarness(t)
+	h.setProvider(providerModels("a"))
+	apiURL := h.provider.URL
+	// 先正常配置一行，再打断连接：fetchModelList 成功之后才读库。
+	h.seedAIConfig("openai-compatible", apiURL, "k", "m", nil, nil, 1, 2)
+	h.breakDB()
+
+	rec := h.do(http.MethodPost, "/api/settings/ai/models",
+		`{"protocol":"openai-compatible","apiUrl":`+mustJSON(t, apiURL)+`,"apiKey":"k"}`, testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	body := decodeObject(t, rec)
+	if body["supported"] != true {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if models, ok := body["models"].([]any); !ok || len(models) != 0 {
+		t.Fatalf("models = %v, want []", body["models"])
+	}
+	if msg, _ := body["error"].(string); msg == "" {
+		t.Fatalf("error = %v, want the cache-write failure", body["error"])
+	}
+}
+
+// GET 的 catch 里那次重读配置同样失败时，route.ts 没有第二层 try，异常越过
+// handler（Next 的默认 500）。这里只钉状态码——body 不在本路由的冻结契约里。
+func TestGetModelsDBFailureIs500(t *testing.T) {
+	h := newHarness(t)
+	h.breakDB()
+
+	rec := h.do(http.MethodGet, "/api/settings/ai/models", "", testPassword)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
+	}
+}
