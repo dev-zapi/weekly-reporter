@@ -31,12 +31,14 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 
+	// 导出不读库，但路由装配需要一份查询集：给同一个库实例，避免多余的临时库。
+	conn := db.New(dbtest.New(t))
 	router := api.NewRouter(api.Options{
 		Auth: auth.Options{
 			PasswordPath: passwordPath,
-			Store:        auth.QueriesStore{Queries: db.New(dbtest.New(t))},
+			Store:        auth.QueriesStore{Queries: conn},
 		},
-		Queries: db.New(dbtest.New(t)),
+		Queries: conn,
 	})
 
 	return &harness{t: t, router: router}
