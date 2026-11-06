@@ -425,3 +425,23 @@ func TestArchiveGenerationSessionInvalidIDMessage(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+// 创建会话的请求体不是合法 JSON 时是 500 GENERATION_SESSION_ERROR。
+func TestCreateGenerationSessionMalformedBody(t *testing.T) {
+	h := newHarness(t)
+	reportID, _ := seedSessionFixture(t, h)
+
+	rec := h.do(http.MethodPost, "/api/reports/"+itoa(reportID)+"/generation-sessions", "not-json")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
+	}
+	if !contains(rec.Body.String(), `"code":"GENERATION_SESSION_ERROR"`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+
+	// null body 在 route.ts 里是 TypeError → 同一个 500 分支。
+	rec = h.do(http.MethodPost, "/api/reports/"+itoa(reportID)+"/generation-sessions", "null")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("null body: status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
+	}
+}

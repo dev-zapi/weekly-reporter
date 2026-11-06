@@ -49,8 +49,11 @@ type DraftEvent struct {
 	EventTime int64
 	Source    string
 	Content   string
-	// SourceID 是 metadata.sourceId；nil 对应 TS 的 `metadata?.sourceId == null`。
-	SourceID *int64
+	// SourceID 是 metadata.sourceId；SourceIDPresent 区分「键不存在 / 值是 null」
+	// 与「键在但不是数字」——TS 里前者归手动组（`sourceId == null`），后者是
+	// `sourceId != null` 但 Map.get 不命中，归其他组。
+	SourceID        *int64
+	SourceIDPresent bool
 	// Repo 是 metadata.repo（空串表示没有）。
 	Repo string
 	// Snapshot=true 表示这一行来自 report_event_snapshots：分类字段直接可信。
@@ -71,7 +74,7 @@ func IsGitEvent(event DraftEvent) bool {
 // snapshotOriginGroup 复刻 getSnapshotOriginGroup：快照行按已存的 projectScope
 // 判组，没有 sourceId 的算手动。
 func snapshotOriginGroup(event DraftEvent) template.OriginGroup {
-	if event.SourceID == nil {
+	if !event.SourceIDPresent {
 		return template.GroupManual
 	}
 	if event.ProjectScope != nil {
@@ -97,13 +100,13 @@ func toDraftEvents(events []DraftEvent, sourceScopes map[int64]template.ProjectS
 		draft := event
 		if !event.Snapshot {
 			var scope *template.ProjectScope
-			if event.SourceID != nil {
+			if event.SourceIDPresent && event.SourceID != nil {
 				if value, ok := sourceScopes[*event.SourceID]; ok {
 					scope = &value
 				}
 			}
 			draft.ProjectScope = scope
-			draft.LeadershipIncluded = event.SourceID == nil || (scope != nil && *scope == template.ScopeWork)
+			draft.LeadershipIncluded = !event.SourceIDPresent || (scope != nil && *scope == template.ScopeWork)
 			draft.PersonalIncluded = true
 		}
 		drafts = append(drafts, draft)
@@ -233,6 +236,12 @@ func stableSortByEventTimeDesc(group []DraftEvent) {
 	}
 }
 
+// SourceFacts 是 metadata.sourceId 的两个事实：值（可能为 nil）与是否非 null。
+type SourceFacts struct {
+	ID      *int64
+	Present bool
+}
+
 // Classification 是 classifyEventForVariants 的结果。
 type Classification struct {
 	OriginGroup        template.OriginGroup
@@ -243,8 +252,14 @@ type Classification struct {
 
 // ClassifyEventForVariants 复刻 classifyEventForVariants：创建报告时把每个原始
 // 事件的分类结果固化进 report_event_snapshots。
-func ClassifyEventForVariants(sourceID *int64, sourceScopes map[int64]template.ProjectScope) Classification {
-	group := template.GetOriginGroup(sourceID, sourceScopes)
+func ClassifyEventForVariants(source SourceFacts, sourceScopes map[int64]template.ProjectScope) Classification {
+	group := template.GroupManual
+	if source.Present {
+		group = template.GroupOther
+		if source.ID != nil {
+			group = template.GetOriginGroup(source.ID, sourceScopes)
+		}
+	}
 	var scope *template.ProjectScope
 	if group == template.GroupWork || group == template.GroupPersonal {
 		value := template.ProjectScope(group)
@@ -285,6 +300,7 @@ func SnapshotToDraftEvents(snapshots []SnapshotDraftEvent) []DraftEvent {
 			Source:             snapshot.Source,
 			Content:            snapshot.Content,
 			Snapshot:           true,
+			SourceIDPresent:    true,
 			ProjectScope:       snapshot.ProjectScope,
 			LeadershipIncluded: snapshot.LeadershipIncluded,
 			PersonalIncluded:   snapshot.PersonalIncluded,

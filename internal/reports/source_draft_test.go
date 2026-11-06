@@ -12,12 +12,13 @@ import (
 
 func draftEvent(id int64, eventTime int64, source, content string, sourceID *int64, repo string) reports.DraftEvent {
 	return reports.DraftEvent{
-		ID:        &id,
-		EventTime: eventTime,
-		Source:    source,
-		Content:   content,
-		SourceID:  sourceID,
-		Repo:      repo,
+		ID:              &id,
+		EventTime:       eventTime,
+		Source:          source,
+		Content:         content,
+		SourceID:        sourceID,
+		SourceIDPresent: sourceID != nil,
+		Repo:            repo,
 	}
 }
 
@@ -97,25 +98,32 @@ func TestIsEmptySourceDraft(t *testing.T) {
 func TestClassifyEventForVariants(t *testing.T) {
 	scopes := map[int64]template.ProjectScope{1: template.ScopeWork, 2: template.ScopePersonal}
 
-	manual := reports.ClassifyEventForVariants(nil, scopes)
+	manual := reports.ClassifyEventForVariants(reports.SourceFacts{}, scopes)
 	if manual.OriginGroup != template.GroupManual || manual.ProjectScope != nil || !manual.LeadershipIncluded || !manual.PersonalIncluded {
 		t.Fatalf("manual = %+v", manual)
 	}
 
-	work := reports.ClassifyEventForVariants(ptr(1), scopes)
+	work := reports.ClassifyEventForVariants(reports.SourceFacts{ID: ptr(1), Present: true}, scopes)
 	if *work.ProjectScope != template.ScopeWork || !work.LeadershipIncluded {
 		t.Fatalf("work = %+v", work)
 	}
 
-	personal := reports.ClassifyEventForVariants(ptr(2), scopes)
+	personal := reports.ClassifyEventForVariants(reports.SourceFacts{ID: ptr(2), Present: true}, scopes)
 	if *personal.ProjectScope != template.ScopePersonal || personal.LeadershipIncluded {
 		t.Fatalf("personal = %+v", personal)
 	}
 
 	// 未命中的 sourceId 归 other：没有项目范围，也不进领导版。
-	other := reports.ClassifyEventForVariants(ptr(9), scopes)
+	other := reports.ClassifyEventForVariants(reports.SourceFacts{ID: ptr(9), Present: true}, scopes)
 	if other.OriginGroup != template.GroupOther || other.ProjectScope != nil || other.LeadershipIncluded {
 		t.Fatalf("other = %+v", other)
+	}
+
+	// sourceId 键存在但不是数字（例如字符串）：TS 里 `sourceId != null` 成立，
+	// Map.get 不命中 -> other，且不进领导版。
+	nonNumeric := reports.ClassifyEventForVariants(reports.SourceFacts{Present: true}, scopes)
+	if nonNumeric.OriginGroup != template.GroupOther || nonNumeric.LeadershipIncluded {
+		t.Fatalf("non-numeric = %+v", nonNumeric)
 	}
 }
 

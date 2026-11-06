@@ -175,29 +175,32 @@ func metadataPointer(raw []byte) *string {
 // TS 侧是 `event.metadata?.sourceId` / `event.metadata?.repo`：非对象、缺键、
 // 类型不对都得到 undefined（等价 nil/空串）。数字兼容 JSON 的 float64 与
 // int64 两种解码结果。
-func eventMetadataFacts(raw []byte) (*int64, string) {
+func eventMetadataFacts(raw []byte) (*int64, bool, string) {
 	metadata := decodeMetadataObject(raw)
 	if metadata == nil {
-		return nil, ""
+		return nil, false, ""
 	}
+	value, present := metadata["sourceId"]
 	var sourceID *int64
-	switch value := metadata["sourceId"].(type) {
-	case float64:
-		if id, ok := int64FromFloat(value); ok {
+	if present && value != nil {
+		switch typed := value.(type) {
+		case float64:
+			if id, ok := int64FromFloat(typed); ok {
+				sourceID = &id
+			}
+		case int64:
+			id := typed
 			sourceID = &id
 		}
-	case int64:
-		id := value
-		sourceID = &id
 	}
 	repo, _ := metadata["repo"].(string)
-	return sourceID, repo
+	return sourceID, present && value != nil, repo
 }
 
-// metadataSourceID 只取 sourceId（classifyEventForVariants 的输入）。
-func metadataSourceID(raw []byte) *int64 {
-	sourceID, _ := eventMetadataFacts(raw)
-	return sourceID
+// metadataSourceFacts 只取 sourceId（classifyEventForVariants 的输入）。
+func metadataSourceFacts(raw []byte) SourceFacts {
+	sourceID, present, _ := eventMetadataFacts(raw)
+	return SourceFacts{ID: sourceID, Present: present}
 }
 
 func decodeMetadataObject(raw []byte) map[string]any {

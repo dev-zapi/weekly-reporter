@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -180,18 +181,27 @@ func parseJSIntDouble(raw string) float64 {
 		index++
 	}
 
-	value := 0.0
-	digits := 0
+	start := index
 	for index < len(raw) && raw[index] >= '0' && raw[index] <= '9' {
-		value = value*10 + float64(raw[index]-'0')
-		digits++
 		index++
 	}
-	if digits == 0 {
+	if index == start {
 		return math.NaN()
 	}
+
+	// parseInt 的规范是先求和再一次性舍入成 double，所以这里把数字前缀交给
+	// ParseFloat（同样一次正确舍入），而不是逐位 float 累加。超长数字串得到
+	// ±Infinity，与 JS 一致。
+	digits := raw[start:index]
 	if negative {
-		return -value
+		digits = "-" + digits
+	}
+	value, err := strconv.ParseFloat(digits, 64)
+	if err != nil {
+		// 只有 ErrRange（溢出成 ±Inf）会走到这里，ParseFloat 仍返回该值。
+		if !math.IsInf(value, 0) {
+			return math.NaN()
+		}
 	}
 	return value
 }

@@ -417,3 +417,20 @@ func (h *harness) seedProposal(sessionID int64, status string, sourceRevision in
 	}
 	return id
 }
+
+// 请求体不是合法 JSON / 是 null 时，route.ts 的 catch 都是 500 SAVE_FINAL_ERROR
+// 且带 details（诊断字段）。
+func TestSaveFinalMalformedBody(t *testing.T) {
+	h := newHarness(t)
+	reportID, _ := seedFinalFixture(t, h)
+
+	for _, body := range []string{"not-json", "null"} {
+		rec := h.do(http.MethodPut, "/api/reports/"+itoa(reportID)+"/final", body)
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("body %q: status = %d, want 500 (body %s)", body, rec.Code, rec.Body.String())
+		}
+		if !contains(rec.Body.String(), `"code":"SAVE_FINAL_ERROR"`) || !contains(rec.Body.String(), `"details":`) {
+			t.Fatalf("body %q: response = %s", body, rec.Body.String())
+		}
+	}
+}

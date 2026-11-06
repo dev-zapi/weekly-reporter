@@ -165,14 +165,15 @@ func draftEventsFromRows(rows []db.ListRawEventsBetweenForReportRoutesRow) []Dra
 	events := make([]DraftEvent, 0, len(rows))
 	for _, row := range rows {
 		id := row.ID
-		sourceID, repo := eventMetadataFacts(row.Metadata)
+		sourceID, sourceIDPresent, repo := eventMetadataFacts(row.Metadata)
 		events = append(events, DraftEvent{
-			ID:        &id,
-			EventTime: row.EventTime,
-			Source:    row.Source,
-			Content:   row.Content,
-			SourceID:  sourceID,
-			Repo:      repo,
+			ID:              &id,
+			EventTime:       row.EventTime,
+			Source:          row.Source,
+			Content:         row.Content,
+			SourceID:        sourceID,
+			SourceIDPresent: sourceIDPresent,
+			Repo:            repo,
 		})
 	}
 	return events
@@ -262,7 +263,7 @@ func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, inpu
 		}
 
 		for _, event := range events {
-			classification := ClassifyEventForVariants(metadataSourceID(event.Metadata), scopes)
+			classification := ClassifyEventForVariants(metadataSourceFacts(event.Metadata), scopes)
 			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
 				ReportID:           report.ID,
 				RawEventID:         &event.ID,
@@ -406,7 +407,7 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 		nextRevision++
 
 		for _, event := range events {
-			classification := ClassifyEventForVariants(metadataSourceID(event.Metadata), scopes)
+			classification := ClassifyEventForVariants(metadataSourceFacts(event.Metadata), scopes)
 			if err := tx.InsertReportSnapshotForReportRoutes(ctx, db.InsertReportSnapshotForReportRoutesParams{
 				ReportID:           reportID,
 				RawEventID:         &event.ID,
