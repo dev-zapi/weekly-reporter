@@ -14,6 +14,7 @@ import (
 	heatmapapi "github.com/dev-zapi/weekly-reporter/internal/api/events/heatmap"
 	referencesapi "github.com/dev-zapi/weekly-reporter/internal/api/events/references"
 	exportapi "github.com/dev-zapi/weekly-reporter/internal/api/export"
+	plansapi "github.com/dev-zapi/weekly-reporter/internal/api/plans"
 	snippetsapi "github.com/dev-zapi/weekly-reporter/internal/api/snippets"
 	tagsapi "github.com/dev-zapi/weekly-reporter/internal/api/tags"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
@@ -55,6 +56,9 @@ func NewRouter(opts Options) http.Handler {
 		exportapi.Mount(r, exportapi.Deps{})
 		heatmapapi.Mount(r, heatmapapi.Deps{Queries: opts.Queries})
 		referencesapi.Mount(r, referencesapi.Deps{Queries: opts.Queries})
+		// B3 的计划域：/plans 与 /plan-items 的 CRUD、评论、顺延与兑现。同样扁平注册，
+		// {id} 与更长的子路由按段数共存。
+		plansapi.Mount(r, plansapi.Deps{Queries: opts.Queries})
 		// 未注册的 /api 路径也要过鉴权：Next 的 proxy matcher 是 '/api/:path*'，
 		// 任何 /api 请求都会被早拒。chi 的子路由只有注册过路由才会构建中间件链
 		// （没有路由时 mux.handler 为 nil，直接走 NotFound、绕过 Use），所以这里

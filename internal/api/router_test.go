@@ -139,6 +139,48 @@ func TestB2DomainRoutesAreMounted(t *testing.T) {
 	}
 }
 
+// B3 的计划域路由必须真的挂在 /api 子路由上，且子路由不被 /plan-items/{id} 遮蔽。
+func TestB3DomainRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/plans?scope=week", "", http.StatusBadRequest, `"error":"For week scope`},
+		{http.MethodGet, "/api/plan-items/999", "", http.StatusNotFound, `"error":"Plan item not found"`},
+		{http.MethodGet, "/api/plan-items/999/comments", "", http.StatusNotFound, `"error":"Plan item not found"`},
+		{http.MethodGet, "/api/plan-items/999/fulfillment", "", http.StatusNotFound, `"error":"Plan item not found"`},
+		{http.MethodPost, "/api/plan-items/999/defer", "", http.StatusNotFound, `"error":"Plan item not found"`},
+		{http.MethodDelete, "/api/plan-items/1/comments/2", "", http.StatusNotFound, `"error":"Plan item not found"`},
+		{http.MethodPost, "/api/plan-items", `{"text":"x"}`, http.StatusBadRequest, `"error":"Either periodPlanId or scope is required"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
 // 通配兜底本身保持 B0 形状：未注册的 /api 路径仍然回 {error:"Not Found"}。
 func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 	queries := db.New(dbtest.New(t))

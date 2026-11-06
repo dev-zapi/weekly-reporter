@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -235,36 +236,5 @@ func truthyJSON(v any) bool {
 	return false
 }
 
-// parseIntBase10 复刻 JS `parseInt(value, 10)`：跳过前导空白、可选正负号、
-// 连续十进制数字；没有数字返回 NaN（ok=false）。与 jsparse.ParseInt 的差别是
-// radix 固定 10，所以 "0x10" 解析为 0（'0' 后遇到 'x' 停）。
-func parseIntBase10(value string) (int64, bool) {
-	i := 0
-	for i < len(value) && jsstr.IsSpace(rune(value[i])) {
-		i++
-	}
-	negative := false
-	if i < len(value) && (value[i] == '+' || value[i] == '-') {
-		negative = value[i] == '-'
-		i++
-	}
-	var n int64
-	digits := 0
-	for i < len(value) && value[i] >= '0' && value[i] <= '9' {
-		d := int64(value[i] - '0')
-		if n > (1<<63-1-d)/10 {
-			n = 1<<63 - 1
-		} else {
-			n = n*10 + d
-		}
-		digits++
-		i++
-	}
-	if digits == 0 {
-		return 0, false
-	}
-	if negative {
-		return -n, true
-	}
-	return n, true
-}
+// parseIntBase10 复刻 JS `parseInt(value, 10)`：语义唯一实现见 jsparse.ParseInt10。
+func parseIntBase10(value string) (int64, bool) { return jsparse.ParseInt10(value) }
