@@ -1,4 +1,4 @@
-package export
+package export_test
 
 import (
 	"encoding/json"

@@ -1,4 +1,4 @@
-package tags
+package tags_test
 
 import (
 	"encoding/json"

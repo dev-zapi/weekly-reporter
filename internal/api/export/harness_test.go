@@ -1,4 +1,4 @@
-package export
+package export_test
 
 import (
 	"net/http"
@@ -8,15 +8,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/dev-zapi/weekly-reporter/internal/api"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
-	"github.com/dev-zapi/weekly-reporter/internal/trace"
+	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/db/dbtest"
 )
 
 // testPassword 与 B1 夹具同角色：密码请求 = 浏览器登录成功，且不写审计行。
 const testPassword = "correct-password"
 
+// harness 装配生产的完整路由（api.NewRouter），本域不读库但需要真实中间件链。
 type harness struct {
 	t      *testing.T
 	router http.Handler
@@ -30,17 +31,15 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 
-	r := chi.NewRouter()
-	r.Use(trace.Middleware)
-	r.Route("/api", func(r chi.Router) {
-		r.Use(auth.Middleware(auth.Options{
+	router := api.NewRouter(api.Options{
+		Auth: auth.Options{
 			PasswordPath: passwordPath,
-			Store:        auth.QueriesStore{},
-		}))
-		Mount(r, Deps{})
+			Store:        auth.QueriesStore{Queries: db.New(dbtest.New(t))},
+		},
+		Queries: db.New(dbtest.New(t)),
 	})
 
-	return &harness{t: t, router: r}
+	return &harness{t: t, router: router}
 }
 
 func (h *harness) do(body, token string) *httptest.ResponseRecorder {

@@ -1,4 +1,4 @@
-package snippets
+package snippets_test
 
 import (
 	"encoding/json"

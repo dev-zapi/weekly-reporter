@@ -1,4 +1,4 @@
-package events
+package events_test
 
 import (
 	"encoding/json"
@@ -22,14 +22,14 @@ func TestGetEventReturnsRowWithTags(t *testing.T) {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
-		eventJSON
+		eventsBodyJSON
 		Tags []string `json:"tags"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if got.ID != id || got.Content != "完成评审 #成果" {
-		t.Fatalf("event = %+v", got.eventJSON)
+		t.Fatalf("event = %+v", got.eventsBodyJSON)
 	}
 	if len(got.Tags) != 1 || got.Tags[0] != "成果" {
 		t.Fatalf("tags = %v", got.Tags)
@@ -93,7 +93,7 @@ func TestPutEventUpdatesContentAndSyncsTags(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var updated eventJSON
+	var updated eventsBodyJSON
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestPutEventUpdatesTimeWithoutSyncingTags(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var updated eventJSON
+	var updated eventsBodyJSON
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
@@ -263,7 +263,7 @@ func TestPutEventEmptyBodyBranches(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("array body status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
-	var updated eventJSON
+	var updated eventsBodyJSON
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestPutEventAcceptsBooleanFalseIsImportant(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var updated eventJSON
+	var updated eventsBodyJSON
 	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
 		t.Fatal(err)
 	}

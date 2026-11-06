@@ -1,4 +1,4 @@
-package events
+package events_test
 
 import (
 	"database/sql"
@@ -12,12 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/dev-zapi/weekly-reporter/internal/api"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	"github.com/dev-zapi/weekly-reporter/internal/db/dbtest"
-	"github.com/dev-zapi/weekly-reporter/internal/trace"
 )
 
 // testPassword 与 B1 夹具同角色：密码请求 = 浏览器登录成功，且不写审计行。
@@ -41,17 +39,15 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 
-	r := chi.NewRouter()
-	r.Use(trace.Middleware)
-	r.Route("/api", func(r chi.Router) {
-		r.Use(auth.Middleware(auth.Options{
+	router := api.NewRouter(api.Options{
+		Auth: auth.Options{
 			PasswordPath: passwordPath,
 			Store:        auth.QueriesStore{Queries: conn},
-		}))
-		Mount(r, Deps{Queries: conn})
+		},
+		Queries: conn,
 	})
 
-	return &harness{t: t, router: r, sqlDB: sqlDB, conn: conn}
+	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn}
 }
 
 func (h *harness) do(method, path, body, token string) *httptest.ResponseRecorder {

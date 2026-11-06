@@ -1,4 +1,4 @@
-package tags
+package tags_test
 
 import (
 	"database/sql"
@@ -9,20 +9,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-
+	"github.com/dev-zapi/weekly-reporter/internal/api"
 	"github.com/dev-zapi/weekly-reporter/internal/auth"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	"github.com/dev-zapi/weekly-reporter/internal/db/dbtest"
-	"github.com/dev-zapi/weekly-reporter/internal/trace"
 )
 
 // testPassword 与 B1 夹具同角色：一个密码请求 = 浏览器登录成功，且不写审计行，
 // 所以测试里数行数时不会把认证本身算进去。
 const testPassword = "correct-password"
 
-// harness 装配真实 SQLite（schema.sql 全量）+ 真实 auth 中间件 + 本域路由，
-// 断言跑在生产的中间件链上（ADR-0029 的「同用例集」要求）。
+// harness 装配生产的完整路由（api.NewRouter）：真实 SQLite（schema.sql 全量）+
+// 真实中间件链 + 本域路由。用装配后的路由而不是自建子树，挂载本身也是断言的一部分。
 type harness struct {
 	t      *testing.T
 	router http.Handler
@@ -41,17 +39,15 @@ func newHarness(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 
-	r := chi.NewRouter()
-	r.Use(trace.Middleware)
-	r.Route("/api", func(r chi.Router) {
-		r.Use(auth.Middleware(auth.Options{
+	router := api.NewRouter(api.Options{
+		Auth: auth.Options{
 			PasswordPath: passwordPath,
 			Store:        auth.QueriesStore{Queries: conn},
-		}))
-		Mount(r, Deps{Queries: conn})
+		},
+		Queries: conn,
 	})
 
-	return &harness{t: t, router: r, sqlDB: sqlDB, conn: conn}
+	return &harness{t: t, router: router, sqlDB: sqlDB, conn: conn}
 }
 
 // do 发一个请求。body 为空表示无请求体；token 为空表示不带 Authorization 头。
