@@ -366,3 +366,64 @@ func TestCreateReportCountsTitleInUTF16Units(t *testing.T) {
 		t.Fatalf("status = %d, want 400 too_big (body %s)", rec.Code, rec.Body.String())
 	}
 }
+
+// zod details 逐字节对照：期望值由 src/lib/validations.ts 的 createReportSchema
+// 直接跑出来（JSON.stringify(error) → {name, message}），包括 issue 顺序、键集与
+// 2 空格缩进。
+func TestCreateReportZodDetailsMatchTypeScript(t *testing.T) {
+	h := newHarness(t)
+
+	cases := []struct {
+		body     string
+		expected string
+	}{
+		{
+			body:     `{}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
+		},
+		{
+			body:     `{"weekStart":1,"weekEnd":"x"}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}$/\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Date must use YYYY-MM-DD format\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
+		},
+		{
+			body:     `{"weekStart":"2026-8-1","weekEnd":"2026-08-02"}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}$/\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Date must use YYYY-MM-DD format\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
+		},
+		{
+			body:     `{"weekStart":"2026-08-17","weekEnd":"2026-08-10","title":"t"}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"code\": \"custom\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Start date cannot be later than end date\"\n  }\n]"}`,
+		},
+		{
+			body:     `[]`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received array\"\n  }\n]"}`,
+		},
+		{
+			body:     `null`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received null\"\n  }\n]"}`,
+		},
+		{
+			body:     `"x"`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received string\"\n  }\n]"}`,
+		},
+		{
+			body:     `true`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"object\",\n    \"code\": \"invalid_type\",\n    \"path\": [],\n    \"message\": \"Invalid input: expected object, received boolean\"\n  }\n]"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		rec := h.do(http.MethodPost, "/api/reports", tc.body)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: status = %d, want 400", tc.body, rec.Code)
+		}
+		var envelope struct {
+			Details json.RawMessage `json:"details"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+			t.Fatalf("body %s: decode: %v", tc.body, err)
+		}
+		if string(envelope.Details) != tc.expected {
+			t.Fatalf("body %s:\n got %s\nwant %s", tc.body, envelope.Details, tc.expected)
+		}
+	}
+}
