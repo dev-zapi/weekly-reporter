@@ -218,16 +218,17 @@ func branchesHandler(deps Deps) http.HandlerFunc {
 		baseURL := query.Get("baseUrl")
 		sourceID, sourceIDInteger := numberFromQuery(query.Get("sourceId"))
 
-		if sourceIDInteger && sourceID > 0 && token == "" {
+		// route.ts 只要 sourceId 有效就查一次库（无论表单是否已带 token）；读库
+		// 失败/配置损坏都会落进 catch → {branches: []}。
+		if sourceIDInteger && sourceID > 0 {
 			record, found, err := lookupSource(r, deps, sourceID)
 			if err != nil {
-				// route.ts 的 findFirst 在 catch 里：读库失败时整条路由回 {branches: []}。
 				respond.JSON(w, http.StatusOK, struct {
 					Branches []string `json:"branches"`
 				}{Branches: []string{}})
 				return
 			}
-			if found {
+			if found && token == "" {
 				if storedToken, ok := storedConfigToken(record.Config); ok {
 					token = storedToken
 				}
