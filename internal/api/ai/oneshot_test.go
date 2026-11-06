@@ -112,6 +112,31 @@ func TestExpandSectionReturnsEmptyArrayWhenNoItems(t *testing.T) {
 	}
 }
 
+// existingItems / events 经 Array.join → String() 拼进提示词：指数区间的数字
+// 必须是 JS 的 "1e-7" 形态（Go 的 strconv 'e' 会给 "1e-07"）。
+func TestExpandSectionRendersNumbersLikeJavaScript(t *testing.T) {
+	h := setupPolish(t)
+	h.mock.setText(`{"newItems":[]}`)
+
+	rec := h.do("/api/ai/expand-section",
+		`{"sectionTitle":"成果","existingItems":[1e-7],"events":[1.5e-8]}`, testPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+
+	prompt, _ := h.mock.lastRequest().Body["input"].([]any)
+	raw := h.mock.lastRequest().Raw
+	if prompt == nil {
+		t.Fatalf("request body missing input: %s", raw)
+	}
+	if !strings.Contains(raw, "1e-7") || !strings.Contains(raw, "1.5e-8") {
+		t.Fatalf("prompt must carry JS number formatting: %s", raw)
+	}
+	if strings.Contains(raw, "1e-07") || strings.Contains(raw, "1.5e-08") {
+		t.Fatalf("prompt carries Go number formatting: %s", raw)
+	}
+}
+
 // expand-section 的选择顺序是 templateId → styleOverride（与 polish-event 相反）。
 func TestExpandSectionPrefersTemplateOverStyleOverride(t *testing.T) {
 	h := setupPolish(t)

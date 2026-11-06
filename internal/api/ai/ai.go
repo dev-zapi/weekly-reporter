@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsnum"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
@@ -110,7 +111,7 @@ func expandSectionHandler(deps Deps) http.HandlerFunc {
 		}{
 			ExpandedItems: expandedItems,
 			AddedCount:    addedCount,
-			Message:       "Added " + jsNumberToString(float64(addedCount)) + " new items",
+			Message:       "Added " + jsnum.FormatNumber(float64(addedCount)) + " new items",
 		})
 	}
 }
@@ -191,7 +192,7 @@ func unifyStyleHandler(deps Deps) http.HandlerFunc {
 		}{
 			UnifiedContent: unifiedContent,
 			ChangesCount:   changesCount,
-			Message:        "Style unified with " + jsNumberToString(changesCount) + " changes",
+			Message:        "Style unified with " + jsnum.FormatNumber(changesCount) + " changes",
 		})
 	}
 }

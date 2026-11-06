@@ -1,4 +1,4 @@
-package prompts
+package jsnum
 
 import (
 	"math"
@@ -27,9 +27,11 @@ func TestFormatNumberMatchesJS(t *testing.T) {
 		{0.000001, "0.000001"},
 		{0.0000001, "1e-7"},
 		{1.5e-7, "1.5e-7"},
+		{1.5e-8, "1.5e-8"},
 		{1e21, "1e+21"},
 		{-1, "-1"},
 		{-0.3, "-0.3"},
+		{-1e-7, "-1e-7"},
 		{math.NaN(), "NaN"},
 		{math.Inf(1), "Infinity"},
 		{math.Inf(-1), "-Infinity"},
@@ -65,6 +67,12 @@ func TestParseFloatMatchesJS(t *testing.T) {
 		{"  ", 0, false},
 		{"0x10", 0, true}, // parseFloat 只消费开头的 "0"
 		{"-.5", -0.5, true},
+		{"+0.5", 0.5, true},
+		{"1e2", 100, true},
+		{"1e+2", 100, true},
+		{"0.25e-1", 0.025, true},
+		{"inf", 0, false},
+		{"NaN", 0, false},
 	}
 	for _, tc := range cases {
 		got, ok := ParseFloat(tc.input)

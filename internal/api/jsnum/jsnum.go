@@ -1,4 +1,16 @@
-package prompts
+// Package jsnum 复刻冻结合同里依赖的两个 JavaScript 数值语义：
+//
+//   - `String(number)`（ECMAScript 的 Number::toString，radix 10）；
+//   - `parseFloat(string)`。
+//
+// 两者都不是简单套 strconv 能对等的：`String(number)` 的输出是 ECMAScript 的
+// Number::toString（1e-7 而不是 Go 的 1e-07，0.00001 而不是 1e-05），
+// `parseFloat` 只吃数字前缀（"0.3abc" → 0.3），与 `Number()` 的整串文法不同。
+//
+// 与 internal/api/jsstr、jsdate、jsjson、jsparse 同一思路：跨域共用的 JS 语义只
+// 有一份实现。B5 的 prompts 域（写读 ai_styles.temperature 列）与 ai 域（拼接
+// expand-section 的提示词、unify-style 的 message 文案）都消费这里的语义。
+package jsnum
 
 import (
 	"math"
@@ -7,14 +19,6 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 )
-
-// 本文件是 prompts 域用到的两个 JavaScript 数值语义：
-//   - `String(number)`：写入 temperature 列（列是 TEXT，TS 侧用 String(0.3)）；
-//   - `parseFloat(string)`：读出 temperature 列时生成 config.temperature。
-//
-// 两者都不是简单套 strconv 能对等的：`String(number)` 的输出是 ECMAScript 的
-// Number::toString（1e-7 而不是 Go 的 1e-07，0.00001 而不是 1e-05），
-// `parseFloat` 只吃数字前缀（"0.3abc" → 0.3），与 `Number()` 的整串文法不同。
 
 // FormatNumber 复刻 ECMAScript 的 Number::toString（radix 10）。
 func FormatNumber(value float64) string {
@@ -80,6 +84,7 @@ func ParseFloat(value string) (float64, bool) {
 	}
 	number, err := strconv.ParseFloat(p, 64)
 	if err != nil {
+		// 溢出（"1e999"）在 JS 里是 Infinity，strconv 仍返回该值。
 		if strings.Contains(err.Error(), "range") {
 			return number, true
 		}

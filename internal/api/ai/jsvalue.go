@@ -4,10 +4,13 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsnum"
 )
 
 // 本文件是三条 one-shot 路由共用的 JS 值语义辅助，只镜像 route.ts / src/lib/ai
-// 实际用到的可观测转换。请求体解析统一走 internal/api/jsjson。
+// 实际用到的可观测转换。请求体解析统一走 internal/api/jsjson，数值语义（
+// Number::toString / parseFloat）走 internal/api/jsnum。
 
 // objectBody 把 body 折成字段视图：JS 里对 null/undefined 取属性会抛错，这一点
 // 由调用方的 `body == nil` 判断覆盖；标量与数组没有已知字段，等价于空对象。
@@ -46,7 +49,7 @@ func jsToString(v any) string {
 		}
 		return "false"
 	case float64:
-		return jsNumberToString(value)
+		return jsnum.FormatNumber(value)
 	case string:
 		return value
 	case []any:
@@ -68,101 +71,6 @@ func jsJoin(values []any, separator string) string {
 		parts = append(parts, jsToString(value))
 	}
 	return strings.Join(parts, separator)
-}
-
-// jsNumberToString 复刻 Number::toString 在响应消息里可观测的部分：整数输出
-// 完整十进制，1e21 起用指数形式，非整数用最短往返表示。
-func jsNumberToString(v float64) string {
-	switch {
-	case math.IsNaN(v):
-		return "NaN"
-	case math.IsInf(v, 1):
-		return "Infinity"
-	case math.IsInf(v, -1):
-		return "-Infinity"
-	case v == 0:
-		return "0"
-	}
-
-	abs := math.Abs(v)
-	if v == math.Trunc(v) && abs < 1e21 {
-		return strconv.FormatFloat(v, 'f', 0, 64)
-	}
-	if abs >= 1e21 || abs < 1e-6 {
-		return strconv.FormatFloat(v, 'e', -1, 64)
-	}
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
-// parseFloatJS 复刻 JS 的 parseFloat：跳过前导空白，解析最长的合法数字前缀；
-// 没有数字前缀时返回 NaN。ai_styles.temperature 是 TEXT 列，route.ts 用
-// `Number.parseFloat` 解释它，所以这里不能用 strconv.ParseFloat（它要求整串合法）。
-func parseFloatJS(value string) float64 {
-	s := strings.TrimLeftFunc(value, isJSSpaceRune)
-
-	// 允许的写法：[+-]? ( Infinity | digits ['.' digits?] [('e'|'E') [+-]? digits]
-	// | '.' digits [exponent] )；解析到第一个非法字符为止。
-	i := 0
-	if i < len(s) && (s[i] == '+' || s[i] == '-') {
-		i++
-	}
-	start := i
-
-	if strings.HasPrefix(s[i:], "Infinity") {
-		if s[0] == '-' {
-			return math.Inf(-1)
-		}
-		return math.Inf(1)
-	}
-
-	digits := 0
-	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-		i++
-		digits++
-	}
-	if i < len(s) && s[i] == '.' {
-		i++
-		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-			i++
-			digits++
-		}
-	}
-	if digits == 0 {
-		return math.NaN()
-	}
-	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
-		j := i + 1
-		if j < len(s) && (s[j] == '+' || s[j] == '-') {
-			j++
-		}
-		expDigits := 0
-		for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-			j++
-			expDigits++
-		}
-		if expDigits > 0 {
-			i = j
-		}
-	}
-	if start == i {
-		return math.NaN()
-	}
-
-	number, err := strconv.ParseFloat(s[:i], 64)
-	if err != nil {
-		return math.NaN()
-	}
-	return number
-}
-
-// isJSSpaceRune 是 parseFloat 允许跳过的前导空白集（ECMAScript WhiteSpace +
-// LineTerminator 的常见成员）。
-func isJSSpaceRune(r rune) bool {
-	switch r {
-	case '\t', '\n', '\v', '\f', '\r', ' ', 0x00a0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff:
-		return true
-	}
-	return r >= 0x2000 && r <= 0x200a
 }
 
 // asID 复刻 drizzle 把 JSON 值绑进 integer 主键时的 SQLite 亲和性：整数数字按

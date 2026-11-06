@@ -12,6 +12,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsjson"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsnum"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
@@ -77,7 +78,7 @@ func toAIStyleWithConfigJSON(row db.AiStyle) aiStyleWithConfigJSON {
 // temperatureValue 复刻 `parseFloat(row.temperature)` 的 JSON 输出：
 // 非数值或 ±Infinity 在 JSON.stringify 里是 null。
 func temperatureValue(text string) any {
-	number, ok := ParseFloat(text)
+	number, ok := jsnum.ParseFloat(text)
 	if !ok || math.IsNaN(number) || math.IsInf(number, 0) {
 		return nil
 	}
@@ -132,7 +133,7 @@ func createStyleHandler(deps Deps) http.HandlerFunc {
 			Key:            input.Key.Value,
 			Label:          input.Label.Value,
 			SystemPrompt:   input.SystemPrompt.Value,
-			Temperature:    FormatNumber(input.Temperature),
+			Temperature:    jsnum.FormatNumber(input.Temperature),
 			DetailLevel:    optionalPointer(input.DetailLevel),
 			ResultOriented: optionalPointer(input.ResultOriented),
 			IsDefault:      isDefault,
@@ -212,7 +213,7 @@ func updateStyleHandler(deps Deps) http.HandlerFunc {
 			Key:            optionalPointer(input.Key),
 			Label:          optionalPointer(input.Label),
 			SystemPrompt:   optionalPointer(input.SystemPrompt),
-			Temperature:    pointerTo(FormatNumber(input.Temperature)),
+			Temperature:    pointerTo(jsnum.FormatNumber(input.Temperature)),
 			DetailLevel:    optionalPointer(input.DetailLevel),
 			ResultOriented: optionalPointer(input.ResultOriented),
 			IsDefault:      optionalIntPointer(input.IsDefault),

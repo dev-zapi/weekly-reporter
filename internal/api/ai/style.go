@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 
+	"github.com/dev-zapi/weekly-reporter/internal/api/aiseed"
+	"github.com/dev-zapi/weekly-reporter/internal/api/jsnum"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 )
 
@@ -56,32 +59,27 @@ func (d *Deps) getStyleFromTemplate(ctx context.Context, templateID int64) (styl
 }
 
 func rowToStyleConfig(row db.AiStyle) styleConfig {
+	temperature := math.NaN()
+	if parsed, ok := jsnum.ParseFloat(row.Temperature); ok {
+		temperature = parsed
+	}
 	return styleConfig{
 		Label:        row.Label,
 		SystemPrompt: row.SystemPrompt,
 		// temperature 是 TEXT 列，TS 用 Number.parseFloat 解释。
-		Temperature: parseFloatJS(row.Temperature),
+		Temperature: temperature,
 	}
 }
 
-// defaultStyleConfig 是 styles.ts 里「数据库里什么也没有」时的硬编码兜底。
+// defaultStyleConfig 是 styles.ts 里「数据库里什么也没有」时的硬编码兜底：
+// 内容与内置 formal 风格一致，直接引用 aiseed 的单一副本，避免第二处漂移。
 func defaultStyleConfig() styleConfig {
+	style := aiseed.Default()
+	temperature, _ := jsnum.ParseFloat(style.Temperature)
 	return styleConfig{
-		Label: "正式汇报",
-		SystemPrompt: `你是专业的职场周报润色助手。读者是管理层和跨部门同事。
-
-写作原则：
-- 先结论后细节：每条以成果/结论开头，必要时补充关键过程
-- 用数据说话：保留或补充量化指标（百分比、金额、次数等），去除模糊表述
-- 突出业务价值：说明工作对团队/业务的实际影响，而非仅描述做了什么
-- 语言正式但不官僚：用词规范，不用口语和空话套话（如"大力推进""积极落实"）
-- 每条控制在 2-3 句话
-
-禁止：
-- 流水账式的按时间描述
-- 主观情绪化表述（如"非常辛苦""极其困难"）
-- 无数据支撑的形容词堆砌`,
-		Temperature: 0.3,
+		Label:        style.Label,
+		SystemPrompt: style.SystemPrompt,
+		Temperature:  temperature,
 	}
 }
 

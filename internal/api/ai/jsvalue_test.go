@@ -5,80 +5,22 @@ import (
 	"testing"
 )
 
-// 本文件的期望值全部由 Node 实测得到（`Number.parseFloat(v)`、`String(v)`、
-// `[...].join(sep)`），枚举的是 ai_styles.temperature 与提示词拼接真正会遇到的
-// 输入形态。
-
-func TestParseFloatMatchesJavaScript(t *testing.T) {
-	cases := []struct {
-		in   string
-		want float64
-	}{
-		{"0.3", 0.3},
-		{"0", 0},
-		{"1", 1},
-		{" 0.7 ", 0.7},
-		{"\t0.5\n", 0.5},
-		{"0.3abc", 0.3},
-		{"abc", math.NaN()},
-		{"", math.NaN()},
-		{"   ", math.NaN()},
-		{"-0.5", -0.5},
-		{"+0.5", 0.5},
-		{".5", 0.5},
-		{"5.", 5},
-		{"1e2", 100},
-		{"1e", 1},
-		{"1e+2", 100},
-		{"0.25e-1", 0.025},
-		{"0x10", 0},
-		{"Infinity", math.Inf(1)},
-		{"-Infinity", math.Inf(-1)},
-		{"inf", math.NaN()},
-		{"NaN", math.NaN()},
-	}
-
-	for _, tc := range cases {
-		got := parseFloatJS(tc.in)
-		if math.IsNaN(tc.want) {
-			if !math.IsNaN(got) {
-				t.Errorf("parseFloatJS(%q) = %v, want NaN", tc.in, got)
-			}
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("parseFloatJS(%q) = %v, want %v", tc.in, got, tc.want)
-		}
-	}
-}
-
-func TestNumberToStringMatchesJavaScript(t *testing.T) {
-	cases := []struct {
-		in   float64
-		want string
-	}{
-		{0, "0"},
-		{1, "1"},
-		{-1, "-1"},
-		{1.5, "1.5"},
-		{2, "2"},
-		{1e21, "1e+21"},
-		{math.NaN(), "NaN"},
-		{math.Inf(1), "Infinity"},
-		{math.Inf(-1), "-Infinity"},
-	}
-	for _, tc := range cases {
-		if got := jsNumberToString(tc.in); got != tc.want {
-			t.Errorf("jsNumberToString(%v) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
-}
+// 本文件的期望值全部由 Node 实测得到（`[...].join(sep)`），枚举的是提示词拼接
+// 真正会遇到的输入形态。数值语义（Number::toString / parseFloat）的统一实现与
+// 对照 V8 的用例在 internal/api/jsnum，这里只钉住本域的可观测拼接结果。
 
 // Array.prototype.join：null/undefined 元素变空串，其余走 String()。
 func TestJoinMatchesJavaScript(t *testing.T) {
 	got := jsJoin([]any{"a", nil, 1.0, true, ""}, "\n")
 	if want := "a\n\n1\ntrue\n"; got != want {
 		t.Fatalf("jsJoin = %q, want %q", got, want)
+	}
+
+	// 指数区间的数字也按 JS 的 Number::toString 拼接：1e-7 而不是 Go 的 1e-07。
+	// expand-section 把 existingItems/events 直接 join 进提示词，这里的偏差会
+	// 进入发给 provider 的请求体。
+	if got, want := jsJoin([]any{1e-7, 1.5e-8}, "\n"), "1e-7\n1.5e-8"; got != want {
+		t.Fatalf("jsJoin(numbers) = %q, want %q", got, want)
 	}
 
 	if got := jsJoin(nil, "\n"); got != "" {
