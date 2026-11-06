@@ -196,3 +196,44 @@ func TestUnregisteredAPIPathKeepsWildcardBody(t *testing.T) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
+
+// B4 的采集执行面（本地 Fetch / 远端同步 / 目录扫描）必须真的挂在 /api 子路由上。
+// 同批另两张票负责 collect/sources 的 CRUD 与两条增补 POST 路由：它们在本 worktree
+// 尚未注册，跨票共存由集成分支验证，这里只断言本票的三条 + 鉴权边界。
+func TestB4CollectExecutionRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		// 关认证也照样是业务 400/500，而不是通配的 "Not Found"。
+		{http.MethodPost, "/api/collect/git-local/fetch", `{}`, http.StatusBadRequest, `"code":"INVALID_ID"`},
+		{http.MethodPost, "/api/collect/git-remote/sync", `{"sourceId":999}`, http.StatusInternalServerError, `"code":"SYNC_FAILED"`},
+		{http.MethodGet, "/api/collect/scan-path?path=/etc", "", http.StatusForbidden, `"code":"FORBIDDEN"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
