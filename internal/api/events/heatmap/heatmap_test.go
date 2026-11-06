@@ -233,7 +233,9 @@ func TestHeatmapClampsDaysTo730(t *testing.T) {
 //	Math.min(parseInt(sp.get('days') || '365') || 365, 730)
 //
 // NaN 与 0 都是假值，`|| 365` 把它们拉回 365；parseInt 容忍尾随垃圾；缺省与空串
-// 同样走 365。500 天前的事件是这些分支的可观测分界（365 排除它、500 包含它）。
+// 同样走 365。499 天前的事件是这些分支的可观测分界（365 排除它、500 包含它）。
+// 刻意不用「正好 500 天」：handler 的 now 比夹具晚几微秒，跨整秒边界时 cutoff 会比
+// 事件大 1 秒，用例会偶发假失败；499 天留出一天余量、分界语义不变。
 func TestHeatmapDaysParsingMirrorsRouteTS(t *testing.T) {
 	// 子测试名不能为空：空名时 Go 用 "#00" 拼临时目录，而 dbtest 的 file: DSN 会把
 	// "#" 之后当 URI fragment，导致多个用例共用同一个库文件（第二例起报 table
@@ -241,7 +243,7 @@ func TestHeatmapDaysParsingMirrorsRouteTS(t *testing.T) {
 	cases := []struct {
 		name      string
 		query     string
-		wantEvent bool // 500 天前的事件是否落在窗口里
+		wantEvent bool // 499 天前的事件是否落在窗口里
 	}{
 		{"default", "", false},                         // 缺省 → 365
 		{"empty", "?days=", false},                     // 空串 → '365'
@@ -250,14 +252,14 @@ func TestHeatmapDaysParsingMirrorsRouteTS(t *testing.T) {
 		{"zero-prefixed-garbage", "?days=0abc", false}, // parseInt('0abc') = 0 → 365
 		{"five-hundred", "?days=500", true},            // 500 天真窗口
 		{"trailing-garbage", "?days=500abc", true},     // parseInt 前缀
-		{"leading-zero", "?days=0300", false},          // parseInt('0300') = 300（十进制，无八进制）→ 排除 500 天
+		{"leading-zero", "?days=0300", false},          // parseInt('0300') = 300（十进制，无八进制）→ 排除 499 天
 		{"hex", "?days=0x1f4", true},                   // parseInt 无 radix 时认 0x 前缀 = 500
-		{"clamped", "?days=99999999999999", true},      // clamp 730 → 仍包含 500 天（clamp 本身由 TestHeatmapClampsDaysTo730 钉住）
+		{"clamped", "?days=99999999999999", true},      // clamp 730 → 仍包含 499 天（clamp 本身由 TestHeatmapClampsDaysTo730 钉住）
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
-			h.seedEvent(time.Now().AddDate(0, 0, -500).Unix())
+			h.seedEvent(time.Now().AddDate(0, 0, -499).Unix())
 
 			rec := h.do("/api/events/heatmap" + tc.query)
 			if rec.Code != http.StatusOK {
@@ -265,7 +267,7 @@ func TestHeatmapDaysParsingMirrorsRouteTS(t *testing.T) {
 			}
 			resp := decodeHeatmap(t, rec.Body.Bytes())
 			if got := len(resp.Data) == 1; got != tc.wantEvent {
-				t.Fatalf("500-day-old event included = %t, want %t (data %+v)", got, tc.wantEvent, resp.Data)
+				t.Fatalf("499-day-old event included = %t, want %t (data %+v)", got, tc.wantEvent, resp.Data)
 			}
 		})
 	}
