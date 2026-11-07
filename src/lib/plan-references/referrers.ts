@@ -1,25 +1,13 @@
-import 'server-only'
-import { eq } from 'drizzle-orm'
-import { eventPlanReferences, rawEvents } from '@/lib/db/schema'
-
-type DrizzleDb = ReturnType<typeof import('@/lib/db').getDb>
+/**
+ * 计划条目「引用事件」的类型契约（cutover 后仅类型）。
+ *
+ * 运行时（按 planItemId 联查引用事件）已由 Go 侧接管（蓝图 B3）；
+ * web/（SPA）的删除确认弹窗仍以 PlanReferrerEvent 描述
+ * GET /api/plans/:id/items/:itemId/referrers 的响应元素形状。
+ */
 
 export interface PlanReferrerEvent {
   id: number
   content: string
   eventTime: Date
-}
-
-export function findPlanReferrers(db: DrizzleDb, planItemId: number): PlanReferrerEvent[] {
-  const rows = db
-    .select({
-      id: rawEvents.id,
-      content: rawEvents.content,
-      eventTime: rawEvents.eventTime,
-    })
-    .from(eventPlanReferences)
-    .innerJoin(rawEvents, eq(eventPlanReferences.eventId, rawEvents.id))
-    .where(eq(eventPlanReferences.planItemId, planItemId))
-    .all()
-  return rows
 }

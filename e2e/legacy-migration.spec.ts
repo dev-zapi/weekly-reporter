@@ -1,25 +1,23 @@
 import { expect, test } from '@playwright/test'
 import Database from 'better-sqlite3'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { applyDatabaseMigrations } from '../src/lib/db/migrations'
-import { nextBuildArgs, nextServerMode, nextServeArgs } from './next-server'
+import { wrBin } from './go-server'
 import { startScriptedAI } from './scripted-ai'
 
 async function startLegacyApplication() {
-  // 与 e2e/app-fixture.ts 一致把临时应用放在仓库内：Turbopack 构建会拒绝
-  // 「指向文件系统根之外」的 node_modules 软链（`/tmp` 下的副本就是这种），
-  // 放在项目目录下软链才落在同一个 root 内，生产模式才可能构建成功。
+  // 与 e2e/app-fixture.ts 一致把临时根放在仓库内（.gitignore 的
+  // .e2e-worker-* 规则覆盖）。单二进制无应用树拷贝，目录里只有
+  // XDG 数据根与预置迁移语料。
   const root = await mkdtemp(path.join(process.cwd(), `.e2e-worker-legacy-${process.pid}-`))
   let provider: Awaited<ReturnType<typeof startScriptedAI>> | undefined
   let child: ChildProcess | undefined
   try {
     provider = await startScriptedAI()
-    const app = path.join(root, 'app')
     const dataHome = path.join(root, 'data')
     const migrations = path.join(root, 'pre-31-migrations')
-    await mkdir(app)
     await mkdir(path.join(dataHome, 'weekly-reporter'), { recursive: true })
     await cp(path.resolve('drizzle'), migrations, { recursive: true })
     await unlink(path.join(migrations, '0032_legacy_direct_edit_compatibility.sql'))
@@ -48,45 +46,39 @@ async function startLegacyApplication() {
       .run('formal', 'Formal', '', '0.3', 25, 30, 45, 1, Date.now(), Date.now())
     sqlite.close()
 
-    for (const file of ['src', 'public', 'drizzle', 'package.json', 'tsconfig.json', 'next.config.ts', 'postcss.config.mjs']) {
-      await cp(path.resolve(file), path.join(app, file), { recursive: true })
+    // 单二进制不需要拷贝应用树/预构建：在同一个 XDG 根上先显式迁移
+    // （serve 对账本校验 fail closed；`wr db migrate` 在 31/41 的 legacy
+    // 账本上补应用 0032 及后续——这正是本 spec 要验的迁移路径），再起 serve。
+    const legacyEnv = {
+      ...process.env,
+      XDG_DATA_HOME: dataHome,
+      XDG_CONFIG_HOME: path.join(root, 'config'),
+      PORT: '3391',
+      HOSTNAME: '127.0.0.1',
+      E2E_FIXTURES: '1',
+      // 此 spec 只关心数据迁移正确性，与认证改造无关——关掉认证。
+      WR_AUTH_DISABLED: '1',
     }
-    await symlink(path.resolve('node_modules'), path.join(app, 'node_modules'), 'dir')
-    const port = 3391
-    // 生产模式下临时目录里的副本没有 `.next`，`next start` 前必须先构建（与
-    // e2e/app-fixture.ts 的生产分支同样处理）。dev 模式按需编译，不需要。
-    if (nextServerMode === 'production') {
-      await new Promise<void>((resolve, reject) => {
-        const build = spawn(process.execPath, nextBuildArgs(), {
-          cwd: app,
-          env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-        // 构建失败必须带上编译输出：Turbopack 的报错全在 stderr，只报退出码没法定位。
-        let logs = ''
-        build.stdout.on('data', (chunk) => { logs += chunk.toString() })
-        build.stderr.on('data', (chunk) => { logs += chunk.toString() })
-        build.once('error', reject)
-        build.once('exit', (code, signal) => {
-          if (code === 0) resolve()
-          else reject(new Error(`next build failed in the legacy fixture (${signal ?? code ?? 'unknown'}):\n${logs}`))
-        })
+    await new Promise<void>((resolve, reject) => {
+      const migrate = spawn(wrBin, ['db', 'migrate'], {
+        env: legacyEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
       })
-    }
-    child = spawn(process.execPath, nextServeArgs(port), {
-      cwd: app,
-      env: {
-        ...process.env,
-        XDG_DATA_HOME: dataHome,
-        XDG_CONFIG_HOME: path.join(root, 'config'),
-        NEXT_TELEMETRY_DISABLED: '1',
-        // 此 spec 只关心数据迁移正确性，与认证改造无关——关掉认证。
-        WR_AUTH_DISABLED: '1',
-      },
+      let migrateLogs = ''
+      migrate.stdout.on('data', (chunk) => { migrateLogs += chunk.toString() })
+      migrate.stderr.on('data', (chunk) => { migrateLogs += chunk.toString() })
+      migrate.once('error', reject)
+      migrate.once('exit', (code, signal) => {
+        if (code === 0) resolve()
+        else reject(new Error(`wr db migrate failed on the legacy fixture (${signal ?? code ?? 'unknown'}):\n${migrateLogs}`))
+      })
+    })
+    child = spawn(wrBin, ['serve'], {
+      env: legacyEnv,
       detached: true,
       stdio: 'ignore',
     })
-    const url = `http://127.0.0.1:${port}`
+    const url = 'http://127.0.0.1:3391'
     await expect.poll(async () => fetch(`${url}/api/reports/1`).then((response) => response.ok).catch(() => false), { timeout: 90_000 }).toBe(true)
     return { root, child, provider, url }
   } catch (error) {
@@ -105,9 +97,7 @@ async function startLegacyApplication() {
 }
 
 test('启动预置旧版本数据库时保留 legacy 终版且不伪造会话或快照', async ({ request }) => {
-  // 生产模式下这个用例的前置包含一次完整的 `next build`（scope 内 300% CPU，
-  // 实测约 30s 起），30s 的默认用例预算只够 dev 模式。
-  if (nextServerMode === 'production') test.setTimeout(5 * 60_000)
+  // 单二进制下本用例的前置只有一次 `wr db migrate`（秒级），默认 30s 预算足够。
   const app = await startLegacyApplication()
   try {
     const opened = await request.get(`${app.url}/api/reports/1`)

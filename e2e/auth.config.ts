@@ -1,11 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
-import path from 'node:path'
-import { nextWebServerCommand, webServerTimeout } from './next-server'
 import { goWebServerCommand, goWebServerTimeout } from './go-server'
-
-// B8 预切换演练（蓝图 §7）：E2E_SERVER_IMPL=go 时 webServer 换成 Go 单二进制，
-// spec 零改动；默认仍是 Next，cutover 时翻转默认并删除 next-server.ts。
-const useGoServer = process.env.E2E_SERVER_IMPL === 'go'
 import {
   AUTH_E2E_BASE_URL,
   AUTH_E2E_PORT,
@@ -16,16 +10,11 @@ import {
 } from './auth-env'
 
 // 在 runner 进程中跑一次（早于 webServer 插件启动）。清理旧的 XDG 目录，
-// 然后预生成一份启动密码。降级到 dev + webpack 时 instrumentation.register()
-// 实测不会在 Playwright 启动的 server 中触发，故由测试侧按 password.ts 同样
-// 的算法写 auth.json。服务端 `ensureStartupPassword` 启动后读到已有密码会
-// 直接返回，行为与原生流程一致（默认的生产模式同样如此）。
+// 然后预生成一份启动密码。测试侧按 password.ts 同样的算法写 auth.json；
+// 服务端 `ensureStartupPassword` 启动后读到已有密码会直接返回，行为与
+// 原生流程一致（Go 侧 auth.Options{PasswordPath} 读同一 XDG 语义）。
 resetAuthE2eRoot()
 preparePassword()
-
-// 这个配置文件位于 e2e/ 子目录，Playwright 会把 webServer 的默认 cwd 设为
-// configDir（即 e2e/），导致 Next 找不到 src/app。显式指回项目根目录。
-const PROJECT_ROOT = path.resolve(__dirname, '..')
 
 export default defineConfig({
   testDir: '.',
@@ -49,20 +38,17 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: useGoServer ? goWebServerCommand(AUTH_E2E_PORT) : nextWebServerCommand(AUTH_E2E_PORT),
+    // cutover 后唯一实现：Go 单二进制。命令与 cwd 无关（make -C 绝对根），
+    // 不再需要 Next 时代的 cwd=PROJECT_ROOT 补偿。
+    command: goWebServerCommand(AUTH_E2E_PORT),
     url: AUTH_E2E_BASE_URL,
     reuseExistingServer: false,
-    timeout: useGoServer ? goWebServerTimeout() : webServerTimeout(),
-    cwd: PROJECT_ROOT,
+    timeout: goWebServerTimeout(),
     env: {
       // 与默认配置不同的 XDG 目录：隔离 auth 套件的数据与密码文件
       XDG_DATA_HOME: AUTH_XDG_DATA_HOME,
       XDG_CONFIG_HOME: AUTH_XDG_CONFIG_HOME,
       E2E_FIXTURES: '1',
-      // 与默认套件同样的 Next server 堆上限（见 playwright.config.ts / README）。
-      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--max-old-space-size=${process.env.E2E_DEV_MEM ?? 4096}`]
-        .filter(Boolean)
-        .join(' '),
       // 注意：刻意不设置 WR_AUTH_DISABLED——认证开启模式
     },
   },
