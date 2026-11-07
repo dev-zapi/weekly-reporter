@@ -9,7 +9,8 @@
 //
 // 与 internal/api/jsstr、jsdate、jsjson、jsparse 同一思路：跨域共用的 JS 语义只
 // 有一份实现。B5 的 prompts 域（写读 ai_styles.temperature 列）与 ai 域（拼接
-// expand-section 的提示词、unify-style 的 message 文案）都消费这里的语义。
+// expand-section 的提示词、unify-style 的 message 文案）都消费这里的语义；
+// B6 起 internal/engine 的循环与持久化副作用也消费本包（temperature/预算换算）。
 package jsnum
 
 import (

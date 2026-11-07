@@ -4,6 +4,11 @@
 // 为唯一事实源，而 Go 的 len()/TrimSpace 与 JS 的 string.length/trim 在 Unicode
 // 边界上不同（CJK 字节数 ≠ UTF-16 单元数；JS 的 \s 与 unicode.IsSpace 的集合也
 // 不完全相同）。与 internal/api/jsparse 同一思路：只镜像可观测语义，不引入新行为。
+//
+// 消费者早已跨出路由层：B6 起 internal/engine 与 internal/generation
+// 也直接消费本包（UTF-16 截断与 trim 语义），路由层 api/reports 亦然。包放在
+// internal/api 下是 B2 时的历史位置；按蓝图 §4 的分层，它是跨域共享的 JS
+// 语义层，计划在 B7/cutover 前机械挪到中立位置。
 package jsstr
 
 import (
@@ -55,6 +60,33 @@ func UTF16Len(s string) int {
 		n++
 	}
 	return n
+}
+
+// SliceUTF16 复刻 JS 的 String.prototype.slice(0, n)：按 UTF-16 码元截断。
+//
+// 与 JS 的一个有意边界差异：JS 允许把增补平面字符劈成孤立代理项（随后
+// JSON.stringify 会输出 \udXXX 转义），Go 的 string 无法表示孤立代理项；
+// 需要劈开时本函数整对舍弃（少 1 个码元），避免产生非法 UTF-8。
+//
+// 所有字符预算（450k 上下文、40k 正文、280 字 publicSummary、2k rawResponse、
+// 200k proposal）都是 TS string.length 语义，必须在 Go 侧走这一份实现
+// （ADR-0027；风险登记 #4 的 UTF-16 漂移）。
+func SliceUTF16(s string, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	count := 0
+	for index, r := range s {
+		units := 1
+		if r > 0xFFFF {
+			units = 2
+		}
+		if count+units > n {
+			return s[:index]
+		}
+		count += units
+	}
+	return s
 }
 
 // EncodeURIComponent 复刻 ECMAScript 的 encodeURIComponent：不转义的字符集是

@@ -487,3 +487,106 @@ func TestB5SettingsRoutesAreMounted(t *testing.T) {
 		})
 	}
 }
+
+// B6 的报告域非生成路由必须真的挂在 /api 子路由上：静态段 preview / search
+// 不被 /reports/{id} 吃掉，更长的 generation-sessions 子路由也按段数共存。
+// 这里只断言「路由存在 + 业务状态/错误形状」，不碰生成引擎（那 5 条由引擎票
+// 注册）。
+func TestB6ReportRoutesAreMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		path   string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodGet, "/api/reports", "", http.StatusOK, `"reports":[]`},
+		{http.MethodPost, "/api/reports", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
+		{http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`, http.StatusOK, `"variants":[`},
+		{http.MethodGet, "/api/reports/search", "", http.StatusOK, `"reports":[]`},
+		{http.MethodGet, "/api/reports/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodPut, "/api/reports/999", `{"title":"x"}`, http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodDelete, "/api/reports/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodPut, "/api/reports/999/final", `{"variant":"leadership","content":"x"}`, http.StatusNotFound, `"code":"VARIANT_NOT_FOUND"`},
+		{http.MethodPost, "/api/reports/999/regenerate-source", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
+		{http.MethodGet, "/api/reports/999/generation-sessions", "", http.StatusOK, `"sessions":[]`},
+		{http.MethodPost, "/api/reports/999/generation-sessions", `{}`, http.StatusBadRequest, `"code":"INVALID_INPUT"`},
+		{http.MethodGet, "/api/reports/999/generation-sessions/1", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		{http.MethodPatch, "/api/reports/999/generation-sessions/1", `{"title":"x"}`, http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		{http.MethodDelete, "/api/reports/999/generation-sessions/1", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		// B6 生成引擎的 5 条路由：路径必须落在域内（业务 400/404），而不是被
+		// /api/* 通配兜底成 "Not Found"。
+		{http.MethodPost, "/api/reports/999/generate", `{}`, http.StatusBadRequest, `"code":"INVALID_INPUT"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/turns", `{}`, http.StatusBadRequest, `"code":"EMPTY_MESSAGE"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/turns/1/stop", "", http.StatusNotFound, `"code":"TURN_NOT_FOUND"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/proposals/1/accept", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+		{http.MethodPost, "/api/reports/999/generation-sessions/1/query-snapshots/refresh", "", http.StatusNotFound, `"code":"SESSION_NOT_FOUND"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			var req *http.Request
+			if tc.body == "" {
+				req = httptest.NewRequest(tc.method, tc.path, nil)
+			} else {
+				req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+}
+
+// B6 的 e2e 造数路由必须真的挂在 /api 子路由上，并且鉴权先于 E2E_FIXTURES 门控
+// （与 TS 的 withAuth(HOF) 同序）。这里用「关认证」的装配断言路由存在 + 门控语义：
+// 未设 E2E_FIXTURES 时回本路由的 {error:"Not found"}（不是通配兜底）。
+func TestB6FixturesRouteIsMounted(t *testing.T) {
+	queries := db.New(dbtest.New(t))
+	router := NewRouter(Options{Auth: auth.Options{Disabled: true}, Queries: queries})
+
+	cases := []struct {
+		method string
+		body   string
+		want   int
+		expect string
+	}{
+		{http.MethodPost, `{"action":"historical","marker":"m"}`, http.StatusNotFound, `"error":"Not found"`},
+		{http.MethodDelete, `{"reportIds":[1]}`, http.StatusNotFound, `"error":"Not found"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method, func(t *testing.T) {
+			t.Setenv("E2E_FIXTURES", "")
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, "/api/e2e/fixtures", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(rec, req)
+
+			if rec.Code != tc.want {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.want, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), tc.expect) {
+				t.Fatalf("body = %s, want it to contain %s", rec.Body.String(), tc.expect)
+			}
+		})
+	}
+
+	// 门控打开时同一条路由进入业务分支（historical 回 201）。
+	t.Setenv("E2E_FIXTURES", "1")
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/e2e/fixtures", strings.NewReader(`{"action":"historical","marker":"m"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
+	}
+}
