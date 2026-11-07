@@ -7,8 +7,7 @@
 //    AuthGate redirect before the flag is known (ADR-0028). Any probe failure
 //    is treated as "auth enabled" (fail closed), matching the Next version.
 //  - File-system routing becomes an explicit <Routes> table. The 15 routes are
-//    1:1 with src/app; this batch implements the 5 high-traffic pages and
-//    mounts the remaining 10 as placeholders for the follow-up batch.
+//    1:1 with src/app; all pages are wired in.
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router'
@@ -26,6 +25,16 @@ import TimelinePage from '@/app/page'
 import NewReportPage from '@/app/new/page'
 import EditReportPage from '@/app/edit/[id]/page'
 import PlansPage from '@/app/plans/page'
+import CollectPage from '@/app/collect/page'
+import NewCollectSourcePage from '@/app/collect/new/page'
+import EditCollectSourcePage from '@/app/collect/[id]/page'
+import ReportsPage from '@/app/reports/page'
+import ReportDetailPage from '@/app/reports/[id]/page'
+import TemplatesPage from '@/app/templates/page'
+import NewTemplatePage from '@/app/templates/new/page'
+import EditTemplatePage from '@/app/templates/[id]/page'
+import PromptsPage from '@/app/prompts/page'
+import SecurityPage from '@/app/security/page'
 
 /**
  * fail-closed: a failed probe is treated as "auth enabled", like the Next
@@ -41,8 +50,7 @@ async function probeAuthEnabled(): Promise<boolean> {
 }
 
 /**
- * Routes outside this ticket's five high-traffic pages. Each one is mirrored
- * 1:1 with a src/app directory and is filled by the follow-up B7 batch.
+ * Catch-all fallback for routes that don't match the 15-route table.
  */
 function PendingPage({ path }: { path: string }) {
   return (
@@ -67,16 +75,16 @@ function Root({ authEnabled }: { authEnabled: boolean }) {
               <Route path="/plans" element={<PlansPage />} />
               <Route path="/login" element={<LoginPage />} />
 
-              <Route path="/collect" element={<PendingPage path="/collect" />} />
-              <Route path="/collect/new" element={<PendingPage path="/collect/new" />} />
-              <Route path="/collect/:id" element={<PendingPage path="/collect/:id" />} />
-              <Route path="/reports" element={<PendingPage path="/reports" />} />
-              <Route path="/reports/:id" element={<PendingPage path="/reports/:id" />} />
-              <Route path="/templates" element={<PendingPage path="/templates" />} />
-              <Route path="/templates/new" element={<PendingPage path="/templates/new" />} />
-              <Route path="/templates/:id" element={<PendingPage path="/templates/:id" />} />
-              <Route path="/prompts" element={<PendingPage path="/prompts" />} />
-              <Route path="/security" element={<PendingPage path="/security" />} />
+              <Route path="/collect" element={<CollectPage />} />
+              <Route path="/collect/new" element={<NewCollectSourcePage />} />
+              <Route path="/collect/:id" element={<EditCollectSourcePage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/reports/:id" element={<ReportDetailPage />} />
+              <Route path="/templates" element={<TemplatesPage />} />
+              <Route path="/templates/new" element={<NewTemplatePage />} />
+              <Route path="/templates/:id" element={<EditTemplatePage />} />
+              <Route path="/prompts" element={<PromptsPage />} />
+              <Route path="/security" element={<SecurityPage />} />
 
               <Route path="*" element={<PendingPage path="(unknown route)" />} />
             </Routes>
