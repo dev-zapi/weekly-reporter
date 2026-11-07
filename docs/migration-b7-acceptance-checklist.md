@@ -39,7 +39,7 @@ XDG_DATA_HOME=$PWD/tmp/data XDG_CONFIG_HOME=$PWD/tmp/config \
 XDG_DATA_HOME=... pnpm -C web dev --port 15173 --strictPort   # proxy /api → 127.0.0.1:16873
 ```
 
-逐页清单（路由与 `src/app` 1:1）：`/login`、`/`（timeline）、`/new`、`/edit/[id]`、`/plans`、`/collect`、`/collect/new`、`/collect/[id]`、`/reports`、`/reports/[id]`、`/templates`、`/templates/new`、`/templates/[id]`、`/prompts`、`/security`、`/audit`。
+逐页清单（路由与 `src/app` 1:1，实测 15 个 `page.tsx`，以 `find src/app -name page.tsx` 输出为准）：`/login`、`/`（timeline）、`/new`、`/edit/[id]`、`/plans`、`/collect`、`/collect/new`、`/collect/[id]`、`/reports`、`/reports/[id]`、`/templates`、`/templates/new`、`/templates/[id]`、`/prompts`、`/security`。
 
 - [ ] 每页首屏无 console error、无 4xx/5xx 的 `/api/*`（auth 中间件 401 除外）
 - [ ] 生成会话在线回合：真实模型调用**按 2026-11-07 用户豁免跳过**，验证到「发起前」的功能面即可
