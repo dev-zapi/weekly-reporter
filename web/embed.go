@@ -1,8 +1,8 @@
 // Package web 内嵌 SPA 构建产物（ADR-0025）。
 //
 // embed 无法引用父目录，而 vite 产物固定在仓根 web/dist，所以内嵌包只能放在
-// web/ 这一层。B0 阶段 dist 里只有一个占位 index.html —— SPA 是 B7 的事，
-// 本票不引入任何 vite 依赖，只保证 `fresh clone + make build` 可复现。
+// web/ 这一层。B7 起 dist 由 `pnpm -C web build` 产出（`make build` 的 web 目标）；
+// 目录里保留 .gitkeep，让 fresh clone 上的 `//go:embed all:dist` 也能编译。
 package web
 
 import (

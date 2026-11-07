@@ -1,0 +1,9 @@
+packages:
+  - '.'
+  - 'web'
+
+allowBuilds:
+  better-sqlite3: false
+  esbuild: false
+  sharp: false
+  unrs-resolver: false
