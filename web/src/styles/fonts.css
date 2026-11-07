@@ -1,0 +1,13 @@
+/* next/font/google (Geist/Geist_Mono) replacement for the SPA.
+ * Self-hosted variable font packages + the same CSS variable names on :root.
+ * globals.css consumes --font-geist-sans / --font-geist-mono (see its
+ * --font-ui / --font-editor / @theme --font-mono), so matching the names is
+ * equivalent and the design system stays untouched.
+ */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+:root {
+  --font-geist-sans: "Geist Variable";
+  --font-geist-mono: "Geist Mono Variable";
+}

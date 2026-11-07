@@ -1,0 +1,13 @@
+/* Tailwind v4 entry for the SPA.
+ * - Reuses the repo-root globals.css (design system single source, zero copy).
+ * - @source must point back at the repo root src/ explicitly: the Vite root is
+ *   web/, and Tailwind cannot auto-detect the classes used by the client library
+ *   outside it (classes would silently disappear, ADR-0028).
+ * - The mirrored pages/components under web/src/app and web/src/components are
+ *   named explicitly rather than by @source ".." so web/node_modules is never
+ *   scanned.
+ */
+@import "../../../src/app/globals.css";
+@source "../../../src";
+@source "../app";
+@source "../components";
