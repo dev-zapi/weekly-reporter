@@ -7,7 +7,7 @@
  *   named explicitly rather than by @source ".." so web/node_modules is never
  *   scanned.
  */
-@import "../../../src/app/globals.css";
+@import "../../../src/styles/globals.css";
 @source "../../../src";
 @source "../app";
 @source "../components";

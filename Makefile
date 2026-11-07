@@ -1,5 +1,5 @@
 SHELL := /bin/bash
-.PHONY: help dev web build build-next test test-go lint migrate schema sqlc check-schema install uninstall start stop restart status logs clean
+.PHONY: help dev dev-api dev-web web build test test-go lint migrate schema sqlc check-schema install uninstall start stop restart status logs clean
 
 SERVICE_NAME=weekly-reporter
 SERVICE_FILE=$(SERVICE_NAME).service
@@ -21,9 +21,10 @@ help:
 	@echo "  make <command>"
 	@echo ""
 	@echo "Commands:"
-	@echo "  dev          Start development server (next dev, unchanged)"
+	@echo "  dev          Start dev API (go run) + dev web (vite)"
+	@echo "  dev-api      Start the Go API server (go run ./cmd/wr serve)"
+	@echo "  dev-web      Start the vite dev server (proxy /api -> Go)"
 	@echo "  build        Build the Go single binary $(BIN) (vite -> embed -> go build)"
-	@echo "  build-next   Build the Next.js production bundle (npm run build, kept until cutover)"
 	@echo "  install      Install systemd user service (default: port=$(DEFAULT_PORT), host=$(DEFAULT_HOSTNAME))"
 	@echo "  uninstall    Uninstall systemd user service"
 	@echo "  start        Start systemd user service"
@@ -45,8 +46,16 @@ help:
 	@echo "  PORT=6868          - Server port"
 	@echo "  HOSTNAME=0.0.0.0   - Bind host (0.0.0.0 for LAN, localhost for local only)"
 
-dev:
-	source ~/.nvm/nvm.sh && npm run dev
+# cutover 后的 dev 终态（蓝图 §7 后即时项）：Go API + vite dev（proxy /api → Go）。
+dev: dev-api dev-web
+
+dev-api:
+	XDG_DATA_HOME?=$${XDG_DATA_HOME:-$(HOME)/.local/share}
+	XDG_CONFIG_HOME?=$${XDG_CONFIG_HOME:-$(HOME)/.config}
+	go run ./cmd/wr serve
+
+dev-web:
+	pnpm -C web dev
 
 # 唯一构建入口（ADR-0025 / ADR-0029）：前端产物 -> go:embed -> go build。
 # B7 起 web 目标真的跑 vite build（web/ 是 pnpm workspace 包，产物落 web/dist）。
@@ -60,12 +69,7 @@ build: web
 		-ldflags "$(LDFLAGS)" ./cmd/wr
 	@echo "built $(BIN) ($(COMMIT_HASH) $(BUILD_TIME))"
 
-# Next 生产构建独立保留到 cutover（蓝图 §6）：make install 依赖它，
-# 否则 systemd unit 的 `npm run start` 会因为缺 .next 而启动失败。
-build-next:
-	source ~/.nvm/nvm.sh && npm run build
-
-install: build-next
+install: build
 	@echo "Installing $(SERVICE_NAME) service..."
 	mkdir -p $(SYSTEMD_USER_DIR)
 	cp $(SERVICE_FILE) $(SYSTEMD_USER_DIR)/$(SERVICE_FILE)

@@ -39,7 +39,7 @@ export default defineConfig({
     // exercised without editing this file.
     port: 5173,
     proxy: {
-      '/api': { target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:16871', changeOrigin: true },
+      '/api': { target: process.env.VITE_API_TARGET ?? 'http://127.0.0.1:6868', changeOrigin: true },
     },
     fs: { allow: [repoRoot] },
   },

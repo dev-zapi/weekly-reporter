@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=%h/github/weekly-reporter
-ExecStart=/home/god/.nvm/versions/node/v24.13.0/bin/npm run start
+ExecStart=%h/github/weekly-reporter/bin/wr serve
 Restart=on-failure
 RestartSec=10
 StartLimitIntervalSec=60
@@ -15,7 +15,6 @@ StandardOutput=journal
 StandardError=journal
 
 # Environment
-Environment=NODE_ENV=production
 Environment=PORT=6868
 Environment=HOSTNAME=0.0.0.0
 Environment=XDG_DATA_HOME=%h/.local/share
