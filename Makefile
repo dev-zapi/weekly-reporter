@@ -75,8 +75,8 @@ install: build
 	cp $(SERVICE_FILE) $(SYSTEMD_USER_DIR)/$(SERVICE_FILE)
 	sed -i "s|%h|$(HOME)|g" $(SYSTEMD_USER_DIR)/$(SERVICE_FILE)
 	if [ -f .env.production ]; then \
-		PORT=$$(grep -E '^PORT=' .env.production | cut -d'=' -f2 || echo "$(DEFAULT_PORT)"); \
-		HOSTNAME=$$(grep -E '^HOSTNAME=' .env.production | cut -d'=' -f2 || echo "$(DEFAULT_HOSTNAME)"); \
+		PORT=$$(grep -E '^PORT=' .env.production | cut -d'=' -f2); PORT=$${PORT:-$(DEFAULT_PORT)}; \
+		HOSTNAME=$$(grep -E '^HOSTNAME=' .env.production | cut -d'=' -f2); HOSTNAME=$${HOSTNAME:-$(DEFAULT_HOSTNAME)}; \
 		sed -i "s|Environment=PORT=$(DEFAULT_PORT)|Environment=PORT=$$PORT|g" $(SYSTEMD_USER_DIR)/$(SERVICE_FILE); \
 		sed -i "s|Environment=HOSTNAME=$(DEFAULT_HOSTNAME)|Environment=HOSTNAME=$$HOSTNAME|g" $(SYSTEMD_USER_DIR)/$(SERVICE_FILE); \
 	fi
