@@ -1,9 +1,9 @@
+'use client'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Scan, FolderGit2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { scanRepos, batchAddSources } from '@/app/collect/actions'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import styles from './collection-sources.module.css'
+import styles from '@/components/collection-sources.module.css'
 
 interface DirectoryItem {
   name: string
@@ -29,6 +29,31 @@ interface ScanReposDialogProps {
   open: boolean
   onClose: () => void
   onSuccess: () => void
+}
+
+type ScanReposResult = { repos: FoundRepo[]; error?: string }
+type BatchAddSourcesResult = { success: boolean; addedCount: number; error?: string }
+
+/**
+ * POST 到 B4 增补路由（ADR-0030）：路径与请求体 1:1 镜像原来的
+ * `scanRepos` / `batchAddSources` server action。
+ *
+ * 这两条路由的业务结果一律 200 + 内嵌 `error` 字段，所以调用点先看字段；
+ * 只有 HTTP 层（withAuth/audit、网关）才会给出非 2xx —— 那属于传输失败，
+ * 抛出后落到与 server action 时代一致的通用 catch 文案。
+ */
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const res = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    // 业务错误不会走到这里（路由一律 200 + 内嵌 error）；非 2xx 只来自
+    // withAuth/audit 或网关，按传输失败交给调用点的通用 catch。
+    throw new Error(`HTTP ${res.status}`)
+  }
+  return (await res.json()) as T
 }
 
 export function ScanReposDialog(props: ScanReposDialogProps) {
@@ -127,7 +152,10 @@ function ScanReposDialogContent({
     setScanError(null)
     setScanMessage(null)
     try {
-      const result = await scanRepos(path, 3)
+      const result = await postJSON<ScanReposResult>('/api/collect/scan-repos', {
+        basePath: path,
+        maxDepth: 3,
+      })
 
       if (result.error) {
         toast.error(result.error)
@@ -183,7 +211,14 @@ function ScanReposDialogContent({
     setAdding(true)
     setAddError(null)
     try {
-      const result = await batchAddSources(selected)
+      const result = await postJSON<BatchAddSourcesResult>('/api/collect/batch-add-sources', {
+        // 路由只吃 {path, name, authorEmails}；alreadyAdded 是本地选择态。
+        repos: selected.map(repo => ({
+          path: repo.path,
+          name: repo.name,
+          authorEmails: repo.authorEmails,
+        })),
+      })
 
       if (result.success) {
         toast.success(result.addedCount > 0 ? `Created ${result.addedCount} sources` : 'Nothing to add')

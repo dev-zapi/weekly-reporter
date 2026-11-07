@@ -1,9 +1,9 @@
 // Generate web/src/build-info.ts with the commit hash and build time.
 //
-// Same pattern as the root scripts/gen-build-info.mjs (ADR-0028): the build
-// produces a constant module, and the `@/lib/build-info` alias points at it so
-// the migrated components keep their existing import specifier. The Go side
-// carries the same values via -ldflags (internal/buildinfo).
+// Same approach as the long-standing root scripts/gen-build-info.mjs: emit a
+// constants module at build/dev time, then import it through the `@/lib/build-info`
+// alias (ADR-0028). The Go binary carries its own build info via `-ldflags -X`
+// into internal/buildinfo (ADR-0025); the two tracks coexist until cutover.
 import { execFileSync } from 'child_process'
 import { writeFileSync } from 'fs'
 import { fileURLToPath } from 'node:url'
