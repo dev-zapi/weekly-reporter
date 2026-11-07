@@ -1,6 +1,11 @@
 import { defineConfig, devices } from '@playwright/test'
 import path from 'node:path'
 import { nextWebServerCommand, webServerTimeout } from './next-server'
+import { goWebServerCommand, goWebServerTimeout } from './go-server'
+
+// B8 预切换演练（蓝图 §7）：E2E_SERVER_IMPL=go 时 webServer 换成 Go 单二进制，
+// spec 零改动；默认仍是 Next，cutover 时翻转默认并删除 next-server.ts。
+const useGoServer = process.env.E2E_SERVER_IMPL === 'go'
 import {
   AUTH_E2E_BASE_URL,
   AUTH_E2E_PORT,
@@ -44,10 +49,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: nextWebServerCommand(AUTH_E2E_PORT),
+    command: useGoServer ? goWebServerCommand(AUTH_E2E_PORT) : nextWebServerCommand(AUTH_E2E_PORT),
     url: AUTH_E2E_BASE_URL,
     reuseExistingServer: false,
-    timeout: webServerTimeout(),
+    timeout: useGoServer ? goWebServerTimeout() : webServerTimeout(),
     cwd: PROJECT_ROOT,
     env: {
       // 与默认配置不同的 XDG 目录：隔离 auth 套件的数据与密码文件

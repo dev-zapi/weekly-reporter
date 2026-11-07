@@ -3,6 +3,12 @@ import path from 'path'
 import os from 'os'
 import { randomUUID } from 'node:crypto'
 import { nextWebServerCommand, webServerTimeout } from './e2e/next-server'
+import { goWebServerCommand, goWebServerTimeout } from './e2e/go-server'
+
+// B8 预切换演练（蓝图 §7）：E2E_SERVER_IMPL=go 时 webServer 换成 Go 单二进制
+// （bin/wr），spec 零改动；默认仍是 Next（双栈共存期规则），cutover 时翻转
+// 默认并删除 next-server.ts。
+const useGoServer = process.env.E2E_SERVER_IMPL === 'go'
 
 const e2eRunId = randomUUID()
 
@@ -42,10 +48,10 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: nextWebServerCommand(3100),
+    command: useGoServer ? goWebServerCommand(3100) : nextWebServerCommand(3100),
     url: 'http://127.0.0.1:3100',
     reuseExistingServer: false,
-    timeout: webServerTimeout(),
+    timeout: useGoServer ? goWebServerTimeout() : webServerTimeout(),
     env: {
       // 使用临时目录隔离测试数据，避免污染生产数据库
       XDG_DATA_HOME: path.join(os.tmpdir(), `weekly-reporter-e2e-data-${e2eRunId}`),
