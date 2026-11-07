@@ -49,15 +49,10 @@ dev:
 	source ~/.nvm/nvm.sh && npm run dev
 
 # 唯一构建入口（ADR-0025 / ADR-0029）：前端产物 -> go:embed -> go build。
-# B0 阶段 vite 位置是占位：web/dist/index.html 已签入，SPA 构建在 B7 接入，
-# web/ 在本票不得引入任何 vite 包（红线）。placeholder 缺失直接报错，
-# 避免产出没有 SPA 的二进制。
+# B7 起 web 目标真的跑 vite build（web/ 是 pnpm workspace 包，产物落 web/dist）。
+# dist 里的 .gitkeep 保证 `//go:embed all:dist` 在 fresh clone + `go build` 时也能编译。
 web:
-	@test -f web/dist/index.html || { \
-		echo "web/dist is missing: B0 expects the checked-in placeholder (SPA build lands in B7)"; \
-		exit 1; \
-	}
-	@echo "web: B0 placeholder in place (web/dist/index.html)"
+	pnpm -C web build
 
 build: web
 	@mkdir -p bin
