@@ -5,6 +5,15 @@ import { Lock, AlertCircle, BookOpen } from 'lucide-react'
 import styles from './login.module.css'
 
 /**
+ * Only allow same-app relative paths as post-login targets — absolute URLs,
+ * protocol-relative URLs (`//host`) and backslash variants (`/\host`) fall
+ * back to `/` instead of being handed to navigate().
+ */
+function isSafeRedirect(url: string): boolean {
+  return url.startsWith('/') && !url.startsWith('//') && !url.startsWith('/\\')
+}
+
+/**
  * Login form — reads the `redirect` query param and verifies the password.
  *
  * Split out so the `useSearchParams` call can be wrapped in a Suspense
@@ -29,7 +38,7 @@ function LoginForm() {
 
       if (ok) {
         setStoredPassword(password)
-        navigate(redirectTo, { replace: true })
+        navigate(isSafeRedirect(redirectTo) ? redirectTo : '/', { replace: true })
       } else {
         // 接口报错时把服务端返回的 traceId 拼在错误文案后，方便排查。
         setError(traceId ? `Invalid password (trace: ${traceId})` : 'Invalid password')
