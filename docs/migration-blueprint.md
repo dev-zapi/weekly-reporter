@@ -16,7 +16,7 @@
 1. **57 条 API 路由契约**——路径、方法、请求/响应形状（含 `{error, code}` 错误形状）、状态码。逐条清单见 §5 各批次。
 2. **NDJSON 生成引擎 10 种线事件**与语义（stopWhen OR + 工具执行后评估、500ms 节流落库、停止/断连/失败三路径收尾）——ADR-0027。
 3. **e2e 行为**——现有 spec 零改动；「全量 e2e 零改动对 Go 跑绿」= cutover 门槛（ADR-0029）。
-4. **skills 的 PAT 调用面**——check:skills（`scripts/sync-client-auth.mjs`）只感知 HTTP 契约，原样保留，零 Go 侧工作。
+4. **skills 的 PAT 调用面**——skill 客户端只感知 HTTP 契约，原样保留，零 Go 侧工作。
 5. **SQLite schema 与 `__drizzle_migrations` 账本**——零迁移；账本策略 ADR-0026。
 6. **环境变量与文件语义**——`WR_AUTH_DISABLED='1'`、`XDG_DATA_HOME`/`XDG_CONFIG_HOME`、`PORT`/`HOSTNAME`、auth.json 存量文件格式与哈希（Go 必须能验证既有部署的存量文件）、preparePassword 预生成。
 7. **域语言**——`CONTEXT.md` 术语与 avoid-list 冻结，重写期间不得改名。
