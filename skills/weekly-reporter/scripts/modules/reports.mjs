@@ -43,12 +43,18 @@ function requireDate(value, flag) {
   return value
 }
 
+/**
+ * A report id from a positional argument, or one ✗ line. Strict digits: the
+ * `#<id>` token every list line emits is accepted by stripping the prefix, but
+ * the retired script's `parseInt` tolerated suffixes such as `12abc`; wrp does
+ * not.
+ */
 function requireReportId(raw) {
-  const id = Number.parseInt(raw ?? '', 10)
-  if (!Number.isInteger(id)) {
+  const token = String(raw ?? '').replace(/^#/, '')
+  if (!/^\d+$/.test(token)) {
     fail('a numeric report id is required', `got '${raw ?? ''}'`, 'find the id with wrp reports list')
   }
-  return id
+  return Number(token)
 }
 
 function requireVariant(raw) {
@@ -105,6 +111,7 @@ export async function list({ flags }) {
         ? 'No reports matched — widen the date range or change the --query text.'
         : 'No reports yet — wrp reports preview verifies a range before you create one.',
     )
+    return
   }
   for (const report of reports) {
     listLine(`#${report.id}`, [`${report.weekStart}~${report.weekEnd}`, ...variantStatus(report.variants)], report.title)
@@ -414,7 +421,8 @@ export async function remove({ flags, positional }) {
       ],
       ['nothing restores a deleted report — its event snapshot is not rebuildable after the timeline moves on'],
     )
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   const result = await api(`/api/reports/${reportId}`, { method: 'DELETE' })

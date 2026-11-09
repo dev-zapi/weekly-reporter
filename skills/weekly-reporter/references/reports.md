@@ -52,6 +52,9 @@ newest first. `--query` matches titles, source drafts and finals; `--start`/
 `--end` filter by covered week. Page mode prints `page N/M of T reports, newest
 first` and a `next: --page N+1` hint while more pages exist.
 
+When nothing matches, the command prints only the explicit empty-state line and
+exits `0` — no count footer and no page hint.
+
 ```bash
 wrp reports show <id> [--variant leadership|personal] [--part meta|draft|final|both]
 ```
@@ -63,6 +66,11 @@ so pass `--variant` to avoid pulling both. `source` is accepted anywhere `draft`
 is (an alias for the same part), including on the command line. Multi-line
 drafts and finals are only ever printed by `show` under one of these explicit
 modes; never reconstruct them from a list line.
+
+Ids are **strict digits**: pass the numeric id exactly as printed after `#` by
+`wrp reports list` — the prefix is tolerated. The retired script's `parseInt`
+tolerated suffixes such as `12abc`; wrp does not, so
+`✗ a numeric report id is required` is a typo, not an id to truncate.
 
 ## Previewing a range
 

@@ -125,7 +125,10 @@ describe('wrp reports list', () => {
     expect(path).toBe('/api/reports/search')
     expect(params).toEqual({ startDate: '2026-02-01', endDate: '2026-02-28' })
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('— 0 report(s)')
+    expect(result.stdout).toContain('No reports matched')
+    // The empty state is the whole answer: no count footer and no page hint.
+    expect(result.stdout).not.toContain('— 0 report(s)')
+    expect(result.stdout).not.toContain('page 1/1 of 0 reports')
   })
 
   it('rejects a malformed date with one ✗ line and no request', async () => {
@@ -250,6 +253,26 @@ describe('wrp reports show', () => {
 
     expect(result.code).not.toBe(0)
     expect(result.stderr).toContain('✗ report #12 has no leadership variant')
+  })
+
+  it('rejects a non-numeric id (no parseInt truncation) before calling the API', async () => {
+    const server = await stub()
+
+    const result = await runWrp(['reports', 'show', '12abc'], { stub: server })
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('a numeric report id is required')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('accepts the #id token printed by wrp reports list', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '#12'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests[0].url).toBe('/api/reports/12')
   })
 })
 
