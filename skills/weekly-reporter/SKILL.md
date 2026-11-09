@@ -63,5 +63,6 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Provision, verify or decommission this machine's credential (凭据配置) | `references/init.md` | `wrp init` — `--pat`, interactive `--base-url` (startup password → PAT), `--show`, `--clear`; resolution order and the 401 handoff |
 | Timeline work log: list/create/update/delete events | `references/events.md` | event content, `#tag`/`@id`/`%id` parsing boundaries, auto-collected delete refusal |
 | Tags (标签) | [references/tags.md](references/tags.md) | `#name` tokens inside manual event content: inventory, global rename (merges), global remove. |

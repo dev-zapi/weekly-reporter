@@ -12,19 +12,20 @@
 // `kind` is `value` | `boolean` | `multi` (see lib/args.mjs).
 
 import * as events from './modules/events.mjs'
+import * as init from './modules/init.mjs'
 import * as tags from './modules/tags.mjs'
 
 export const MODULES = [
   {
     name: 'init',
     summary: 'Provision machine credentials (PAT) for this machine',
-    commands: [command('init', null, 'Store or inspect machine credentials', 'wrp init <--pat <token> | --base-url <url> | --show | --clear>', [
+    commands: [command('init', null, 'Store, inspect or clear machine credentials (one mode per run)', 'wrp init [--pat <token> [--base-url <url>] | --base-url <url> [--name <name>] | --show | --clear]', [
       flag('--pat', 'value', 'store this PAT directly'),
       flag('--base-url', 'value', 'base URL to store, or to provision against'),
       flag('--name', 'value', 'PAT name for interactive creation (default: <hostname>-cli)'),
       flag('--show', 'boolean', 'print the configured base URL and masked PAT'),
       flag('--clear', 'boolean', 'remove machine credentials'),
-    ], 121)],
+    ], null, init.run)],
   },
   {
     name: 'sources',
