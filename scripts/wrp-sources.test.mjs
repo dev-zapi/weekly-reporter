@@ -553,6 +553,7 @@ describe('wrp sources delete', () => {
 
     expect(result.code).not.toBe(0)
     expect(server.requests.filter((request) => request.method === 'DELETE')).toHaveLength(0)
+    expect(errorLines(result.stderr)).toHaveLength(0)
     expect(result.stdout).toContain('PLAN:')
     expect(result.stdout).toContain('#7 acme (git-local, work)')
     expect(result.stdout).toContain('owner: /repos/acme')

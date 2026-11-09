@@ -433,16 +433,12 @@ export async function deleteSource({ flags = {}, positional = [] } = {}) {
   const source = await resolveSource(requireArg(positional, 0, 'source reference', usage))
 
   if (!flags.confirm) {
-    preview(
-      [
-        `#${source.id} ${source.name} (${source.type}, ${source.projectScope})`,
-        `owner: ${source.config?.owner ?? '—'}`,
-        `${source.config?.authorEmails?.length ?? 0} emails, last sync ${source.lastSyncStatus ?? 'never'}`,
-        'Events already collected stay on the timeline (they move to the "other" group); the source record and its sync cursors are gone for good.',
-      ],
-      [],
-    )
-    console.error(`✗ refused: delete needs --confirm → re-run: wrp sources delete ${source.id} --confirm`)
+    preview([
+      `#${source.id} ${source.name} (${source.type}, ${source.projectScope})`,
+      `owner: ${source.config?.owner ?? '—'}`,
+      `${source.config?.authorEmails?.length ?? 0} emails, last sync ${source.lastSyncStatus ?? 'never'}`,
+      'Events already collected stay on the timeline (they move to the "other" group); the source record and its sync cursors are gone for good.',
+    ])
     process.exit(1)
   }
 
