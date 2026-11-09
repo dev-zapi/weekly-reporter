@@ -1,5 +1,7 @@
 # 认证 + PAT + 机器级凭据 + 审计 —— 实现规格
 
+> **历史文档（已被 wrp 客户端取代）**：本规格描述的是落地时的实现设计与当时的 skill 布局。§2「Skill 侧规格」，以及 §4、§6 中与凭据配置相关的条目，均已被 wrp 客户端取代——凭据配置现在是 `skills/weekly-reporter/scripts/wrp.mjs init`，全部 skill 调用统一走 `wrp`。阅读这些章节时请以 `skills/weekly-reporter/` 的文档为准；服务端章节（认证、PAT、审计）仍然有效。下文保留的历史路径与脚本清单仅作记录，它们指向的 skill/client 已不存在。
+
 > 本文件是 [Wayfinder map #49](https://github.com/dev-zapi/weekly-reporter/issues/49) 的落笔产物。
 > 决策来源：map Notes 的 16 条 Charter decisions（Round 1–2 grilling 锁定）+ [#50 研究结论](https://github.com/dev-zapi/weekly-reporter/issues/50)（`docs/research/2026-10-20-auth-middleware-and-audit.md`）+ 本轮 4 项拍板。
 > 本文件是**规格**，不是实现。服务端代码与 skill 脚本适配由后续 dev session 执行。
@@ -27,7 +29,7 @@
 | --- | --- | --- |
 | D1 | 守卫用 **`withAuth(handler)` HOF** 包住导出（不是 `requireAuth` 首行） | HOF 在 handler 返回后能拿到**真实 `res.status`**，Charter #11 的审计 `status` 字段才有正确值；`requireAuth` 首行形态拿不到。 |
 | D2 | 新 ADR **引用** ADR-0015，不修改 ADR-0015 原文 | ADR 是不可变的决策记录；正文说明「PAT 审计收窄了 ADR-0015 接受的审计缺口」。 |
-| D3 | configure-pat skill 装在**仓库内 `skills/configure-pat/`** | 与其余 10 个 skill 并列、随仓库版本化；与 vendored `client.mjs` 的自包含策略一致。 |
+| D3 | 凭据配置 skill 装在**仓库内**（与其余 skill 并列、随仓库版本化） | 与 vendored `client.mjs` 的自包含策略一致。（该 skill 与其仓库根脚本已由 `wrp init` 取代。） |
 | D4 | **认证失败的尝试也记审计**，只要能认出是哪个 PAT | 脚本 PAT 失效/被吊销是 PAT 场景最常见故障，不记则排障无迹可寻。失败行 `status=401`，`pat_name` 可空。 |
 
 > D4 **扩展**了 Charter #10 的字面范围（原文只说「仅 PAT 调用记审计」）。这是本轮用户明说的偏离，不再是待决问题。
@@ -372,19 +374,21 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 
 ## 2. Skill 侧规格（Charter #8 #9 #14 #15）
 
-### 2.1 改动清单（43 个 HTTP 入口）
+> **已被取代**：本节记录的是落地当时的「每个 skill 自带一份 client」布局。这些 skill 与它们的 vendored client 后来合并成单个 `weekly-reporter` skill（wrp 客户端，凭据配置由 `wrp init` 承担），因此下文的路径与脚本清单只作为历史说明保留；现行命令面见 `skills/weekly-reporter/SKILL.md` 与 `references/`。
 
-| 类别 | 数量 | 路径 |
+### 2.1 改动清单（43 个 HTTP 入口，历史口径）
+
+| 类别 | 数量 | 路径（历史记录） |
 | --- | --- | --- |
-| vendored `client.mjs` | **7** | `skills/{collect-git-source,collect-sources,period-plans,report-templates,timeline-tags,weekly-reports,write-weekly-report}/scripts/lib/client.mjs` |
+| vendored `client.mjs` | **7** | `skills/{collect-git-source,collect-sources,period-plans,report-templates,timeline-tags,weekly-reports,write-weekly-report}/scripts/lib/client.mjs`（现已合并为一个 wrp 客户端） |
 | 经 client.mjs 的脚本 | **32** | 上述 7 个 skill 的 `scripts/*.mjs`（**全部实际发 HTTP**，部分经 `fetchAllSources` / `fetchAll` 间接调用） |
 | timeline-events 内联脚本 | **4** | `skills/timeline-events/scripts/{post,query,update,delete}.mjs`（**无 client.mjs，自己拼 `WEEKLY_REPORTER_URL` + fetch**） |
 
 > **总数 43**（7 + 32 + 4）。这是 Charter #15「仅本仓库 `skills/` 下 37 个脚本入口」的实际口径——**37 与 43 的差异**见 §5.1。
 
-**不涉及**：`skills/*-workspace/**`（eval 用工作区与 `skill-snapshot` 副本）**不在改造范围**——它们是评测夹具，不是分发产物。但 `skills/timeline-events-workspace/skill-snapshot/scripts/*.mjs` 是 timeline-events 的快照，**可选同步**（建议同步，保持 snapshot 与实际一致；不强制）。
+**不涉及**：`skills/*-workspace/**`（eval 用工作区与 `skill-snapshot` 副本）**不在改造范围**——它们是评测夹具，不是分发产物。
 
-### 2.2 `client.mjs` 的改造（7 份）
+### 2.2 `client.mjs` 的改造（7 份，历史口径）
 
 **统一的凭据解析顺序**（Charter #8）：
 
@@ -432,14 +436,14 @@ const headers = {
 }
 ```
 
-**401 处理**（Charter #9 要求的「401 错误指引跑 configure-pat」）：
+**401 处理**（Charter #9 要求的「401 错误指引跑凭据配置」）：
 
 ```js
 if (response.status === 401) {
   fail(
     `Error: Unauthorized (HTTP 401) from ${BASE_URL}`,
     'Your Personal Access Token is missing, invalid, expired, or revoked.',
-    'Run the configure-pat skill (or: node scripts/configure-pat.mjs) to set one up.',
+    'Run `wrp init` (skills/weekly-reporter/scripts/wrp.mjs init) to set one up.',
   )
 }
 ```
@@ -464,37 +468,37 @@ function detectAgentName() {
 }
 ```
 
-### 2.3 timeline-events 内联脚本（4 个）
+### 2.3 内联 fetch 的 4 个脚本（历史）
 
-这 4 个**没有** `client.mjs`，自己拼 URL 与 fetch。改造方式：
+这 4 个**没有** `client.mjs`，自己拼 URL 与 fetch。当时的设计：
 
-- 抽出同样的凭据解析 + 自报头逻辑（4 份各自内联，保持自包含——**或**新建 `skills/timeline-events/scripts/lib/client.mjs` 让它们共享）。
-- **决策**：给 timeline-events **新建一份 `scripts/lib/client.mjs`**，让 4 个脚本改为 import 它。理由：与其它 7 个 skill 的结构一致，减少重复。（timeline-events 当前没有 `scripts/lib/` 目录，需新建。）
+- 抽出同样的凭据解析 + 自报头逻辑（4 份各自内联，保持自包含——**或**新建一份共享 `scripts/lib/client.mjs` 让它们共享）。
+- **决策**：给该 skill **新建一份 `scripts/lib/client.mjs`**，让 4 个脚本改为 import 它。理由：与其它 skill 的结构一致，减少重复。
 
-### 2.4 7 份 `client.mjs` 的重刷方案
+### 2.4 7 份 `client.mjs` 的重刷方案（历史）
 
 7 份 client.mjs **内容有意不同**（各有该 skill 特有的 helper，如 `resolveSource` / `resolveRef` / `fetchAll` / `TAG_CHARSET_REGEX`），**不能简单覆盖**。
 
-**重刷方案**：**新增一份共享模板** `skills/_shared/client-template.mjs`？——❌ 不行，skill 要**自包含可独立安装**（现有注释明确写了这点：「skills install individually, so this is vendored here (not imported from weekly-reports/scripts/lib/client.mjs)」）。
+**重刷方案**：**新增一份共享模板** `skills/_shared/client-template.mjs`？——❌ 不行，skill 要**自包含可独立安装**（现有注释明确写了这点：「skills install individually, so this is vendored here」）。
 
 **实际可行的方案**：**脚本化重刷**。
 
 1. 把**公共部分**（凭据解析、`api()`、错误处理、`detectAgentName`、自报头）抽成一段**标记块**：
    ```js
-   // >>> AUTH-BLOCK:BEGIN (由 scripts/sync-client-auth.mjs 生成，勿手改)
+   // >>> AUTH-BLOCK:BEGIN (由重刷脚本生成，勿手改)
    ...公共代码...
    // <<< AUTH-BLOCK:END
    ```
-2. 写 `scripts/sync-client-auth.mjs`：读取模板里的标记块，替换 7 份 client.mjs 中对应的标记块。
-3. CI 跑一次 `node scripts/sync-client-auth.mjs --check`：若任一份 client.mjs 与模板不一致 → 失败。
+2. 写一个重刷脚本：读取模板里的标记块，替换 7 份 client.mjs 中对应的标记块。
+3. CI 跑一次该脚本的 `--check`：若任一份 client.mjs 与模板不一致 → 失败。
 
 > **与 §1.7 的 CI 断言同源**：这是「多处拷贝必然漂移」的标准解法（参考仓库既有先例：`src/lib/db/migrations.ts` 的 `reconcileLegacyMigrations` 处理历史漂移）。
 
-**首次落地**：7 份 client.mjs 里目前**没有**标记块 → 先手工插入（把公共部分整理成块），再上脚本。
+> **结局**：这套「7 份拷贝 + 重刷脚本」后来被单个 wrp 客户端取代，stamper 随之退役。
 
-### 2.5 `scripts/configure-pat.mjs` + `skills/configure-pat/`（Charter #9，D3）
+### 2.5 凭据配置脚本 + skill（Charter #9，D3；历史）
 
-**脚本** `scripts/configure-pat.mjs`（仓库根 `scripts/` 目录，与 `gen-build-info.mjs` 并列）：
+当时的设计是仓库根一个凭据配置脚本 + 一个薄包装 skill。脚本用法（历史记录）：
 
 ```
 用法:
@@ -504,14 +508,15 @@ function detectAgentName() {
   node scripts/configure-pat.mjs --clear         # 清除机器级凭据
 ```
 
-**行为**：
+行为：
 
 - `--pat` + `--base-url` → 写入 `~/.config/weekly-reporter/auth.json` 的 `machine` 字段（保留同文件的 `password` 字段！）。
 - `--base-url`（无 `--pat`）→ **交互式**：调用 `POST /api/auth/pats` 创建新 PAT（用启动密码认证），把返回的明文写入 `machine.pat`。
+- `--show` / `--clear` 分别打印当前配置（PAT 打码）与清除机器级凭据。
 - **写文件必须保留 `password` 字段** —— 同一个文件承载启动密码与机器级凭据（§1.2）。读写时用「读 → 改 `machine` → 写回」的语义，**不能整体覆盖**。
 - 文件权限 `chmod 600`。
 
-**Skill** `skills/configure-pat/SKILL.md`（薄包装，D3：仓库内）：
+**Skill** `skills/configure-pat/SKILL.md`（薄包装，D3：仓库内，历史记录）：
 
 - frontmatter：`name: configure-pat`，description 说明用途。
 - 正文：何时用（脚本报 401、需要给 agent 配 PAT）、怎么跑（`node scripts/configure-pat.mjs`）、怎么人工用（安全页创建 PAT → 粘贴）。
@@ -519,12 +524,14 @@ function detectAgentName() {
 
 > **人机两用**（Charter #9）：人可以直接开安全页创建 PAT；agent 跑脚本。两条路产出的 token 等价。
 
+> **结局**：这四条模式（`--pat` / 交互式 / `--show` / `--clear`）已全部并入 `wrp init`，仓库根脚本与包装 skill 在 wrp 合并时删除。
+
 ### 2.6 SKILL.md 的配套修改（10 个）
 
 各 skill 的 SKILL.md 里有「读 `WEEKLY_REPORTER_URL` from env」的描述 + 错误排查表。需更新：
 
 - 环境变量说明：加 `WEEKLY_REPORTER_PAT`、`WEEKLY_REPORTER_BASE_URL`、`WEEKLY_REPORTER_URL`（别名）。
-- 错误排查表加一行：`Unauthorized (HTTP 401)` → `Token 缺失/失效/过期/被吊销 → 跑 configure-pat`。
+- 错误排查表加一行：`Unauthorized (HTTP 401)` → `Token 缺失/失效/过期/被吊销 → 跑 wrp init`。
 - 记录「机器级凭据」的存在（`~/.config/weekly-reporter/auth.json`）。
 
 ---
@@ -594,8 +601,8 @@ function detectAgentName() {
 2. **升级顺序**（关键：**服务端必须最后重启**）：
    - 步骤 1：在**旧版本**的服务端上无法创建 PAT（还没这功能）→ **先升级服务端**。
    - 步骤 2：重启服务端（认证生效）→ 打开安全页创建 PAT → 复制明文。
-   - 步骤 3：跑 `configure-pat` 把 PAT 写进机器级凭据。
-   - 步骤 4：更新 skills（git pull 后重刷 7 份 client.mjs + 4 个内联脚本）。
+   - 步骤 3：跑 `wrp init` 把 PAT 写进机器级凭据。
+   - 步骤 4：更新 skills（git pull 即可；凭据配置与全部实体命令都在 `weekly-reporter` 一个 skill 里）。
    - 步骤 5：验证 skill 脚本不再 401。
 3. **兜底**：`WR_AUTH_DISABLED=1` 临时关闭认证（`systemctl --user edit weekly-reporter` 加 `Environment=WR_AUTH_DISABLED=1`，然后 `make restart`）。
 4. **回滚**：删掉 `~/.config/weekly-reporter/auth.json` 的 `machine` 字段 + 恢复旧 skills。
@@ -608,11 +615,11 @@ function detectAgentName() {
 
 ### 5.1 「37 个 skill 脚本入口」vs 实际 43
 
-Charter #15 说「仅本仓库 `skills/` 下 37 个脚本入口（7 份 vendored `client.mjs` + timeline-events 4 个内联脚本）」。实际清点：
+Charter #15 说「仅本仓库 `skills/` 下 37 个脚本入口（7 份 vendored `client.mjs` + 4 个内联 fetch 脚本）」。实际清点：
 
 - 7 份 vendored `client.mjs`
 - **32** 个经 client.mjs 的脚本（Charter 未提）
-- 4 个 timeline-events 内联脚本
+- 4 个内联 fetch 脚本
 
 = **43**。Charter 的 37 = 7 + 4 + 26（少算了 6 个 importer）。**改造范围按实际 43 个**执行——`client.mjs` 改造后，32 个 importer **自动受益**（无需逐个改），但它们**必须全部实际发 HTTP**，逐个核对结果是 32 个**全部**发（部分经 `fetchAllSources` / `fetchAll` 间接调用）。
 
@@ -640,8 +647,8 @@ Charter #8 只提 `WEEKLY_REPORTER_BASE_URL`。实际保留 `WEEKLY_REPORTER_URL
 4. **55 个 route 套 `withAuth`**（脚本化改导出行）+ **CI 断言测试**（§1.7）。
 5. **前端**：`src/lib/api-client.ts` + 34 个文件 / 92 处 `fetch` 改造 + 登录屏 + 根 layout 拦截 + 401 跳转。
 6. **安全页**：`/security` + 导航项 + PAT 管理 + 审计表格。
-7. **skill 侧**：7 份 client.mjs 标记块化 + `scripts/sync-client-auth.mjs` + timeline-events 新建 client.mjs + 4 个脚本改造。
-8. **configure-pat**：`scripts/configure-pat.mjs` + `skills/configure-pat/SKILL.md`。
+7. **skill 侧**：7 份 client.mjs 标记块化 + 重刷脚本 + 4 个内联 fetch 脚本改造。
+8. **凭据配置**：仓库根凭据脚本 + 其包装 skill。
 9. **文档**：ADR-0020 + CONTEXT.md 术语 + `docs/auth-upgrade.md` + 10 个 SKILL.md 更新。
 10. **e2e**：`e2e/auth.spec.ts` + 独立 playwright 配置。
 
@@ -649,8 +656,8 @@ Charter #8 只提 `WEEKLY_REPORTER_BASE_URL`。实际保留 `WEEKLY_REPORTER_URL
 - `npm run build` 输出含 `ƒ Proxy (Middleware)`。
 - `npm run test` 全绿（含新加的 CI 断言测试）。
 - `npm run test:e2e` 全绿（现有 15 个 spec + 新增 auth spec）。
-- `node scripts/sync-client-auth.mjs --check` 通过。
-- 人工验证：安全页创建 PAT → `configure-pat` 写入 → 任一 skill 脚本调用成功 → 安全页审计表出现对应行。
+- 重刷脚本的 `--check` 通过。
+- 人工验证：安全页创建 PAT → `wrp init` 写入 → 任一 skill 脚本调用成功 → 安全页审计表出现对应行。
 
 ---
 

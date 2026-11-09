@@ -488,7 +488,7 @@ func TestAuditMapsRowFields(t *testing.T) {
 	if row.UserAgent == nil || *row.UserAgent != "node-fetch/1.0" {
 		t.Fatalf("userAgent = %v", row.UserAgent)
 	}
-	if row.AgentIdentity == nil || *row.AgentIdentity != "weekly-reports/claude-code" {
+	if row.AgentIdentity == nil || *row.AgentIdentity != "weekly-reporter/claude-code" {
 		t.Fatalf("agentIdentity = %v", row.AgentIdentity)
 	}
 	if row.CallerCwd == nil || *row.CallerCwd != "/tmp/project" {

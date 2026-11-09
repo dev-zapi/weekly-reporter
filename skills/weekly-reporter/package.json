@@ -1,0 +1,10 @@
+{
+  "name": "weekly-reporter-skill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency Node.js client (wrp) for the weekly-reporter app. Metadata only: no dependencies, no build step.",
+  "engines": {
+    "node": ">=18"
+  }
+}
