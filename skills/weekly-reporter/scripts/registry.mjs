@@ -11,6 +11,7 @@
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }
 // `kind` is `value` | `boolean` | `multi` (see lib/args.mjs).
 
+import * as sources from './modules/sources.mjs'
 import * as tags from './modules/tags.mjs'
 
 export const MODULES = [
@@ -29,47 +30,47 @@ export const MODULES = [
     name: 'sources',
     summary: 'Collect sources (采集源): list, inspect, create, edit, enable, sync',
     commands: [
-      command('list', 'sources', 'List collect sources', 'wrp sources list [--name] [--type] [--status] [--scope] [--sync]', [
-        flag('--name', 'value', 'match name or alias'),
-        flag('--type', 'value', 'git-local | github | gitlab | gitee'),
-        flag('--status', 'value', 'available | unavailable | error'),
-        flag('--scope', 'value', 'project scope'),
-        flag('--sync', 'value', 'sync state filter'),
-      ], 124),
-      command('show', 'sources', 'Show one source with its config, cursors and timestamps', 'wrp sources show <ref>', [], 124),
-      command('create', 'sources', 'Create a collect source', 'wrp sources create --type <type> --name <name> [flags]', [
-        flag('--type', 'value', 'git-local | github | gitlab | gitee'),
-        flag('--name', 'value', 'source name'),
-        flag('--path', 'value', 'local repository path (git-local)'),
-        flag('--owner', 'value', 'repository owner (remote types)'),
+      command('list', 'sources', 'List collect sources', 'wrp sources list [--name <text>] [--type <t>] [--status <s>] [--scope <work|personal>] [--sync <success|failure|never>]', [
+        flag('--name', 'value', 'match display name or alias'),
+        flag('--type', 'value', 'git-local | git-remote-github | git-remote-gitlab | git-remote-gitee'),
+        flag('--status', 'value', 'enabled | disabled | unavailable'),
+        flag('--scope', 'value', 'work | personal'),
+        flag('--sync', 'value', 'success | failure | never'),
+      ], 124, sources.list),
+      command('show', 'sources', 'Show one source with its config, cursors and timestamps', 'wrp sources show <ref>', [], 124, sources.show),
+      command('create', 'sources', 'Create a collect source', 'wrp sources create [--type <type>] --name <text> (--path <dir> | --owner <o> --repo <r> --token <t> [--base-url <url>]) --email <a> [flags]', [
+        flag('--type', 'value', 'git-local (default) | git-remote-github | git-remote-gitlab | git-remote-gitee'),
+        flag('--name', 'value', 'source name (1-100 characters)'),
+        flag('--path', 'value', 'local repository directory (git-local; stored as config.owner)'),
+        flag('--owner', 'value', 'repository org or user (remote types)'),
         flag('--repo', 'value', 'repository name (remote types)'),
         flag('--token', 'value', 'access token (remote types)'),
-        flag('--base-url', 'value', 'self-hosted API base URL'),
-        flag('--email', 'multi', 'author email to collect (repeatable)'),
-        flag('--branch', 'multi', 'branch to collect (repeatable; default all)'),
-        flag('--alias', 'multi', 'alias for the source (repeatable)'),
-        flag('--scope', 'value', 'project scope'),
-      ], 124),
-      command('update', 'sources', 'Update a source, backfilling fields you did not pass', 'wrp sources update <ref> [flags]', [
+        flag('--base-url', 'value', 'self-hosted API base URL (remote types)'),
+        flag('--email', 'multi', 'author email to collect (repeatable; at least one)'),
+        flag('--branch', 'multi', 'branch to collect (repeatable; omit for all-branches / default-branch)'),
+        flag('--alias', 'multi', 'alias for the source (repeatable; at most 20)'),
+        flag('--scope', 'value', 'work | personal (default: personal)'),
+      ], 124, sources.create),
+      command('update', 'sources', 'Update a source, backfilling fields you did not pass', 'wrp sources update <ref> [--name] [--scope] [--email | --add-email] [--alias | --add-alias] [--branch] [--path] [--repo] [--base-url] [--token]', [
         flag('--name', 'value', 'source name'),
-        flag('--scope', 'value', 'project scope'),
-        flag('--email', 'multi', 'replace the author emails'),
-        flag('--add-email', 'multi', 'append an author email'),
-        flag('--alias', 'multi', 'replace the aliases'),
+        flag('--scope', 'value', 'work | personal'),
+        flag('--email', 'multi', 'replace the author email list'),
+        flag('--add-email', 'multi', 'append an author email (case-insensitive dedupe)'),
+        flag('--alias', 'multi', 'replace the alias list'),
         flag('--add-alias', 'multi', 'append an alias'),
-        flag('--branch', 'multi', 'replace the branches'),
-        flag('--path', 'value', 'local repository path'),
-        flag('--owner', 'value', 'repository owner'),
+        flag('--branch', 'multi', 'replace the branch list (dropped/renamed branches lose their cursors)'),
+        flag('--path', 'value', 'local repository directory (git-local; synonym: --owner)'),
+        flag('--owner', 'value', 'repository owner (synonym: --path)'),
         flag('--repo', 'value', 'repository name'),
         flag('--base-url', 'value', 'self-hosted API base URL'),
-        flag('--token', 'value', 'access token'),
-      ], 124),
+        flag('--token', 'value', 'replace the access token (the stored one is never sent back)'),
+      ], 124, sources.update),
       command('enable', 'sources', 'Enable a source (or disable it with --off)', 'wrp sources enable <ref> [--off]', [
         flag('--off', 'boolean', 'disable instead of enable'),
-      ], 124),
+      ], 124, sources.enable),
       command('delete', 'sources', 'Delete a source (preview first)', 'wrp sources delete <ref> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed deletion'),
-      ], 124),
+      ], 124, sources.deleteSource),
       command('lookup', 'sources', 'Look a source up by repository path (exit 3 when absent)', 'wrp sources lookup --path <repo-root>', [
         flag('--path', 'value', 'local repository path'),
       ], 128),

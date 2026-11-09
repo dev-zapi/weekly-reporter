@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Collect sources (采集源): list, show, create, update, enable, delete | `references/sources.md` | source model, `<ref>` resolution, whole-record PUT backfill, masked token, branch cursors |
