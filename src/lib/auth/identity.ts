@@ -9,7 +9,7 @@ import { AGENT_IDENTITY_HEADER, CALLER_CWD_HEADER } from './types'
  */
 
 export interface CallerIdentity {
-  /** 调用方自报的 agent 身份，如 `weekly-reports/claude-code` */
+  /** 调用方自报的 agent 身份，如 `weekly-reporter/claude-code` */
   agentIdentity: string | null
   /** 调用方自报的工作目录 */
   callerCwd: string | null

@@ -86,13 +86,13 @@ func TestRecordAuditMapsCallerIdentityHeaders(t *testing.T) {
 	RecordAudit(context.Background(), store,
 		requestWithHeaders("http://localhost:6868/api/events", http.MethodGet,
 			map[string]string{
-				"X-Weekly-Reporter-Agent": "weekly-reports/claude-code",
+				"X-Weekly-Reporter-Agent": "weekly-reporter/claude-code",
 				"X-Weekly-Reporter-Cwd":   "/home/user/project",
 			}),
 		http.StatusOK, Result{Mode: ModePAT, PATName: &name})
 
 	row := onlyAuditRow(t, q)
-	if row.AgentIdentity == nil || *row.AgentIdentity != "weekly-reports/claude-code" {
+	if row.AgentIdentity == nil || *row.AgentIdentity != "weekly-reporter/claude-code" {
 		t.Fatalf("agent_identity = %v", row.AgentIdentity)
 	}
 	if row.CallerCwd == nil || *row.CallerCwd != "/home/user/project" {

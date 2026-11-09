@@ -50,7 +50,7 @@ func TestBranchesLocalGitHappyPath(t *testing.T) {
 func TestBranchesInvalidPathReturnsEmpty(t *testing.T) {
 	h := newHarness(t)
 
-	rec := h.doAuthed(http.MethodGet, "/api/collect/sources/branches?type=git-local&path=/nonexistent-collect-sources-test", "")
+	rec := h.doAuthed(http.MethodGet, "/api/collect/sources/branches?type=git-local&path=/nonexistent-repo-path-test", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}

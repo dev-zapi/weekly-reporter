@@ -4,9 +4,9 @@
 // assertions are exactly what an agent gets - the request the client sends,
 // the text it prints, and the exit code.
 //
-// The comment block below is the ported successor of
-// scripts/period-plans-comments.test.mjs (which stays untouched until the
-// cutover ticket #130): same cases, new command shape and output laws.
+// The comment block below is the ported successor of the pre-merge plan-comment
+// suite (kept untouched until the cutover ticket #130): same cases, new command
+// shape and output laws.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { runWrp, startStubServer, errorLines } from './wrp-cli-harness.mjs'
@@ -28,7 +28,7 @@ function chainComment(overrides) {
     id: 7,
     planItemId: 9,
     content: 'Original blocker',
-    author: 'period-plans/claude-code',
+    author: 'weekly-reporter/claude-code',
     createdAt: '2026-10-13T09:00:00.000Z',
     sourcePeriod: {
       scope: 'week',
@@ -74,7 +74,7 @@ describe('wrp plans comments list', () => {
 
     expect(result.code).toBe(0)
     expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13 09:00 UTC] [period-plans/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
+      '#7 [%9] [2026-10-13 09:00 UTC] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
     )
     expect(result.stdout).toContain(
       '#8 [%12] [2026-10-20 09:00 UTC] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up',

@@ -1,6 +1,6 @@
 // The plans module (周期计划 / 计划条目 / 计划项评论).
 //
-// Ported from skills/period-plans/scripts/*.mjs. The semantics — flags, API
+// Ported from the pre-merge plans scripts. The semantics — flags, API
 // calls, payload shapes, client-side validation, ordering and chain
 // aggregation — are kept verbatim; only the output lines follow the wrp
 // format laws. Domain rules live in references/plans.md.
@@ -14,7 +14,7 @@ import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
 
 // ---------------------------------------------------------------------------
-// Shared validation (ported from period-plans/scripts/lib/client.mjs).
+// Shared validation (ported from the pre-merge plans client).
 // ---------------------------------------------------------------------------
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -100,7 +100,7 @@ function requireInteger(value, flag) {
 }
 
 // ---------------------------------------------------------------------------
-// Comment formatting (ported from period-plans/scripts/lib/comments.mjs).
+// Comment formatting (ported from the pre-merge plans comments module).
 // ---------------------------------------------------------------------------
 
 /** Browser comments carry no author; the UI (and this client) render them as the user. */

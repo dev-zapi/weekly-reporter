@@ -79,7 +79,7 @@ func TestReferencesReturnsCommentReferrersWithOwningItemAndPeriod(t *testing.T) 
 	h := newHarness(t)
 	eventID := h.seedEvent("Target event")
 	itemID := h.seedPlanItem("week", "2026-10-12", "2026-10-18", nil)
-	commentID := h.seedCitation(itemID, eventID, "Decision motivated by @"+itoa(eventID), strPtr("period-plans/claude"))
+	commentID := h.seedCitation(itemID, eventID, "Decision motivated by @"+itoa(eventID), strPtr("weekly-reporter/claude"))
 
 	rec := h.do("/api/events/" + itoa(eventID) + "/references")
 
@@ -97,8 +97,8 @@ func TestReferencesReturnsCommentReferrersWithOwningItemAndPeriod(t *testing.T) 
 	if got.PlanItemID != itemID {
 		t.Fatalf("planItemId = %d, want %d", got.PlanItemID, itemID)
 	}
-	if got.Author == nil || *got.Author != "period-plans/claude" {
-		t.Fatalf("author = %v, want period-plans/claude", got.Author)
+	if got.Author == nil || *got.Author != "weekly-reporter/claude" {
+		t.Fatalf("author = %v, want weekly-reporter/claude", got.Author)
 	}
 	if got.Scope != "week" || got.PeriodStart != "2026-10-12" || got.PeriodEnd != "2026-10-18" {
 		t.Fatalf("period = %+v, want week 2026-10-12..2026-10-18", got)

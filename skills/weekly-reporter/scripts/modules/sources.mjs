@@ -4,11 +4,11 @@
 // the whole record, so `update` fetches the current source, resends every field
 // it did not change, and never echoes the masked token or the sync cursors back
 // (ADR-0011; the server preserves both). `list`/`show`/`create`/`update`/
-// `enable`/`delete` are ported verbatim from the retired collect-sources skill;
-// `lookup`/`emails`/`sync` are ported verbatim from collect-git-source. Only the
-// printed lines follow the wrp output contract (format law 3 for errors, law 1
-// for feedback); `lookup`'s exit code 3 is preserved as the clean not-found
-// branch signal the onboarding flow switches on.
+// `enable`/`delete` are ported verbatim from the pre-merge source-management
+// scripts; `lookup`/`emails`/`sync` are ported verbatim from collect-git-source.
+// Only the printed lines follow the wrp output contract (format law 3 for
+// errors, law 1 for feedback); `lookup`'s exit code 3 is preserved as the clean
+// not-found branch signal the onboarding flow switches on.
 
 import { api, json } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'

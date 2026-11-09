@@ -1,6 +1,6 @@
 // The events module (时间线事件) — the timeline's work log.
 //
-// Ported from skills/timeline-events/scripts/{query,post,update,delete}.mjs with
+// Ported from the pre-merge timeline scripts with
 // the semantics kept verbatim (same filters, payloads, validations and API
 // calls) and only the output reformatted to the five format laws of spec #119.
 //

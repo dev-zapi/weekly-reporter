@@ -1,6 +1,6 @@
 // The init module — machine-credential (机器级凭据) provisioning.
 //
-// Ported from the repo-root `scripts/configure-pat.mjs` (retired in the cutover
+// Ported from the retired repo-root credential script (deleted in the cutover
 // ticket), so this is the one place that WRITES
 // `~/.config/weekly-reporter/auth.json`; every other module only reads it
 // through lib/auth.mjs. The four modes are mutually exclusive mode switches

@@ -4,7 +4,7 @@
 // HTTP server. What is asserted is what an agent sees - the requests that reach
 // the API, the lines printed, the exit code.
 //
-// The expectations come from the ported `skills/weekly-reports` scripts and the
+// The expectations come from the pre-merge weekly-report scripts and the
 // output contract (five format laws), not from the module's own code.
 
 import { describe, it, expect, afterEach } from 'vitest'

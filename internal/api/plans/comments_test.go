@@ -46,7 +46,7 @@ func TestListCommentsEmptyForItemWithoutComments(t *testing.T) {
 func TestListCommentsOldestFirst(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
-	agent := "period-plans/claude"
+	agent := "weekly-reporter/claude"
 	// 写入顺序与时间顺序相反：列表必须按 createdAt 排序。
 	h.seedComment(itemID, "First", nil, fixtureTime+86400)
 	h.seedComment(itemID, "Second", &agent, fixtureTime)
@@ -60,7 +60,7 @@ func TestListCommentsOldestFirst(t *testing.T) {
 		t.Fatalf("comments = %v", comments)
 	}
 	assertField(t, "first content", comments[0].(map[string]any)["content"], "Second")
-	assertField(t, "first author", comments[0].(map[string]any)["author"], "period-plans/claude")
+	assertField(t, "first author", comments[0].(map[string]any)["author"], "weekly-reporter/claude")
 	assertField(t, "second content", comments[1].(map[string]any)["content"], "First")
 	if comments[1].(map[string]any)["author"] != nil {
 		t.Fatalf("second author = %v, want null", comments[1].(map[string]any)["author"])
@@ -96,7 +96,7 @@ func TestListCommentsAggregatesChainWithSourcePeriods(t *testing.T) {
 		planID: h.seedPlan("week", "2026-10-19", "2026-10-25", nil),
 		text:   "Original task", deferredFromID: &original,
 	})
-	agent := "period-plans/claude"
+	agent := "weekly-reporter/claude"
 	h.seedComment(successor, "Successor follow-up", nil, fixtureTime+3600)
 	h.seedComment(original, "Original blocker", &agent, fixtureTime)
 
@@ -248,30 +248,30 @@ func (h *harness) newPAT(name string) string {
 func TestCreateCommentStoresAgentIdentityForPAT(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
-	token := h.newPAT("period-plans-skill")
+	token := h.newPAT("weekly-reporter-skill")
 
 	req := newJSONRequest(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID), `{"content":"defer analysis"}`)
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("X-Weekly-Reporter-Agent", "period-plans/claude-code")
+	req.Header.Set("X-Weekly-Reporter-Agent", "weekly-reporter/claude-code")
 
 	status, body := decode(t, h.doRequest(req))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "author", body["author"], "period-plans/claude-code")
+	assertField(t, "author", body["author"], "weekly-reporter/claude-code")
 }
 
 func TestCreateCommentFallsBackToPATName(t *testing.T) {
 	h := newHarness(t)
 	itemID := h.seedItem(itemSeed{planID: h.seedPlan("week", "2026-10-12", "2026-10-18", nil), text: "Ship the feature"})
-	token := h.newPAT("period-plans-skill")
+	token := h.newPAT("weekly-reporter-skill")
 
 	status, body := decode(t, h.do(http.MethodPost, fmt.Sprintf("/api/plan-items/%d/comments", itemID),
 		`{"content":"review conclusion"}`, token))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "author", body["author"], "period-plans-skill")
+	assertField(t, "author", body["author"], "weekly-reporter-skill")
 }
 
 func TestCreateCommentParsesCitationsOnceAtWrite(t *testing.T) {
