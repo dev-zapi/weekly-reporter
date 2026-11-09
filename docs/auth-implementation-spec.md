@@ -485,12 +485,12 @@ function detectAgentName() {
 
 1. 把**公共部分**（凭据解析、`api()`、错误处理、`detectAgentName`、自报头）抽成一段**标记块**：
    ```js
-   // >>> AUTH-BLOCK:BEGIN (由 scripts/sync-client-auth.mjs 生成，勿手改)
+   // >>> AUTH-BLOCK:BEGIN (由重刷脚本生成，勿手改)
    ...公共代码...
    // <<< AUTH-BLOCK:END
    ```
-2. 写 `scripts/sync-client-auth.mjs`：读取模板里的标记块，替换 7 份 client.mjs 中对应的标记块。
-3. CI 跑一次 `node scripts/sync-client-auth.mjs --check`：若任一份 client.mjs 与模板不一致 → 失败。
+2. 写一个重刷脚本：读取模板里的标记块，替换 7 份 client.mjs 中对应的标记块。
+3. CI 跑一次该脚本的 `--check`：若任一份 client.mjs 与模板不一致 → 失败。
 
 > **与 §1.7 的 CI 断言同源**：这是「多处拷贝必然漂移」的标准解法（参考仓库既有先例：`src/lib/db/migrations.ts` 的 `reconcileLegacyMigrations` 处理历史漂移）。
 
@@ -633,7 +633,7 @@ Charter #8 只提 `WEEKLY_REPORTER_BASE_URL`。实际保留 `WEEKLY_REPORTER_URL
 4. **55 个 route 套 `withAuth`**（脚本化改导出行）+ **CI 断言测试**（§1.7）。
 5. **前端**：`src/lib/api-client.ts` + 34 个文件 / 92 处 `fetch` 改造 + 登录屏 + 根 layout 拦截 + 401 跳转。
 6. **安全页**：`/security` + 导航项 + PAT 管理 + 审计表格。
-7. **skill 侧**：7 份 client.mjs 标记块化 + `scripts/sync-client-auth.mjs` + 4 个内联 fetch 脚本改造。
+7. **skill 侧**：7 份 client.mjs 标记块化 + 重刷脚本 + 4 个内联 fetch 脚本改造。
 8. **凭据配置**：仓库根凭据脚本 + 其包装 skill。
 9. **文档**：ADR-0020 + CONTEXT.md 术语 + `docs/auth-upgrade.md` + 10 个 SKILL.md 更新。
 10. **e2e**：`e2e/auth.spec.ts` + 独立 playwright 配置。
@@ -642,7 +642,7 @@ Charter #8 只提 `WEEKLY_REPORTER_BASE_URL`。实际保留 `WEEKLY_REPORTER_URL
 - `npm run build` 输出含 `ƒ Proxy (Middleware)`。
 - `npm run test` 全绿（含新加的 CI 断言测试）。
 - `npm run test:e2e` 全绿（现有 15 个 spec + 新增 auth spec）。
-- `node scripts/sync-client-auth.mjs --check` 通过。
+- 重刷脚本的 `--check` 通过。
 - 人工验证：安全页创建 PAT → `wrp init` 写入 → 任一 skill 脚本调用成功 → 安全页审计表出现对应行。
 
 ---
