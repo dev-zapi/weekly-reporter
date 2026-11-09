@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Weekly reports (周报/原稿/终版) | `references/reports.md` | list/search, show, preview a range, create, regenerate-source, save-final, delete |

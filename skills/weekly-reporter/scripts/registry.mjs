@@ -11,6 +11,7 @@
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }
 // `kind` is `value` | `boolean` | `multi` (see lib/args.mjs).
 
+import * as reports from './modules/reports.mjs'
 import * as tags from './modules/tags.mjs'
 
 export const MODULES = [
@@ -208,40 +209,40 @@ export const MODULES = [
     name: 'reports',
     summary: 'Weekly reports (周报): list, show, preview, create, regenerate, save-final, delete',
     commands: [
-      command('list', 'reports', 'List weekly reports', 'wrp reports list [--page] [--page-size] [--query] [--start] [--end]', [
+      command('list', 'reports', 'List weekly reports (search mode on --query/--start/--end)', 'wrp reports list [--page] [--page-size] [--query] [--start] [--end]', [
         flag('--page', 'value', 'page number'),
         flag('--page-size', 'value', 'page size'),
         flag('--query', 'value', 'match title, draft or final'),
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
-      ], 127),
-      command('show', 'reports', 'Show one report', 'wrp reports show <id> [--variant] [--part meta|draft|final|both]', [
+      ], 127, reports.list),
+      command('show', 'reports', 'Show one report (metadata only unless --part asks for the text)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both]', [
         flag('--variant', 'value', 'report variant'),
         flag('--part', 'value', 'meta | draft | final | both'),
-      ], 127),
-      command('preview', 'reports', 'Preview the events a report would snapshot', 'wrp reports preview --start <date> --end <date> [--variant] [--full]', [
+      ], 127, reports.show),
+      command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant] [--full]', [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
         flag('--variant', 'value', 'report variant'),
-        flag('--full', 'boolean', 'print every event, not just the summary'),
-      ], 127),
-      command('create', 'reports', 'Create a report (snapshots events, builds both drafts)', 'wrp reports create --start <date> --end <date> [--title]', [
+        flag('--full', 'boolean', 'print every line, not just the first 12'),
+      ], 127, reports.preview),
+      command('create', 'reports', 'Create a report (snapshots events, builds both drafts)', 'wrp reports create --title <text> --start <date> --end <date>', [
         flag('--title', 'value', 'report title'),
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
-      ], 127),
-      command('regenerate-source', 'reports', 'Rebuild both source drafts and mark adopted finals stale', 'wrp reports regenerate-source <id>', [], 127),
-      command('save-final', 'reports', 'Save a final for one variant', 'wrp reports save-final <id> --variant <v> (--content|--file) [flags]', [
+      ], 127, reports.create),
+      command('regenerate-source', 'reports', 'Rebuild both source drafts, bump the revision and mark adopted finals stale', 'wrp reports regenerate-source <id>', [], 127, reports.regenerateSource),
+      command('save-final', 'reports', 'Save a final for one variant (409 when the draft moved)', 'wrp reports save-final <id> --variant <v> (--content|--file) [flags]', [
         flag('--variant', 'value', 'report variant'),
         flag('--content', 'value', 'final content (prefer --file)'),
         flag('--file', 'value', 'read the final from a file'),
         flag('--source-revision', 'value', 'source revision the final was built from'),
         flag('--template-id', 'value', 'template provenance'),
         flag('--ai-style-key', 'value', 'AI style provenance'),
-      ], 127),
+      ], 127, reports.saveFinal),
       command('delete', 'reports', 'Delete a report (preview first)', 'wrp reports delete <id> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed deletion'),
-      ], 127),
+      ], 127, reports.remove),
     ],
   },
 ]
@@ -361,7 +362,7 @@ export function renderCommandHelp(module, entry) {
     const width = Math.max(...entry.flags.map((item) => item.name.length)) + 4
     for (const item of entry.flags) lines.push(`${INDENT}${pad(item.name, width)}${item.summary}`)
   }
-  if (entry.ticket) {
+  if (entry.ticket && !entry.run) {
     lines.push('')
     lines.push(`Not implemented yet (tracked in ticket #${entry.ticket}).`)
   }
