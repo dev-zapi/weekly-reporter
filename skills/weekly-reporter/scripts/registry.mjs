@@ -37,8 +37,8 @@ export const MODULES = [
         flag('--status', 'value', 'enabled | disabled | unavailable'),
         flag('--scope', 'value', 'work | personal'),
         flag('--sync', 'value', 'success | failure | never'),
-      ], 124, sources.list),
-      command('show', 'sources', 'Show one source with its config, cursors and timestamps', 'wrp sources show <ref>', [], 124, sources.show),
+      ], null, sources.list),
+      command('show', 'sources', 'Show one source with its config, cursors and timestamps', 'wrp sources show <ref>', [], null, sources.show),
       command('create', 'sources', 'Create a collect source', 'wrp sources create [--type <type>] --name <text> (--path <dir> | --owner <o> --repo <r> --token <t> [--base-url <url>]) --email <a> [flags]', [
         flag('--type', 'value', 'git-local (default) | git-remote-github | git-remote-gitlab | git-remote-gitee'),
         flag('--name', 'value', 'source name (1-100 characters)'),
@@ -51,7 +51,7 @@ export const MODULES = [
         flag('--branch', 'multi', 'branch to collect (repeatable; omit for all-branches / default-branch)'),
         flag('--alias', 'multi', 'alias for the source (repeatable; at most 20)'),
         flag('--scope', 'value', 'work | personal (default: personal)'),
-      ], 124, sources.create),
+      ], null, sources.create),
       command('update', 'sources', 'Update a source, backfilling fields you did not pass', 'wrp sources update <ref> [--name] [--scope] [--email | --add-email] [--alias | --add-alias] [--branch] [--path] [--repo] [--base-url] [--token]', [
         flag('--name', 'value', 'source name'),
         flag('--scope', 'value', 'work | personal'),
@@ -65,13 +65,13 @@ export const MODULES = [
         flag('--repo', 'value', 'repository name'),
         flag('--base-url', 'value', 'self-hosted API base URL'),
         flag('--token', 'value', 'replace the access token (the stored one is never sent back)'),
-      ], 124, sources.update),
+      ], null, sources.update),
       command('enable', 'sources', 'Enable a source (or disable it with --off)', 'wrp sources enable <ref> [--off]', [
         flag('--off', 'boolean', 'disable instead of enable'),
-      ], 124, sources.enable),
+      ], null, sources.enable),
       command('delete', 'sources', 'Delete a source (preview first)', 'wrp sources delete <ref> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed deletion'),
-      ], 124, sources.deleteSource),
+      ], null, sources.deleteSource),
       command('lookup', 'sources', 'Look a source up by repository path (exit 3 when absent)', 'wrp sources lookup --path <repo-root>', [
         flag('--path', 'value', 'local repository path'),
       ], 128),

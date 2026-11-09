@@ -578,6 +578,21 @@ describe('wrp sources delete', () => {
   })
 })
 
+describe('wrp sources help', () => {
+  it('renders the built verbs without a not-implemented note', async () => {
+    const moduleHelp = await runWrp(['sources', '--help'])
+    expect(moduleHelp.code).toBe(0)
+    expect(moduleHelp.stdout).toContain('wrp sources update')
+    expect(moduleHelp.stdout).not.toContain('Not implemented')
+
+    const commandHelp = await runWrp(['sources', 'update', '--help'])
+    expect(commandHelp.code).toBe(0)
+    expect(commandHelp.stdout).toContain('--add-email')
+    expect(commandHelp.stdout).toContain('--base-url')
+    expect(commandHelp.stdout).not.toContain('Not implemented')
+  })
+})
+
 describe('remaining sources verbs', () => {
   it('keeps lookup, emails and sync as not-implemented (#128 owns them)', async () => {
     const server = await stub()
