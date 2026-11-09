@@ -273,8 +273,8 @@ user asked for a collection (or confirmed onboarding); never as a side effect.
 | `nothing to update: pass at least one field` | no change flags given | pass at least one field flag |
 | `no collect source for path '…'` (lookup, exit 3) | no source for that directory | normal onboarding branch — offer to create and sync |
 | `SOURCE_BUSY: 该仓库正在操作中` (sync) | another sync/fetch holds the repo lock | retry in a few seconds |
-| `sync failed and #N <name> was auto-disabled` (sync) | no emails or unreadable path at sync time | fix the path/emails, then re-enable |
-| `sync failed for #N <name>` (sync) | at least one branch failed | fix the listed branch errors and re-run |
+| `sync failed — #N <name> auto-disabled` (sync) | no emails or unreadable path at sync time | fix the path/emails, then re-enable |
+| `sync failed for #N <name>: <error>` (sync) | at least one branch failed | fix the listed branch errors and re-run |
 
 ## Out of scope here
 

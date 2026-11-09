@@ -43,7 +43,8 @@ Every command obeys one output contract; agents parse it, so treat it as an inte
   found no source — a clean "not onboarded" signal, branch on it without parsing text.
 - **Feedback** (stdout): `✓ <entity> <past-tense>: <identity>`, e.g. `✓ event created: #6991`.
 - **Lists** (stdout): `<id-token> [<metadata>] <body>` per item, then a `— N <entity>(s)`
-  footer, plus a cursor hint when more pages exist.
+  footer, plus a pagination hint naming the flag that continues the walk (`--cursor`
+  for events, `--page` for reports) when more results exist.
 - **Errors** (stderr, non-zero exit): one line, `✗ <cause|API code>: <message> → <fix>`.
   Read the fix hint and retry; do not re-read this document instead.
 - **Previews** (stdout): `PLAN:` header, affected counts and warnings, then
