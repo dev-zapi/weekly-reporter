@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Timeline work log: list/create/update/delete events | `references/events.md` | event content, `#tag`/`@id`/`%id` parsing boundaries, auto-collected delete refusal |
