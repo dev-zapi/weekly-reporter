@@ -65,3 +65,4 @@ that the commands assume.
 | ---- | --------- | ----- |
 | Collect sources (采集源): list, show, create, update, enable, delete | `references/sources.md` | source model, `<ref>` resolution, whole-record PUT backfill, masked token, branch cursors |
 | Timeline work log: list/create/update/delete events | `references/events.md` | event content, `#tag`/`@id`/`%id` parsing boundaries, auto-collected delete refusal |
+| Tags (标签) | [references/tags.md](references/tags.md) | `#name` tokens inside manual event content: inventory, global rename (merges), global remove. |
