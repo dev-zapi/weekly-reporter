@@ -1,5 +1,5 @@
 // Behaviour tests for `wrp init` (#121) — the machine-credential (机器级凭据)
-// provisioning command that absorbs the repo-root configure-pat script.
+// provisioning command that absorbs the retired repo-root credential script.
 //
 // Same seam as the rest of the client: the real `wrp` entry point as a
 // subprocess, with HOME pointed at a throwaway directory so the machine config

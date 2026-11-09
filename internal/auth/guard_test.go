@@ -245,7 +245,7 @@ func TestGuardRecordsCallerIdentityHeaders(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://localhost:6868/api/events?x=1", nil)
 	req.Header.Set("Authorization", "Bearer wrp_token")
 	req.Header.Set("User-Agent", "curl/8")
-	req.Header.Set("X-Weekly-Reporter-Agent", "weekly-reports/claude-code")
+	req.Header.Set("X-Weekly-Reporter-Agent", "weekly-reporter/claude-code")
 	req.Header.Set("X-Weekly-Reporter-Cwd", "/tmp/project")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -255,7 +255,7 @@ func TestGuardRecordsCallerIdentityHeaders(t *testing.T) {
 	}
 	audit := store.audits[0]
 	assertPtr(t, "user agent", audit.UserAgent, "curl/8")
-	assertPtr(t, "agent identity", audit.AgentIdentity, "weekly-reports/claude-code")
+	assertPtr(t, "agent identity", audit.AgentIdentity, "weekly-reporter/claude-code")
 	assertPtr(t, "caller cwd", audit.CallerCwd, "/tmp/project")
 	if audit.APIPath != "/api/events" {
 		t.Fatalf("api path = %q", audit.APIPath)

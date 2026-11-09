@@ -67,7 +67,7 @@ func (h *harness) createPAT(name string) auth.CreatedPAT {
 // createdAt 而不是当前时间，才能确定性地测「createdAt desc, id desc」排序。
 func (h *harness) seedAudit(patName string, status int64, outcome string, createdAt int64) {
 	h.t.Helper()
-	agent := "weekly-reports/claude-code"
+	agent := "weekly-reporter/claude-code"
 	cwd := "/tmp/project"
 	userAgent := "node-fetch/1.0"
 	if err := h.conn.InsertAuditLog(context.Background(), db.InsertAuditLogParams{

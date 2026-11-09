@@ -28,14 +28,12 @@ const SKILL_NAME_PLACEHOLDER = '__SKILL_NAME__'
 
 /** The skills that own a vendored client, in the order they are checked. */
 export const CLIENTS = [
-  { skill: 'collect-git-source', path: 'skills/collect-git-source/scripts/lib/client.mjs' },
   { skill: 'collect-sources', path: 'skills/collect-sources/scripts/lib/client.mjs' },
   { skill: 'period-plans', path: 'skills/period-plans/scripts/lib/client.mjs' },
   { skill: 'report-templates', path: 'skills/report-templates/scripts/lib/client.mjs' },
   { skill: 'timeline-events', path: 'skills/timeline-events/scripts/lib/client.mjs' },
   { skill: 'timeline-tags', path: 'skills/timeline-tags/scripts/lib/client.mjs' },
   { skill: 'weekly-reports', path: 'skills/weekly-reports/scripts/lib/client.mjs' },
-  { skill: 'write-weekly-report', path: 'skills/write-weekly-report/scripts/lib/client.mjs' },
 ]
 
 /**

@@ -6,18 +6,17 @@ description: >-
   Use when the user says things like "收集一下这个仓库", "触发采集",
   "把这个仓库接入周报系统", "同步这个 repo 的提交", or wants the cwd's
   repo registered and synced as a git-local source. NOT for single timeline
-  events (use timeline-events) or for remote hosted sources (GitHub/GitLab
-  repos not on this machine — out of scope).
+  events (use the weekly-reporter skill's `wrp events`) or for remote hosted
+  sources (GitHub/GitLab repos not on this machine — out of scope).
 ---
 
 Collect (同步) the local Git repo at the current working directory into the
-weekly-reporter timeline. Four Node.js scripts under `{baseDir}/scripts/` —
-they use built-in `fetch` (Node 18+), take no dependencies, and read
-credentials from the env (`WEEKLY_REPORTER_PAT` for the token;
-`WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base
-URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`;
-the base URL defaults to `http://localhost:6868`. Without a PAT every `/api/**`
-call returns 401 — run the **configure-pat** skill to set one up.
+weekly-reporter timeline. This skill is a flow document only — it ships no
+scripts of its own. Every data access below is a command of the
+**weekly-reporter** skill's wrp client, written shorthand as `wrp …` and run as
+`node <weekly-reporter>/scripts/wrp.mjs …` (Node 18+, no dependencies). That
+skill documents credential resolution and the output contract; without a PAT
+every call returns 401 — run `wrp init` from the weekly-reporter skill.
 
 The repo is located solely by its normalized absolute path (`config.owner`);
 `name` is display-only. Branch config is empty on create, which means
@@ -30,26 +29,28 @@ explicit user confirmation first.
 
 1. `git rev-parse --show-toplevel` in cwd (subdirectories auto-resolve to the
    repo root). Not a repo → clear error, stop.
-2. `lookup.mjs --path <toplevel>`:
+2. `wrp sources lookup --path <toplevel>`:
    - **Found** (exit 0): check `status`.
-     - `enabled` → `sync.mjs --id <id>`.
-     - `disabled` → ask user "启用并同步？" → `sync.mjs --id <id> --enable`.
+     - `enabled` → `wrp sources sync <id>`.
+     - `disabled` → ask user "启用并同步？" → `wrp sources sync <id> --enable`.
      - `unavailable` → report likely cause (no emails / local path gone),
        stop, point to web UI. Never manage emails/branches of an existing
        source here.
    - **Not found** (exit 3): single confirmation — "要把这个仓库接入并立即
      同步吗？"
      - No → stop.
-     - Yes → `emails.mjs --path <toplevel>` → present `name + email + commits`
+     - Yes → `wrp sources emails --path <toplevel>` → present `name + email + commits`
        multi-select (≥1 required) and pick `projectScope` in the same round
-       (default `personal`) → `create.mjs` (name = repo directory basename)
-       → immediately `sync.mjs --id <new id>`.
+       (default `personal`) → `wrp sources create --path <toplevel> --name <name>
+       --scope <work|personal> --email <a> [--email <b> ...]` (name = repo
+       directory basename) → immediately `wrp sources sync <new id>`.
+   - **Any other exit** → a real error; surface the one `✗` line and stop.
 3. Report the sync summary to the user.
 
 ## lookup — find an existing source by repo path
 
 ```bash
-node {baseDir}/scripts/lookup.mjs --path <repo root>
+wrp sources lookup --path <repo root>
 ```
 
 Prints `id`, `name`, `status`, `enabled`, `scope`, `emails`, `branches`. Exit
@@ -59,7 +60,7 @@ other error.
 ## emails — list commit authors for a path
 
 ```bash
-node {baseDir}/scripts/emails.mjs --path <repo root>
+wrp sources emails --path <repo root>
 ```
 
 Prints `commits  email  name` per line, in the server's order (count desc,
@@ -69,36 +70,42 @@ onboarding.
 ## create — register a new git-local source
 
 ```bash
-node {baseDir}/scripts/create.mjs --path <p> --name <n> --scope work|personal --email <a> [--email <b> ...]
+wrp sources create --path <p> --name <n> --scope work|personal --email <a> [--email <b> ...]
 ```
 
-Prints `✓ Source created: #<id> <name>` on success. Errors: `VALIDATION_ERROR`
-(name too long, bad scope, missing email) and `DUPLICATE_ALIAS` both surface
-via `failResponse`.
+Prints `✓ source created: #<id> <name> (git-local, <scope>) — status <status>` on
+success. Errors:
+`VALIDATION_ERROR` (name too long, bad scope, missing email) and
+`DUPLICATE_ALIAS` both surface on the single `✗` line.
 
 ## sync — trigger a sync
 
 ```bash
-node {baseDir}/scripts/sync.mjs --id <n> [--enable]
+wrp sources sync <ref> [--enable]
 ```
 
-If `--enable` is passed, PATCHes `enabled: true` first, then POSTs to the
-universal sync endpoint. Prints `✓ Synced <name> (#<id>): X commits scanned,
-Y new events` plus per-branch lines.
+`<ref>` is the numeric id printed by `lookup`/`create`. If `--enable` is
+passed, the command PATCHes `enabled: true` (and `status`) first, then POSTs
+to the universal sync endpoint. Prints `✓ source synced: #<id> <name> — X
+commits scanned, Y new events` plus per-branch lines.
 
 ## Errors
 
 | Message | Cause | Fix |
 |---|---|---|
-| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
-| `source is busy [SOURCE_BUSY]` | Another sync/fetch is running for this source | Retry in a few seconds |
-| `sync failed and the source was auto-disabled` | Repo path gone or unreadable during sync | Check path exists and is readable |
-| `Source not found for path '...'` (exit 3) | No git-local source registered for that path | Normal onboarding path — not an error |
-| `Cannot reach weekly-reporter` | Server not running | `npm run dev` or set `WEEKLY_REPORTER_URL` |
+| `unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (the exact command is printed in the `✗` line) |
+| `SOURCE_BUSY` | Another sync/fetch is running for this source | Retry in a few seconds |
+| `sync failed and #N <name> was auto-disabled` | Repo path gone or unreadable during sync | Check the path exists and is readable, fix it with `wrp sources update`, then re-enable |
+| `no collect source for path '…'` (exit 3) | No git-local source registered for that path | Normal onboarding path — not an error |
+| `Cannot reach weekly-reporter` | Server not running | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
 
 ## Out of scope
 
-- Managing emails or branches of an existing source — use the web UI.
-- Remote hosted sources (GitHub/GitLab repos not cloned locally).
+- Managing emails or branches of an existing source — use the web UI (only
+  touch it from `wrp sources update` when the user explicitly asks; this flow
+  never does).
+- Remote hosted sources (GitHub/GitLab/Gitee repos not cloned locally) — they
+  are created and updated with `wrp sources create/update` from the
+  weekly-reporter skill, not by this onboarding flow.
 - Manual fetch (手动仓库 Fetch, ADR-0009) — different concept, same UI area.
 - Eval harness, viewer, and install — handled separately.

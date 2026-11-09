@@ -55,15 +55,15 @@ cat ~/.config/weekly-reporter/auth.json
 ### 步骤 4 — 写入机器级凭据
 
 ```bash
-node scripts/configure-pat.mjs --pat wrp_xxxxxxxx --base-url http://localhost:6868
+node skills/weekly-reporter/scripts/wrp.mjs init --pat wrp_xxxxxxxx --base-url http://localhost:6868
 ```
 
 脚本会**只改 `machine` 字段**，保留同文件的 `password`。
 
-想省掉手工复制，也可以让脚本自己创建：
+想省掉手工复制，也可以让 `wrp init` 自己创建：
 
 ```bash
-node scripts/configure-pat.mjs --base-url http://localhost:6868
+node skills/weekly-reporter/scripts/wrp.mjs init --base-url http://localhost:6868
 ```
 
 （会交互式提示输入启动密码，然后调 `POST /api/auth/pats` 建一个新 PAT 并写进 `machine`。）
@@ -75,7 +75,7 @@ skills 随仓库分发，`git pull` 之后就是新的。但**如果你把 skill
 验证：
 
 ```bash
-node skills/timeline-events/scripts/query.mjs --limit 1
+node skills/weekly-reporter/scripts/wrp.mjs events list --limit 1
 ```
 
 不再 401 即成功。
@@ -114,7 +114,7 @@ make restart
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| 脚本报 `Unauthorized (HTTP 401)` | PAT 缺失 / 失效 / 过期 / 被吊销 | 跑 `node scripts/configure-pat.mjs` 重新配；或看安全页审计里那条 401 行确认原因 |
+| 脚本报 `Unauthorized (HTTP 401)` | PAT 缺失 / 失效 / 过期 / 被吊销 | 跑 `node skills/weekly-reporter/scripts/wrp.mjs init` 重新配；或看安全页审计里那条 401 行确认原因 |
 | 脚本报 `Cannot reach weekly-reporter` | 服务端没起或地址不对 | `make status`；检查 `machine.baseUrl` 是否指向正确地址 |
 | 页面能开但数据全是空的 | 前端没登录，localStorage 里没有密码 | 访问 `/login` 输入启动密码 |
 | 页面一直跳回登录页 | 密码被改过 / localStorage 里是旧密码 | 重新登录 |
@@ -132,6 +132,6 @@ make restart
 
 ## 日常维护
 
-- **新增 skill 脚本**：新脚本必须走 `scripts/lib/client.mjs` 的 `api()`（或自己实现同一套凭据解析），否则不会带 `Authorization` 头。8 份 vendored 拷贝由 `node scripts/sync-client-auth.mjs --check` 保证同步。
-- **轮换 PAT**：安全页创建新的 → 更新机器级凭据 → 吊销旧的。顺序反了会短暂断掉。
-- **机器换了**：在新机器上跑 `configure-pat` 即可，不需要重新创建 PAT（PAT 存在服务端数据库里）。
+- **新增 skill 脚本**：统一走 `skills/weekly-reporter/scripts/wrp.mjs`，它自己解析凭据并带 `Authorization` 头；不要再复制 client.mjs。
+- **轮换 PAT**：安全页创建新的 → 更新机器级凭据（`wrp init --pat …`）→ 吊销旧的。顺序反了会短暂断掉。
+- **机器换了**：在新机器上跑 `wrp init` 即可，不需要重新创建 PAT（PAT 存在服务端数据库里）。

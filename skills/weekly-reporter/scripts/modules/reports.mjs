@@ -1,6 +1,5 @@
-// The reports module (周报): the ported semantics of the old seven
-// `skills/weekly-reports/scripts/*.mjs` verbs, reformatted to the five format
-// laws.
+// The reports module (周报): the ported semantics of the pre-merge weekly-report
+// verbs, reformatted to the five format laws.
 //
 // The data model every verb here assumes (see references/reports.md):
 //   - a report covers a date range and holds an immutable event snapshot taken

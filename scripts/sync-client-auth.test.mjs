@@ -183,7 +183,7 @@ describe('runSync', () => {
   })
 })
 
-// The real gate: run the shipped CLI against the real 8 vendored clients under
+// The real gate: run the shipped CLI against the real vendored clients under
 // skills/. This is what CI relies on - if any client drifts from the template,
 // the suite goes red. `npm run check:skills` runs the same command standalone.
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))

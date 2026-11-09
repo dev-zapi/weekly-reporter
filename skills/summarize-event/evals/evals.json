@@ -5,11 +5,11 @@
       "id": 0,
       "eval_name": "week-plan-clear-match",
       "prompt": "帮我把刚做完的这段工作总结记录到时间线：在 retail-platform 项目里完成了支付渠道沙箱环境的对接，联调和回归测试都过了。",
-      "expected_output": "Queries the current week plan (and month plan) via period-plans before composing, matches the work to the open '对接支付渠道沙箱环境' item, previews, and creates one manual event whose content carries a whitespace-bounded %id of that item. Distractor and done items are not referenced.",
+      "expected_output": "Queries the current week plan (and month plan) via `wrp plans list` before composing, matches the work to the open '对接支付渠道沙箱环境' item, previews, and creates one manual event whose content carries a whitespace-bounded %id of that item. Distractor and done items are not referenced.",
       "files": [],
       "assertions": [
         "event_created: exactly one new manual event exists on the server",
-        "plan_queried_first: a period-plans list (list.mjs or GET /api/plans) ran before the event create",
+        "plan_queried_first: a `wrp plans list` (or GET /api/plans) ran before the event create",
         "correct_item_referenced: the created event contains a whitespace-bounded %1 reference to the sandbox-integration item",
         "distractors_untouched: the created event contains no %2 or %3 reference"
       ]
@@ -22,7 +22,7 @@
       "files": [],
       "assertions": [
         "event_created: exactly one new manual event exists on the server",
-        "month_plan_queried: the month plan list (list.mjs --scope month or GET /api/plans?scope=month) ran before the create",
+        "month_plan_queried: the month plan list (`wrp plans list --scope month` or GET /api/plans?scope=month) ran before the create",
         "named_item_referenced: the created event contains a whitespace-bounded %1 reference to the 灰度发布 item"
       ]
     },
