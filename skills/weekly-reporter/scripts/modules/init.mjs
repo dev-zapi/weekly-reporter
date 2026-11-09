@@ -30,6 +30,9 @@ const CONFIG_PATH = join(homedir(), '.config', 'weekly-reporter', 'auth.json')
 const USAGE =
   'wrp init [--pat <token> [--base-url <url>] | --base-url <url> [--name <name>] | --show | --clear]'
 
+/** A ctrl-C during the password prompt, as distinct from an empty answer. */
+const INTERRUPTED = Symbol('interrupted')
+
 /** The whole auth file, or null when it is missing, unreadable or malformed. */
 export function readConfig(path = CONFIG_PATH) {
   try {
@@ -94,25 +97,34 @@ function readStartupPassword() {
   const rl = createInterface({ input: process.stdin, output: process.stderr })
   // A terminal echoes the typed line (Enter supplies the newline); a pipe does
   // not, so end the prompt line ourselves to keep the next stderr line intact.
-  let settled = false
-  const settle = (resolve, password) => {
-    if (settled) return
-    settled = true
-    rl.close()
-    if (!process.stdin.isTTY) process.stderr.write('\n')
-    resolve(password)
-  }
   return new Promise((resolve) => {
-    // ctrl-C (SIGINT) and ctrl-D / a closed pipe (close) must not hang forever.
-    rl.once('SIGINT', () => settle(resolve, ''))
-    rl.once('close', () => settle(resolve, ''))
-    rl.question('Enter startup password: ', (password) => settle(resolve, password))
+    let settled = false
+    let onSignal
+    const settle = (value) => {
+      if (settled) return
+      settled = true
+      if (onSignal) process.removeListener('SIGINT', onSignal)
+      rl.close()
+      if (!process.stdin.isTTY) process.stderr.write('\n')
+      resolve(value)
+    }
+    // ctrl-C (SIGINT, either typed at a TTY or delivered as a signal) and
+    // ctrl-D / a closed pipe (close) must not hang forever. An interrupt is
+    // reported as `✗ cancelled`, an empty answer as a missing password.
+    onSignal = () => settle(INTERRUPTED)
+    process.once('SIGINT', onSignal)
+    rl.once('SIGINT', onSignal)
+    rl.once('close', () => settle(''))
+    rl.question('Enter startup password: ', (password) => settle(password))
   })
 }
 
 /** POST /api/auth/pats with the startup password as the Bearer token. */
 async function createPatViaApi(baseUrl, name) {
   const password = await readStartupPassword()
+  if (password === INTERRUPTED) {
+    fail('cancelled', 'the startup-password prompt was interrupted', 'no credential was written — re-run wrp init --base-url <url> when ready')
+  }
   if (!password) fail('missing startup password', '', 're-run wrp init --base-url <url> and paste it')
 
   let response
@@ -171,7 +183,9 @@ function showMode() {
 
   const perms = getFilePermissions(CONFIG_PATH)
   console.log('Machine credentials:')
-  console.log(`  Base URL: ${machine.baseUrl ?? DEFAULT_BASE_URL}`)
+  // Honest about the source: an unset machine.baseUrl is not "configured" to
+  // the default, even though the resolver falls back to it.
+  console.log(`  Base URL: ${machine.baseUrl ?? `(not set — default ${DEFAULT_BASE_URL})`}`)
   console.log(`  PAT: ${maskPat(machine.pat)}`)
   if (perms) console.log(`  File permissions: ${perms}`)
   if (perms !== null && perms !== '600') {

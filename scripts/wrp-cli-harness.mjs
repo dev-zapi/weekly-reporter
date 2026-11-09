@@ -110,9 +110,15 @@ export async function closedPort() {
 /**
  * Run the real CLI. `stub` points the client at the stub server;
  * `env` overrides/unsets env vars (`undefined` deletes the key);
- * `input` is fed to stdin (needed for `wrp init`'s password prompt).
+ * `input` is fed to stdin (needed for `wrp init`'s password prompt; pass
+ * `null` to leave stdin open, e.g. for an interrupt test);
+ * `timeoutMs` hard-kills a hung child so a stuck prompt cannot leak processes;
+ * `interruptAfterMs` sends SIGINT after that delay (the ctrl-C path).
  */
-export async function runWrp(args, { stub, env = {}, home, input = '', cwd } = {}) {
+export async function runWrp(
+  args,
+  { stub, env = {}, home, input = '', cwd, timeoutMs = 15000, interruptAfterMs } = {},
+) {
   const childEnv = await buildEnv({ stub, env, home })
   const child = spawn(process.execPath, [WRP_PATH, ...args], { env: childEnv, cwd })
 
@@ -126,9 +132,16 @@ export async function runWrp(args, { stub, env = {}, home, input = '', cwd } = {
   child.stderr.on('data', (chunk) => {
     stderr += chunk
   })
-  child.stdin.end(input)
+  // `null` keeps stdin open so the prompt waits for an interrupt/generated input.
+  if (input !== null) child.stdin.end(input)
+
+  const killTimer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
+  const interruptTimer =
+    interruptAfterMs != null ? setTimeout(() => child.kill('SIGINT'), interruptAfterMs) : null
 
   const code = await new Promise((resolve) => child.on('close', resolve))
+  clearTimeout(killTimer)
+  if (interruptTimer) clearTimeout(interruptTimer)
   return { code, stdout, stderr }
 }
 

@@ -13,9 +13,10 @@ const SCRIPTS_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
 /**
  * The command an agent should run in-session (the `!` prefix) to provision
- * machine credentials - printed on every 401.
+ * machine credentials - printed on every 401. The absolute path is quoted so a
+ * skill directory containing spaces still pastes cleanly.
  */
-export const INIT_COMMAND = `! node ${join(SCRIPTS_DIR, 'wrp.mjs')} init`
+export const INIT_COMMAND = `! node "${join(SCRIPTS_DIR, 'wrp.mjs')}" init`
 
 export const EXIT_FAILURE = 1
 

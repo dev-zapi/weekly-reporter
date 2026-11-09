@@ -29,7 +29,7 @@ A missing credential never crashes the client — it just means the API answers 
 command to run in-session (the `!` prefix runs it without leaving the session):
 
 ```
-! node {baseDir}/scripts/wrp.mjs init
+! node "{baseDir}/scripts/wrp.mjs" init
 ```
 
 `wrp init` also takes `--pat <token> [--base-url <url>]` (store a PAT created in the

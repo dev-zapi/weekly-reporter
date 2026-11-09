@@ -37,7 +37,11 @@ password) of the deployment — ask the user for it, it is not stored anywhere t
 client can read.
 
 The prompt is written to **stderr** and reads one line from stdin, so it must be
-run in a session where the user can type. The token is created via
+run in a session where the user can type. When stderr is a TTY the typed input is
+echoed back (inherited verbatim from the retired script; raw-mode hiding is out
+of scope); piped input is not echoed. An interrupt at the prompt (ctrl-C) exits
+non-zero with `✗ cancelled` and writes nothing; so does an empty answer, which
+reports `✗ missing startup password`. The token is created via
 `POST /api/auth/pats` with the password as a `Bearer` token, and the returned
 plaintext token is only ever returned by that one response (ADR-0020) — it is
 stored immediately.
@@ -52,11 +56,13 @@ stored immediately.
 
 ## Mode 3 — `--show`
 
-Prints the configured base URL and the PAT masked as `first6...last4` (shorter
-tokens print as `****`), plus the config file's permissions. If the file is not
-`600` it appends a `⚠` line with the `chmod 600` fix, because the file can hold
-the startup password as well as the PAT. Use this to verify a provisioning step
-without exposing the credential.
+Prints the **configured** base URL and the PAT masked as `first6...last4`
+(shorter tokens print as `****`), plus the config file's permissions. When
+`machine.baseUrl` is unset it says `Base URL: (not set — default
+http://localhost:6868)` instead of presenting the resolver's fallback as
+configured. If the file is not `600` it appends a `⚠` line with the
+`chmod 600` fix, because the file can hold the startup password as well as the
+PAT. Use this to verify a provisioning step without exposing the credential.
 
 When nothing is configured it prints `No machine credentials configured.` and
 exits `0` — that is an answer, not a failure.
@@ -94,7 +100,7 @@ the file — check `env | grep WEEKLY_REPORTER` before re-provisioning.
 Any command that gets a `401` prints a single `✗` line whose fix hint is:
 
 ```
-! node {baseDir}/scripts/wrp.mjs init
+! node "{baseDir}/scripts/wrp.mjs" init
 ```
 
 Give the user that line **verbatim**: the `!` prefix makes the agent host run it

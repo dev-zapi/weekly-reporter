@@ -220,7 +220,7 @@ describe('401 handoff', () => {
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
     expect(result.stderr).toContain('✗ unauthorized (HTTP 401)')
-    expect(result.stderr).toContain(`! node ${WRP_PATH} init`)
+    expect(result.stderr).toContain(`! node "${WRP_PATH}" init`)
   })
 })
 

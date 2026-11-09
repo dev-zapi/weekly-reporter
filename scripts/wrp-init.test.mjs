@@ -117,6 +117,16 @@ describe('wrp init --show', () => {
     expect(result.stdout).toContain('No machine credentials configured')
     expect(result.stderr).toBe('')
   })
+
+  it('says the base URL is unset rather than presenting the default as configured', async () => {
+    const home = await makeHome({ machine: { pat: 'wrp_1234567890abcdef' } })
+
+    const result = await runWrp(['init', '--show'], { home })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('Base URL: (not set — default http://localhost:6868)')
+    expect(result.stdout).toContain('wrp_12...cdef')
+  })
 })
 
 describe('wrp init --clear', () => {
@@ -277,6 +287,25 @@ describe('wrp init mode handling', () => {
     expect(result.stderr).toContain('✗ unknown verb: wrp init foo')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
+
+  it('reports an interrupt at the password prompt as cancelled, not as a missing password', async () => {
+    const server = await stub()
+    const home = await makeHome()
+
+    // stdin stays open so the prompt really waits for the interrupt.
+    const result = await runWrp(['init', '--base-url', server.url], {
+      home,
+      input: null,
+      interruptAfterMs: 600,
+    })
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ cancelled')
+    expect(result.stderr).not.toContain('missing startup password')
+    expect(server.requests).toHaveLength(0)
+    await expect(readConfigIn(home)).rejects.toThrow()
+  })
 })
 
 describe('provisioning lifecycle', () => {
@@ -303,6 +332,6 @@ describe('provisioning lifecycle', () => {
     const afterClear = await runWrp(['tags', 'list'], { home, stub: server })
     expect(afterClear.code).not.toBe(0)
     expect(afterClear.stderr).toContain('✗ unauthorized (HTTP 401)')
-    expect(afterClear.stderr).toContain('wrp.mjs init')
+    expect(afterClear.stderr).toContain('wrp.mjs" init')
   })
 })
