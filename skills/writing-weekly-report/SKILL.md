@@ -1,5 +1,5 @@
 ---
-name: write-weekly-report
+name: writing-weekly-report
 description: >-
   Author or revise weekly report (周报) finals in the weekly-reporter app as a peer of its built-in generation AI — confirm the week with the user, verify the source draft, pick a template and AI style, write the final yourself, show it in full, and save only after explicit user approval. Use this skill whenever the user wants a weekly report written or revised from outside the app's chat UI: "写一份这周的周报", "帮我生成周报", "写领导版/个人版", "用技术研发模板写周报", "revise last week's final", "改一下周报的口气", or any request to produce a 周报终版 rather than just read one. For merely listing/reading reports use the weekly-reporter skill's `wrp reports …`; for single timeline work-log entries use `wrp events …`.
 ---

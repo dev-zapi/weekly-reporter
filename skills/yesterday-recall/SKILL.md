@@ -10,7 +10,7 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
 - **仅显式触发。** 只有用户明确要求回忆某一天时才运行；不要主动 offer，不要在会话结束时自动提议，也不要因为看到时间线有空档就自行启动。用户没说要回忆，就什么都不做。
 - **日期语义。** 默认是字面意义上的「昨天」（运行当天的前一个日历日）。用户指定日期（如「回忆 11 月 3 号」）就回忆那一天。**不做**周一补周末、节后补假期之类的自动扩展——要补哪一天就只处理哪一天，需要更多天就由用户逐天再触发。
 - **范围。** 回忆日的所有项目，不按工作/个人或单个仓库切分。
-- **不适用。** 记录刚完成的一段工作 → **summarize-event**；浏览任意日期区间，或查询、编辑单条时间线事件 → **weekly-reporter（wrp events）**；写周报 → **write-weekly-report**（weekly-reports 技能已并入 wrp，只浏览周报用 `wrp reports`）。
+- **不适用。** 记录刚完成的一段工作 → **summarize-event**；浏览任意日期区间，或查询、编辑单条时间线事件 → **weekly-reporter（wrp events）**；写周报 → **writing-weekly-report**（weekly-reports 技能已并入 wrp，只浏览周报用 `wrp reports`）。
 
 ## 前置
 
