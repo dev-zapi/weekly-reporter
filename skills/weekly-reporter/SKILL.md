@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Period plans (周计划/月度计划), plan items (计划条目), defer/顺延, item comments (计划项评论) | [references/plans.md](references/plans.md) | list/add/update/defer/delete items; chain-aggregated comments |
