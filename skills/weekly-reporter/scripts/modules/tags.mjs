@@ -78,7 +78,8 @@ export async function rename({ flags, positional }) {
         ? [`'#${to}' already exists on ${mergeTarget.count} event(s) — running this silently MERGES the two tags.`]
         : [],
     )
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   const { status, body } = await api('/api/tags/rename', json('POST', { from, to }))
@@ -103,7 +104,8 @@ export async function remove({ flags, positional }) {
       `remove #${name} from ${count} event(s)`,
       'this rewrites the content of every affected event',
     ])
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   const { status, body } = await api(`/api/tags?name=${encodeURIComponent(name)}`, { method: 'DELETE' })

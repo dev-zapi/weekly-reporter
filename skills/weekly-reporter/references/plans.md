@@ -112,6 +112,11 @@ At least one flag is required; omitted fields keep their current values.
 
 Success: `✓ plan item updated: %<id>`.
 
+Ids are **strict digits**: pass the numeric id exactly as printed after `%`
+(plan items) or `#` (comments) — either prefix is tolerated. The retired
+script's `parseInt` tolerated suffixes such as `12abc`; wrp does not, so
+`✗ invalid item id: …` is a typo, not an id to truncate.
+
 ## defer (顺延)
 
 ```bash

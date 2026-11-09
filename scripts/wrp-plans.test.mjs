@@ -584,6 +584,24 @@ describe('wrp plans update', () => {
     expect(result.stderr).toContain('item id')
     expect(server.requests).toHaveLength(0)
   })
+
+  it('rejects a trailing-garbage id (no parseInt truncation) before calling the API', async () => {
+    const server = await stub()
+    const result = await runWrp(['plans', 'update', '12abc', '--text', 'x'], { stub: server })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain('invalid item id')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('accepts the %id token printed by wrp plans list', async () => {
+    const server = await stub(() => ({ status: 200, body: planItem({ id: 42 }) }))
+
+    const result = await runWrp(['plans', 'update', '%42', '--text', 'x'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests[0].url).toBe('/api/plan-items/42')
+  })
 })
 
 describe('wrp plans defer', () => {

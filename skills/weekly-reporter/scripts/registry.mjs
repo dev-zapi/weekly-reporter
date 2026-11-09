@@ -148,7 +148,7 @@ export const MODULES = [
         flag('--important', 'value', 'true | false'),
         flag('--urgent', 'value', 'true | false'),
       ], 125, plans.add),
-      command('update', 'plans', 'Update a plan item', 'wrp plans update <id> [--text] [--status] [--position] [--parent] [--priority] [--important] [--urgent]', [
+      command('update', 'plans', 'Update a plan item', 'wrp plans update <id> [--text] [--status] [--project] [--position] [--parent] [--priority] [--important] [--urgent]', [
         flag('--text', 'value', 'new text'),
         flag('--status', 'value', 'item status'),
         flag('--project', 'value', 'project name'),

@@ -21,7 +21,9 @@ const LOOKUP_NOT_FOUND_EXIT = 3
 export const TYPES = ['git-local', 'git-remote-github', 'git-remote-gitlab', 'git-remote-gitee']
 export const SCOPES = ['work', 'personal']
 export const SOURCE_STATUSES = ['enabled', 'disabled', 'unavailable']
-export const SYNC_STATUSES = ['success', 'failure', 'never']
+// `failed` is the Go server's spelling of the same state; accept it as a
+// synonym on the `--sync` filter, like the `failure` value it maps to.
+export const SYNC_STATUSES = ['success', 'failure', 'failed', 'never']
 
 /** The Go server writes `failed` where the retired TS server wrote `failure`. */
 const FAILED_SYNC_STATUSES = new Set(['failure', 'failed'])
@@ -452,7 +454,8 @@ export async function deleteSource({ flags = {}, positional = [] } = {}) {
       `${source.config?.authorEmails?.length ?? 0} emails, last sync ${source.lastSyncStatus ?? 'never'}`,
       'Events already collected stay on the timeline (they move to the "other" group); the source record and its sync cursors are gone for good.',
     ])
-    process.exit(1)
+    process.exitCode = 1
+    return
   }
 
   const { status, body } = await api(`/api/collect/sources/${source.id}`, { method: 'DELETE' })

@@ -28,13 +28,18 @@ function usage(text) {
   return `usage: ${text}`
 }
 
-/** A numeric id from a positional argument, or one ✗ line. */
+/**
+ * A numeric id from a positional argument, or one ✗ line. Strict digits: the
+ * list tokens are accepted by stripping one prefix (`%<id>` for plan items,
+ * `#<id>` for comments), but the retired script's `parseInt` tolerated suffixes
+ * such as `12abc`; wrp does not.
+ */
 function requireId(raw, label, usageText) {
-  const id = Number.parseInt(raw ?? '', 10)
-  if (!Number.isInteger(id)) {
+  const token = String(raw ?? '').replace(/^[%#]/, '')
+  if (!/^\d+$/.test(token)) {
     fail(`invalid ${label} id`, `expected a numeric ${label} id, got '${raw ?? ''}'`, usage(usageText))
   }
-  return id
+  return Number(token)
 }
 
 function requireScope(value) {

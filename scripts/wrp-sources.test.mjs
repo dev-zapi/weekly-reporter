@@ -164,6 +164,16 @@ describe('wrp sources list', () => {
       '#5 [git-local] [work] [enabled] go (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00 (failed)',
     )
   })
+
+  it('accepts --sync failed as a synonym of failure', async () => {
+    const server = await stub(() => ({ status: 200, body: { sources: [], total: 0 } }))
+
+    const result = await runWrp(['sources', 'list', '--sync', 'failed'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('No collect sources match.')
+    expect(query(server.requests[0].url).syncStatus).toBe('failed')
+  })
 })
 
 describe('wrp sources show', () => {
