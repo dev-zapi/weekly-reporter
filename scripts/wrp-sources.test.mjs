@@ -594,20 +594,20 @@ describe('wrp sources help', () => {
   })
 })
 
-describe('remaining sources verbs', () => {
-  it('keeps lookup, emails and sync as not-implemented (#128 owns them)', async () => {
-    const server = await stub()
+describe('sources help after #128', () => {
+  it('renders lookup, emails and sync as built verbs without a not-implemented note', async () => {
+    const moduleHelp = await runWrp(['sources', '--help'])
+    expect(moduleHelp.code).toBe(0)
+    expect(moduleHelp.stdout).toContain('wrp sources lookup')
+    expect(moduleHelp.stdout).toContain('wrp sources emails')
+    expect(moduleHelp.stdout).toContain('wrp sources sync')
+    expect(moduleHelp.stdout).not.toContain('Not implemented')
 
-    for (const [args, command] of [
-      [['sources', 'lookup', '--path', '/repo'], 'wrp sources lookup'],
-      [['sources', 'emails', '--path', '/repo'], 'wrp sources emails'],
-      [['sources', 'sync', '7'], 'wrp sources sync'],
-    ]) {
-      const result = await runWrp(args, { stub: server })
-      expect(result.code).not.toBe(0)
-      expect(errorLines(result.stderr)).toHaveLength(1)
-      expect(result.stderr).toContain(`✗ not implemented: ${command}`)
+    for (const verb of ['lookup', 'emails', 'sync']) {
+      const commandHelp = await runWrp(['sources', verb, '--help'])
+      expect(commandHelp.code).toBe(0)
+      expect(commandHelp.stdout).toContain(`wrp sources ${verb}`)
+      expect(commandHelp.stdout).not.toContain('Not implemented')
     }
-    expect(server.requests).toHaveLength(0)
   })
 })

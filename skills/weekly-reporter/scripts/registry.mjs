@@ -79,13 +79,13 @@ export const MODULES = [
       ], null, sources.deleteSource),
       command('lookup', 'sources', 'Look a source up by repository path (exit 3 when absent)', 'wrp sources lookup --path <repo-root>', [
         flag('--path', 'value', 'local repository path'),
-      ], 128),
+      ], null, sources.lookup),
       command('emails', 'sources', 'List commit authors and counts for a repository', 'wrp sources emails --path <repo-root>', [
         flag('--path', 'value', 'local repository path'),
-      ], 128),
+      ], null, sources.emails),
       command('sync', 'sources', 'Sync a source, reporting scanned commits and new events', 'wrp sources sync <ref> [--enable]', [
         flag('--enable', 'boolean', 'enable the source before syncing'),
-      ], 128),
+      ], null, sources.sync),
     ],
   },
   {

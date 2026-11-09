@@ -102,17 +102,56 @@ describe('unknown commands', () => {
   })
 })
 
-describe('not-yet-implemented modules', () => {
-  it('dispatches a registered verb to a clear ✗ line without hitting the API', async () => {
+describe('command surface', () => {
+  // The old fixture pinned `sources sync` as "registered but not implemented";
+  // #128 built it, and every later module ticket builds the rest. Rather than
+  // pin whichever verb is still pending, derive the pending set from the CLI's
+  // own per-command help: a command that still renders the note must dispatch
+  // to exactly one ✗ line and never touch the API. Once every module lands, the
+  // pending set is empty and this test only has to stay green.
+  const commands = Object.entries(APPROVED_SURFACE).flatMap(([module, verbs]) =>
+    verbs.map((verb) => (verb ? [module, ...verb.split(' ')] : [module])),
+  )
+
+  it('renders per-command help for every approved command, and no sources verb is pending', async () => {
+    for (const argv of commands) {
+      const result = await runWrp([...argv, '--help'])
+      const label = `wrp ${argv.join(' ')}`
+
+      expect(result.code, `${label} --help should exit 0`).toBe(0)
+      expect(result.stdout, `${label} --help should describe itself`).toContain(label)
+      // #128 built the last sources verbs; the onboarding & sync half included.
+      if (argv[0] === 'sources') {
+        expect(result.stdout, `${label} is built but help says otherwise`).not.toContain('Not implemented')
+      }
+    }
+  })
+
+  it('dispatches any still-pending command to one ✗ line without hitting the API', async () => {
     const server = await stub()
-    // Any verb that still has no `run` function works here; the point is the
-    // dispatch line, not the module. `reports preview` used to be the example
-    // until #127 built it; `sources sync` lands last (#128).
-    const result = await runWrp(['sources', 'sync', 'demo'], { stub: server })
+
+    for (const argv of commands) {
+      const help = await runWrp([...argv, '--help'])
+      if (!help.stdout.includes('Not implemented')) continue
+
+      const label = `wrp ${argv.join(' ')}`
+      const result = await runWrp(argv, { stub: server })
+      expect(result.code, `${label} is pending but exited 0`).not.toBe(0)
+      expect(result.stdout).toBe('')
+      expect(errorLines(result.stderr), `${label} should fail with one ✗ line`).toHaveLength(1)
+      expect(result.stderr).toContain(`✗ not implemented: ${label}`)
+    }
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('keeps genuinely bad input to one ✗ line without hitting the API', async () => {
+    const server = await stub()
+    const result = await runWrp(['sources', 'lookup', '--nope'], { stub: server })
 
     expect(result.code).not.toBe(0)
+    expect(result.stdout).toBe('')
     expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ not implemented: wrp sources sync')
+    expect(result.stderr).toContain('✗ unknown flag: --nope')
     expect(server.requests).toHaveLength(0)
   })
 })
