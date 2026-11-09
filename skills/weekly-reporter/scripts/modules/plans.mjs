@@ -189,7 +189,10 @@ export async function list({ flags }) {
   // needs to address the plan, and the period is its metadata.
   listLine(`plan ${plan.id}`, [plan.scope, `${plan.periodStart} → ${plan.periodEnd}`])
 
-  if (items.length === 0) emptyState('No items in this plan.')
+  if (items.length === 0) {
+    emptyState('No items in this plan.')
+    return
+  }
   for (const item of items) {
     listLine(`%${item.id}`, itemMetadata(item), item.text)
   }

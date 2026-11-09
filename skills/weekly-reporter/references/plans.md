@@ -68,7 +68,8 @@ Status, project scope, priority and **both markers are printed for every item,
 including `false`**, so the quadrant position is always visible. Parent and
 deferral links appear as extra bracketed metadata. No plan for the period prints
 `No plan found for this period.` and exits 0 — that is an empty answer, not an
-error.
+error. A plan that exists but holds no items prints the header followed by
+`No items in this plan.`
 
 ## add
 

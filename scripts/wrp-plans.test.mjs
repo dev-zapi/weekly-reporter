@@ -289,7 +289,7 @@ describe('wrp plans list', () => {
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/plans?scope=week&weekStart=2026-10-12&weekEnd=2026-10-18')
-    expect(result.stdout).toContain('— 0 item(s)')
+    expect(result.stdout).toContain('No items in this plan.')
   })
 
   it('sends the month key or a date for month scope', async () => {
