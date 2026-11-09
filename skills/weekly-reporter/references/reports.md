@@ -90,8 +90,9 @@ drafts. Output flags an empty draft explicitly (it can be saved but no final can
 be generated from it). Nothing prevents two reports covering the same week, so
 create also nudges when a report already covers the range — a warning, not a
 block; check `list` first if the user might already have one, and delete the
-accidental duplicate if so. The check is containment: exact duplicates and
-contained/containing weeks are caught, partial overlaps are not.
+accidental duplicate if so. The check is containment: an existing report whose
+range fits inside the new range (an exact duplicate included) is caught; partial
+overlaps, and a larger report that contains the new range, are not.
 
 ```bash
 wrp reports regenerate-source <id>
