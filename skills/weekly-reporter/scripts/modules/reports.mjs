@@ -19,7 +19,7 @@ import { readFile } from 'node:fs/promises'
 import { api } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { block, emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
+import { block, emptyState, feedback, listFooter, listLine, preview as previewPlan } from '../lib/output.mjs'
 
 const VARIANTS = ['leadership', 'personal']
 
@@ -140,7 +140,7 @@ export async function show({ flags, positional }) {
     fail(
       `--part must be one of meta, draft, final, both`,
       `got '${flags.part}'`,
-      'meta (default) is enough to decide what to read; pass --part draft --variant leadership for the text',
+      'draft is also accepted as source; meta (default) is enough to decide what to read, and --part draft --variant leadership prints the text',
     )
   }
 
@@ -391,24 +391,29 @@ export async function saveFinal({ flags, positional }) {
  * `wrp reports delete <id>` — preview first, and never around the accepted-
  * proposal audit guard: a report whose final came from an accepted AI proposal
  * must keep its generation audit trail, so the 409 is surfaced as-is.
+ *
+ * The DELETE goes straight to the API, exactly as the retired script did: the
+ * report is fetched only to render the preview, never on the confirmed path.
  */
 export async function remove({ flags, positional }) {
   const reportId = requireReportId(requireArg(positional, 0, 'report id', 'wrp reports delete <id> [--confirm]'))
 
-  const { status, body } = await api(`/api/reports/${reportId}`)
-  if (status !== 200) failResponse(status, body, 'find the id with wrp reports list')
-
-  const variants = body?.variants ?? []
-  const snapshots = body?.snapshots ?? []
-  const finals = variants.filter((variant) => variant.finalContent).map((variant) => variant.variant)
-
   if (!flags.confirm) {
-    console.log('PLAN:')
-    console.log(`  delete #${reportId} — ${body.title} (${body.weekStart} ~ ${body.weekEnd})`)
-    console.log(`  ${variants.length} variant(s), ${snapshots.length} snapshot event(s), and its generation history`)
-    if (finals.length > 0) console.log(`  adopted final(s) lost permanently: ${finals.join(', ')}`)
-    console.log('⚠ nothing restores a deleted report — its event snapshot is not rebuildable after the timeline moves on')
-    console.log('NOT EXECUTED — re-run with --confirm')
+    const { status, body } = await api(`/api/reports/${reportId}`)
+    if (status !== 200) failResponse(status, body, 'find the id with wrp reports list')
+
+    const variants = body?.variants ?? []
+    const snapshots = body?.snapshots ?? []
+    const finals = variants.filter((variant) => variant.finalContent).map((variant) => variant.variant)
+
+    previewPlan(
+      [
+        `delete #${reportId} — ${body.title} (${body.weekStart} ~ ${body.weekEnd})`,
+        `${variants.length} variant(s), ${snapshots.length} snapshot event(s), and its generation history`,
+        ...(finals.length > 0 ? [`adopted final(s) lost permanently: ${finals.join(', ')}`] : []),
+      ],
+      ['nothing restores a deleted report — its event snapshot is not rebuildable after the timeline moves on'],
+    )
     process.exit(1)
   }
 

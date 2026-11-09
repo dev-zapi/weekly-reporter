@@ -223,9 +223,9 @@ export const MODULES = [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
       ], 127, reports.list),
-      command('show', 'reports', 'Show one report (metadata only unless --part asks for the text)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both]', [
+      command('show', 'reports', 'Show one report (metadata only unless --part asks for the text)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both] (draft is also accepted as source)', [
         flag('--variant', 'value', 'report variant'),
-        flag('--part', 'value', 'meta | draft | final | both'),
+        flag('--part', 'value', 'meta | draft | final | both (source is an alias for draft)'),
       ], 127, reports.show),
       command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant] [--full]', [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
@@ -261,6 +261,61 @@ function command(name, module, summary, usage, flags, ticket, run) {
 
 function flag(name, kind, summary) {
   return { name, kind, summary }
+}
+
+/**
+ * How many positional arguments each command accepts. A verb that takes none
+ * rejects extras instead of silently ignoring them; the dispatcher enforces
+ * this ceiling (wrp.mjs), so the table lives beside the surface it describes.
+ */
+const MAX_POSITIONALS = {
+  init: 0,
+  'sources list': 0,
+  'sources show': 1,
+  'sources create': 0,
+  'sources update': 1,
+  'sources enable': 1,
+  'sources delete': 1,
+  'sources lookup': 0,
+  'sources emails': 0,
+  'sources sync': 1,
+  'events list': 0,
+  'events create': 1,
+  'events update': 1,
+  'events delete': 1,
+  'tags list': 0,
+  'tags rename': 2,
+  'tags remove': 1,
+  'plans list': 0,
+  'plans add': 0,
+  'plans update': 1,
+  'plans defer': 1,
+  'plans delete': 1,
+  'plans comments list': 1,
+  'plans comments add': 1,
+  'plans comments delete': 2,
+  'templates list': 0,
+  'templates show': 1,
+  'templates create': 0,
+  'templates clone': 1,
+  'templates update': 1,
+  'templates delete': 1,
+  'styles list': 0,
+  'styles show': 1,
+  'reports list': 0,
+  'reports show': 1,
+  'reports preview': 0,
+  'reports create': 0,
+  'reports regenerate-source': 1,
+  'reports save-final': 1,
+  'reports delete': 1,
+}
+
+for (const module of MODULES) {
+  for (const entry of module.commands) {
+    const line = entry.module ? `${entry.module} ${entry.name}` : module.name
+    entry.maxArgs = MAX_POSITIONALS[line] ?? 0
+  }
 }
 
 export function findModule(name) {

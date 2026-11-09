@@ -19,6 +19,11 @@ function camelCase(flag) {
   return flag.slice(2).replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase())
 }
 
+/** `weekStart` → `--week-start`: the typable spelling of a flag name. */
+function dashed(flag) {
+  return `--${flag.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`
+}
+
 /**
  * Parse `argv` against `spec`. Returns `{ flags, positional, help }`;
  * `help` is true when `--help`/`-h` was passed (the caller prints usage).
@@ -65,7 +70,7 @@ export function requireArg(positional, index, label, usage) {
 export function requireFlag(flags, name, label, usage) {
   const value = flags[name]
   if (value === undefined || String(value).trim() === '') {
-    fail(`missing ${label} (--${name})`, '', `usage: ${usage}`)
+    fail(`missing ${label} (${dashed(name)})`, '', `usage: ${usage}`)
   }
   return value
 }

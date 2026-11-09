@@ -266,6 +266,17 @@ describe('wrp init mode handling', () => {
     expect(result.stderr).toContain('✗ missing PAT')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
+
+  it('rejects a stray verb word instead of starting interactive', async () => {
+    const home = await makeHome()
+
+    const result = await runWrp(['init', 'foo'], { home, input: 'pw\n' })
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ unknown verb: wrp init foo')
+    await expect(readConfigIn(home)).rejects.toThrow()
+  })
 })
 
 describe('provisioning lifecycle', () => {

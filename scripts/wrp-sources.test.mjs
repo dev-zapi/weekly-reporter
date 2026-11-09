@@ -141,6 +141,29 @@ describe('wrp sources list', () => {
       '#3 [git-remote-github] [personal] [enabled] remote — 1 emails, default-branch, never synced',
     )
   })
+
+  it('marks a failed last sync, accepting both server spellings', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: {
+        sources: [
+          source({ id: 4, name: 'legacy', lastSyncStatus: 'failure' }),
+          source({ id: 5, name: 'go', lastSyncStatus: 'failed' }),
+        ],
+        total: 2,
+      },
+    }))
+    const result = await runWrp(['sources', 'list'], { stub: server })
+
+    // The Go server writes `failed`; the retired TS server wrote `failure`.
+    // Either spelling must render the failure marker, not look healthy.
+    expect(result.stdout).toContain(
+      '#4 [git-local] [work] [enabled] legacy (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00 (failed)',
+    )
+    expect(result.stdout).toContain(
+      '#5 [git-local] [work] [enabled] go (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00 (failed)',
+    )
+  })
 })
 
 describe('wrp sources show', () => {

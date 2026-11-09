@@ -54,6 +54,12 @@ while (verbWords.length < MAX_VERB_WORDS && rest.length > 0 && !rest[0].startsWi
 const bareEntry =
   module.commands.length === 1 && module.commands[0].module === null ? module.commands[0] : null
 
+// `wrp init foo` would otherwise swallow `foo` as a positional and start the
+// interactive prompt: a bare module has no verb words at all.
+if (bareEntry && verbWords.length > 0) {
+  fail(`unknown verb: wrp ${module.name} ${verbWords.join(' ')}`, '', `wrp ${module.name} takes flags only — run wrp ${module.name} --help`)
+}
+
 if (verbWords.length === 0 && !bareEntry) {
   if (rest.length === 0 || rest[0] === '--help' || rest[0] === '-h') {
     console.log(renderModuleHelp(module))
@@ -76,10 +82,22 @@ if (help) {
   process.exit(0)
 }
 
+// The arity ceiling: a verb that takes no positionals must reject extras
+// instead of quietly ignoring them, so `wrp events list junk` is an error.
+const allPositional = [...extraPositional, ...positional]
+if (allPositional.length > entry.maxArgs) {
+  const unexpected = allPositional.slice(entry.maxArgs)
+  const limit =
+    entry.maxArgs === 0
+      ? `${commandName} takes no positional arguments`
+      : `${commandName} takes at most ${entry.maxArgs} positional argument${entry.maxArgs === 1 ? '' : 's'}`
+  fail(`unexpected argument${unexpected.length > 1 ? 's' : ''}`, unexpected.join(' '), `${limit} — usage: ${entry.usage}`)
+}
+
 if (!entry.run) failNotImplemented(commandName, entry.ticket)
 
 try {
-  await entry.run({ flags, positional: [...extraPositional, ...positional], module, entry })
+  await entry.run({ flags, positional: allPositional, module, entry })
 } catch (error) {
   fail('unexpected error', error?.message ?? String(error), 're-run wrp --help to check the syntax')
 }

@@ -21,10 +21,12 @@ export function listLine(idToken, metadata, body) {
   console.log(body ? `${prefix} ${body}` : prefix)
 }
 
-/** Law 2 - list footer: `— N <entity>(s)`, plus the cursor hint when hasMore. */
-export function listFooter(count, entity, { hasMore, cursor } = {}) {
-  console.log(`— ${count} ${entity}(s)`)
-  if (hasMore && cursor) console.log(`next page: --cursor ${cursor}`)
+/** Law 2 - list footer: `— N <entity>(s)`, plus a caller-supplied pagination hint. */
+export function listFooter(count, entity, { hint, detail } = {}) {
+  console.log(`— ${count} ${entity}(s)${detail ? ` ${detail}` : ''}`)
+  // The caller names its own continuation flag (`--cursor`, `--page`, …): no
+  // module may advertise a flag it does not take.
+  if (hint) console.log(hint)
 }
 
 /** The explicit empty state, so a zero-result answer never looks like a crash. */

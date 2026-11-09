@@ -195,7 +195,13 @@ function clearMode() {
  * path). A bare `wrp init` is interactive too, against the resolved base URL:
  * that is the command the 401 handoff tells the user to run.
  */
-export async function run({ flags }) {
+export async function run({ flags, positional = [] }) {
+  // A bare module is flags-only: the dispatcher already rejects stray verb
+  // words, and this guards the same rule for a positional after the flags.
+  if (positional.length > 0) {
+    fail(`unexpected argument: ${positional[0]}`, '', `usage: ${USAGE}`)
+  }
+
   const { pat, baseUrl, name, show, clear } = flags
 
   // A truncated shell variable (`--pat "$TOKEN"` with TOKEN unset) must be a

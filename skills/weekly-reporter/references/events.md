@@ -62,7 +62,9 @@ reference as a clickable token. Ids come from `wrp plans list` (each item is
 shown as `%<id>`) and `wrp plans add|defer` output.
 
 - Manual content parses `%id` too, so tokens written through wrp are always
-  live; inside auto-collected content `%` stays plain text.
+  live; inside auto-collected content `%` stays plain text. Any plan item, from
+  any period (past week, future week, monthly parent, deferred original), can
+  be referenced.
 - The boundary rule is identical to tags and event references: the character
   before `%` must be whitespace or the start of content, and the character after
   the digits must be whitespace or the end of content. `50%42` (no whitespace
@@ -146,6 +148,12 @@ At least one flag is required. `--content` replaces the event text (carry
 `--important` sets or clears the ★ flag (`false` is a real update, not "leave
 unchanged"). On success: `✓ event updated: #<id>`. A missing id surfaces as
 `✗ event not found (HTTP 404)` with a pointer to `wrp events list`.
+
+Ids are **strict digits**: pass the numeric id exactly as printed after `#`
+(the retired script's `parseInt` tolerated prefixes such as `12abc`; wrp does
+not, so `✗ invalid event id: …` is a typo, not an id to truncate). An empty
+`--time ''` is refused client-side as a missing value, like an empty
+`--content` — checked before any request is sent.
 
 ### `wrp events delete`
 

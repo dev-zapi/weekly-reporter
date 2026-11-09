@@ -156,6 +156,47 @@ describe('command surface', () => {
   })
 })
 
+describe('positional arity ceiling', () => {
+  it('rejects an extra word for a verb that takes no positionals', async () => {
+    const server = await stub()
+
+    const result = await runWrp(['events', 'list', 'junk'], { stub: server })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stdout).toBe('')
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ unexpected argument: junk')
+    expect(result.stderr).toContain('wrp events list takes no positional arguments')
+    expect(result.stderr).toContain('usage: wrp events list')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('rejects a word past the ceiling for a verb that takes positionals', async () => {
+    const server = await stub()
+
+    const result = await runWrp(['sources', 'show', '#7', 'extra'], { stub: server })
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ unexpected argument: extra')
+    expect(result.stderr).toContain('takes at most 1 positional argument')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('still accepts the documented number of positionals', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: { id: 7, name: 'acme', config: { authorEmails: ['a@example.com'] }, type: 'git-local' },
+    }))
+
+    const result = await runWrp(['sources', 'show', '#7'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests).toHaveLength(1)
+    expect(server.requests[0].url).toBe('/api/collect/sources/7')
+  })
+})
+
 describe('unreachable server', () => {
   it('prints the Cannot-reach line with the start-server fix hint', async () => {
     const port = await closedPort()

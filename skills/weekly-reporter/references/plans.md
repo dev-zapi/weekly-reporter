@@ -194,7 +194,10 @@ and the content:
 
 The `%<itemId>` on a line is the item the comment is **pinned to**, which is not
 necessarily the item you queried — that pair is what `comments delete` needs.
-With no comments the client prints `No comments on plan item %<itemId>.`
+Note that here `#<id>` is the **comment** id, not a timeline tag or an event id:
+`references/events.md` uses `#<id>` as the event token, so read the enclosing
+section to know which entity a `#` token names. With no comments the client
+prints `No comments on plan item %<itemId>.`
 
 ### comments add
 

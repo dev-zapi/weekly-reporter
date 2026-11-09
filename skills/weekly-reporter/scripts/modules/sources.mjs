@@ -13,7 +13,7 @@
 import { api, json } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { emptyState, feedback, listLine, preview } from '../lib/output.mjs'
+import { emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
 
 /** `sources lookup` found nothing: the flow branches on this without parsing text. */
 const LOOKUP_NOT_FOUND_EXIT = 3
@@ -22,6 +22,13 @@ export const TYPES = ['git-local', 'git-remote-github', 'git-remote-gitlab', 'gi
 export const SCOPES = ['work', 'personal']
 export const SOURCE_STATUSES = ['enabled', 'disabled', 'unavailable']
 export const SYNC_STATUSES = ['success', 'failure', 'never']
+
+/** The Go server writes `failed` where the retired TS server wrote `failure`. */
+const FAILED_SYNC_STATUSES = new Set(['failure', 'failed'])
+
+function isFailedSyncStatus(status) {
+  return FAILED_SYNC_STATUSES.has(status)
+}
 
 function usageOf(command) {
   return `wrp sources ${command}`
@@ -157,7 +164,7 @@ export async function list({ flags = {} } = {}) {
     const aliasNote = aliases.length ? ` (alias: ${aliases.join(', ')})` : ''
     const emails = source.config?.authorEmails?.length ?? 0
     const sync = source.lastSyncStatus
-      ? `sync ${formatDate(source.lastSyncAt)}${source.lastSyncStatus === 'failure' ? ' (failed)' : ''}`
+      ? `sync ${formatDate(source.lastSyncAt)}${isFailedSyncStatus(source.lastSyncStatus) ? ' (failed)' : ''}`
       : 'never synced'
     const metadata = [source.type, source.projectScope, source.status]
     // enabled=false with status=enabled is a stale mixed state (a bare PATCH of
@@ -171,7 +178,9 @@ export async function list({ flags = {} } = {}) {
   }
 
   const work = sources.filter((source) => source.projectScope === 'work').length
-  console.log(`— ${sources.length} source(s) (work ${work} / personal ${sources.length - work})`)
+  // Law 2's footer may carry a caller-supplied detail; the scope breakdown is
+  // the deliberate extension here (documented in references/sources.md).
+  listFooter(sources.length, 'source', { detail: `(work ${work} / personal ${sources.length - work})` })
 }
 
 /** `wrp sources show <ref>` — the only place cursors and full config are shown. */
@@ -540,12 +549,10 @@ export async function sync({ flags = {}, positional = [] } = {}) {
 
   if (status === 409) {
     // The source operation lock: one repo operation (sync or manual fetch) at a
-    // time, so a concurrent run is the whole story and retrying is the fix.
-    fail(
-      `SOURCE_BUSY: ${body?.error ?? '该仓库正在操作中，请稍后重试'}`,
-      'another sync or fetch is already running for this repo',
-      'retry in a few seconds',
-    )
+    // time, so a concurrent run is the whole story and retrying is the fix. The
+    // API code is the cause and the API message the message slot, so law 3
+    // prints exactly one `: ` separator.
+    failResponse(status, body, 'another sync or fetch is already running for this repo — retry in a few seconds')
   }
 
   if (status === 500 && body?.code === 'SYNC_FAILED') {
@@ -554,15 +561,15 @@ export async function sync({ flags = {}, positional = [] } = {}) {
     // (no author emails, unreachable path); name the disable and the fix.
     if (result.autoDisabled) {
       fail(
-        `sync failed and #${source.id} ${sourceName} was auto-disabled: ${result.error ?? 'unknown'}`,
-        'the server cannot collect from this source',
-        `fix the cause (check the stored path with wrp sources show ${source.id}, or add emails with wrp sources update ${source.id} --path <repo> --add-email <address>), then re-enable it`,
+        `sync failed — #${source.id} ${sourceName} auto-disabled`,
+        result.error ?? 'unknown error',
+        `the server cannot collect from this source: check the stored path with wrp sources show ${source.id}, or add emails with wrp sources update ${source.id} --path <repo> --add-email <address>, then re-enable it`,
       )
     }
     fail(
-      `sync failed for #${source.id} ${sourceName}: ${result.error ?? 'unknown'}`,
-      'at least one branch did not collect',
-      `failed branches: ${describeFailedBranches(result.branches ?? [])}`,
+      `sync failed for #${source.id} ${sourceName}`,
+      result.error ?? 'unknown error',
+      `at least one branch did not collect — failed branches: ${describeFailedBranches(result.branches ?? [])}`,
     )
   }
 

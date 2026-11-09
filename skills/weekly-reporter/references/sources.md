@@ -80,7 +80,8 @@ A numeric ID (`7` or `#7`), a display name, or an alias:
 
 The body carries the name (+ aliases), email count, branch mode
 (`all-branches` for a local source with no branch list, `default-branch` for a
-remote one) and the last sync time or `never synced`. Empty results print
+remote one) and the last sync time or `never synced`. The footer may append a
+work/personal scope breakdown after the count. Empty results print
 `No collect sources match.` with no footer.
 
 `wrp sources show <ref>` is the only place the full config, per-branch cursors
@@ -106,8 +107,8 @@ pass — only what you name changes. The payload always carries `type`, `name`,
 `projectScope` and `config`; `aliases` travel top-level only when non-empty.
 
 - `--email` / `--alias` **replace** the list; `--add-email` / `--add-alias`
-  **append** (emails dedupe case-insensitively, aliases do not dedupe).
-  The two forms are mutually exclusive per field.
+  **append** (emails dedupe case-insensitively, aliases dedupe on exact match
+  only). The two forms are mutually exclusive per field.
 - `--branch` replaces the branch list. A branch that disappears (including a
   renamed one) loses its sync cursor and re-collects from scratch — the command
   prints a warning when this happens. Without `--branch`, the current branch

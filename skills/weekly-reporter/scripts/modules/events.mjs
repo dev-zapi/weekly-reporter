@@ -96,9 +96,12 @@ export async function list({ flags }) {
     listLine(`#${event.id}`, metadata, `${important}${content}${tags ? ` ${tags}` : ''}`)
   }
 
+  // events paginates with `--cursor`, so that is the flag the hint advertises.
   listFooter(events.length, 'event', {
-    hasMore,
-    cursor: nextCursor ? `${nextCursor.id}@${nextCursor.eventTime}` : undefined,
+    hint:
+      hasMore && nextCursor
+        ? `next page: --cursor ${nextCursor.id}@${nextCursor.eventTime}`
+        : undefined,
   })
 }
 
@@ -107,13 +110,6 @@ export async function create({ positional, flags }) {
   const content = positional[0]
   if (content === undefined || content.trim() === '') {
     fail('missing content', 'pass the event text as one positional argument', `usage: ${USAGE.create}`)
-  }
-  if (positional.length > 1) {
-    fail(
-      `unexpected argument: ${positional[1]}`,
-      '',
-      'quote the content so it stays one argument',
-    )
   }
 
   // Verbatim port: only eventTime is conditional; content is the source of truth.
@@ -138,7 +134,12 @@ export async function update({ positional, flags }) {
     if (flags.content === '') fail('missing value for --content', '', `usage: ${USAGE.update}`)
     payload.content = flags.content
   }
-  if (flags.time !== undefined) payload.eventTime = flags.time
+  // An empty --time is a truncated shell variable, not a timestamp; sending it
+  // would only earn the API's 400 after a pointless round-trip.
+  if (flags.time !== undefined) {
+    if (flags.time.trim() === '') fail('missing value for --time', '', `usage: ${USAGE.update}`)
+    payload.eventTime = flags.time
+  }
   if (flags.important !== undefined) {
     if (flags.important !== 'true' && flags.important !== 'false') {
       fail(`invalid --important: ${flags.important}`, '', 'pass --important true|false')

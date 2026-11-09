@@ -59,9 +59,10 @@ wrp reports show <id> [--variant leadership|personal] [--part meta|draft|final|b
 `--part meta` (the default) prints metadata and per-variant sizes only — cheap,
 and enough to decide what to read. Ask for `draft`, `final`, or `both` only when
 you actually need the text: a source draft can run to thousands of characters,
-so pass `--variant` to avoid pulling both. `source` is accepted as an alias for
-`draft`. Multi-line drafts and finals are only ever printed by `show` under one
-of these explicit modes; never reconstruct them from a list line.
+so pass `--variant` to avoid pulling both. `source` is accepted anywhere `draft`
+is (an alias for the same part), including on the command line. Multi-line
+drafts and finals are only ever printed by `show` under one of these explicit
+modes; never reconstruct them from a list line.
 
 ## Previewing a range
 
@@ -87,9 +88,10 @@ wrp reports create --title <text> --start <YYYY-MM-DD> --end <YYYY-MM-DD>
 Creates the report, snapshots the events in range, and builds both source
 drafts. Output flags an empty draft explicitly (it can be saved but no final can
 be generated from it). Nothing prevents two reports covering the same week, so
-create also nudges when a report already overlaps the range — a warning, not a
+create also nudges when a report already covers the range — a warning, not a
 block; check `list` first if the user might already have one, and delete the
-accidental duplicate if so.
+accidental duplicate if so. The check is containment: exact duplicates and
+contained/containing weeks are caught, partial overlaps are not.
 
 ```bash
 wrp reports regenerate-source <id>
