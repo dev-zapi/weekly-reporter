@@ -1,0 +1,124 @@
+{
+  "skill_name": "yesterday-recall",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "default-literal-yesterday",
+      "prompt": "回忆一下昨天都干了什么。",
+      "expected_output": "Resolves the literal calendar yesterday relative to the run date (run date minus one day), with no Monday/holiday auto-expansion. Queries the timeline for exactly that date with both auto and manual sources before serving the --gaps board, and the board input JSON carries that same date.",
+      "files": [],
+      "assertions": [
+        "date_is_literal_yesterday: the resolved date equals the run date minus one calendar day",
+        "both_sources_queried: timeline queries cover auto and manual events for that date before the gaps board is served",
+        "no_expansion: no events from any other date are folded into the anchor set",
+        "gaps_date_matches: the --gaps input JSON date equals the resolved yesterday"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "explicit-date-verbatim",
+      "prompt": "回忆 11 月 3 号。",
+      "expected_output": "Resolves \"11 月 3 号\" to 2026-11-03 in the current year and uses exactly that day. It does not expand to the containing Monday-start week or skip a holiday; the gaps board is served for 2026-11-03 only.",
+      "files": [],
+      "assertions": [
+        "explicit_date_resolved: the resolved date is 2026-11-03",
+        "exact_day_only: no events outside 2026-11-03 appear as anchors",
+        "gaps_date_matches: the --gaps input JSON date is 2026-11-03"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "anchor-first-collection-with-remember-degradation",
+      "prompt": "回顾一下 11 月 6 号。",
+      "expected_output": "Collects anchors before any board is served: timeline events for 2026-11-06 (auto + manual), .remember/today-2026-11-06.md or .done.md from the weekly-reporter main checkout, and the same file from every git-local collect source's main checkout (paths resolved from wrp sources show config.owner). Missing .remember files are skipped silently instead of aborting, and the --gaps input merges the timeline and memory anchors.",
+      "files": [],
+      "assertions": [
+        "anchor_first: timeline and .remember collection completes before the gaps board is served",
+        "both_event_sources: the timeline query includes auto and manual events",
+        "git_local_checkouts_enumerated: wrp sources list/show is used to resolve git-local main-checkout paths",
+        "remember_missing_skipped: absent .remember files do not abort the run or surface an error",
+        "gaps_receives_merged_anchors: the --gaps input carries anchors sourced from both the timeline and .remember"
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "distillation-quality",
+      "prompt": "回忆一下昨天：上午跟 XX 对了三版口径，文档改了两遍最后定了；下午把支付回调的幂等 bug 修了，补了回归测试；晚上顺手把 CI 里那个 flaky 测试关了。",
+      "expected_output": "Distills the raw recall into one-line manual-event drafts, one nameable accomplishment per draft (the payment-callback idempotency fix with regression tests, and the flaky CI test disabled). Keeps the shipped/fixed/decided results, drops the revision round-trips and other process detail, names the project when known, and proposes #tags at the end of each line.",
+      "files": [],
+      "assertions": [
+        "one_line_per_draft: every draft is a single line with no embedded newline",
+        "accomplishment_unit: each draft is a nameable accomplishment rather than a chronology",
+        "process_detail_dropped: no draft narrates the three revision rounds or two document edits as its substance",
+        "result_kept: the fixed payment idempotency bug and the disabled flaky test are present",
+        "tags_proposed: at least one #tag is suggested for the drafts"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "plan-item-auto-linkage",
+      "prompt": "回忆一下昨天：把支付渠道沙箱环境的对接做完了，联调和回归都过了。",
+      "expected_output": "Queries the recalled week's plan (and overlapping month plan) via wrp plans list, sees the clear open item '对接支付渠道沙箱环境', and embeds a whitespace-bounded %id in that draft automatically without asking a per-draft question. Unrelated or done items are not referenced; when nothing matches clearly, no %id is added.",
+      "files": [],
+      "assertions": [
+        "plan_queried_first: a wrp plans list ran before the confirm board is served",
+        "auto_linked: the draft contains a whitespace-bounded %1 reference",
+        "no_per_draft_question: no user question is asked for an obvious match",
+        "distractors_untouched: no %2 or %3 reference appears",
+        "done_items_skipped: done plan items are never referenced"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "confirm-all-excluded-zero-post",
+      "prompt": "回忆一下昨天，先把草稿给我确认；确认页上我把所有草稿都排除掉。",
+      "expected_output": "With every draft excluded, the --confirm board omits them entirely: the answers file is { date, confirmed: [] } and zero events are created.",
+      "files": [],
+      "assertions": [
+        "excluded_absent: no excluded draft appears in the answers JSON",
+        "confirmed_empty: the answers file carries confirmed: []",
+        "zero_post: no event is created",
+        "server_untouched: the manual event count for the recalled date is unchanged"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "post-via-wrp-events-create",
+      "prompt": "回忆一下昨天：修好了支付回调幂等 bug，补了回归测试；把 CI 的 flaky 测试关了。确认无误，落库吧。",
+      "expected_output": "Creates one manual event per confirmed draft through weekly-reporter's wrp events create, passing --time backfilled to the recalled date at the draft's chosen time. Then prints the merged 昨日全貌 (existing + newly created) in chat only and never posts that summary as an event.",
+      "files": [],
+      "assertions": [
+        "posts_via_wrp_events_create: wrp events create (the weekly-reporter client) created the events",
+        "one_event_per_confirmed: exactly the confirmed drafts are posted, no more",
+        "time_backfilled: each created event's eventTime falls on the recalled date at the confirmed time",
+        "auto_covered_deduped: items already covered by auto events are skipped or @id-referenced, not re-described",
+        "summary_chat_only: the merged 昨日全貌 view is printed in chat and never posted as an event"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "explicit-trigger-only",
+      "prompt": "今天继续做支付渠道的活。",
+      "expected_output": "The skill does not proactively offer a recall, does not serve either board, and does nothing unless the user explicitly asks to recall a day.",
+      "files": [],
+      "assertions": [
+        "no_proactive_offer: no recall offer is made",
+        "no_board_served: neither --gaps nor --confirm runs",
+        "no_events_created: no timeline event is created"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "confirm-partial-folding-and-zero-padding",
+      "prompt": "回忆一下昨天，先把草稿给我确认；确认页上我只保留两条，其中一条我改成多行内容，其余都排除。",
+      "expected_output": "The --confirm board folds each confirmed content's whitespace runs (including newlines) into single spaces and trims it, zero-pads each confirmed time to HH:MM, keeps only the selected drafts, and posts exactly those confirmed events.",
+      "files": [],
+      "assertions": [
+        "whitespace_folded: multi-line draft content arrives as single-line space-folded text",
+        "time_normalized: confirmed times are zero-padded HH:MM",
+        "excluded_absent: unselected drafts never appear in the answers JSON",
+        "only_selected_posted: exactly the confirmed drafts are created as events"
+      ]
+    }
+  ]
+}
