@@ -536,6 +536,10 @@ export async function emails({ flags = {} } = {}) {
  * leaves `status` stale), because a disabled source syncs nothing.
  */
 export async function sync({ flags = {}, positional = [] } = {}) {
+  if (flags.all) {
+    await syncAll({ flags, positional })
+    return
+  }
   const usage = usageOf('sync <ref> [--enable]')
   const source = await resolveSource(requireArg(positional, 0, 'source reference', usage))
   const sourceName = source.name
@@ -585,6 +589,71 @@ export async function sync({ flags = {}, positional = [] } = {}) {
     `#${source.id} ${sourceName} — ${result.commitsCount} commits scanned, ${result.eventsCount} new events`,
   )
   for (const line of formatBranches(result.branches ?? [])) console.log(line)
+}
+
+/**
+ * `wrp sources sync --all` — trigger collection for every enabled source.
+ *
+ * Same endpoint as the single-source form; an empty body is the server's
+ * "every enabled source" switch (sources without author emails are skipped
+ * server-side, serially). A failing source does not stop the others: the
+ * response carries every per-source result either way, so the whole story
+ * prints and only the exit code reflects the failures.
+ */
+async function syncAll({ flags = {}, positional = [] } = {}) {
+  if (positional.length > 0) {
+    fail('source reference passed with --all', 'sync --all takes no <ref>; it syncs every enabled source', usageOf('sync --all'))
+  }
+  if (flags.enable) {
+    fail('--enable needs a source reference', 'pass <ref> without --all, or drop --enable', usageOf('sync <ref> [--enable]'))
+  }
+
+  const { status, body } = await api('/api/collect/git-remote/sync', json('POST', {}))
+
+  if (status === 409) {
+    failResponse(status, body, 'another sync or fetch holds a repo lock — retry in a few seconds')
+  }
+  if (status !== 200 && body?.code !== 'PARTIAL_SYNC_FAILED') {
+    failResponse(status, body, 're-run wrp sources list to check the stored state')
+  }
+
+  const results = body?.results ?? []
+  if (results.length === 0) {
+    emptyState('No enabled sources with author emails to sync.')
+    return
+  }
+
+  for (const result of results) console.log(formatSyncResult(result))
+  const failed = results.filter(isFailedSyncResult)
+  if (failed.length > 0) {
+    // "every other source still synced" only holds when some did; when the whole
+    // batch failed there is nothing else to reassure about.
+    const fix =
+      failed.length === results.length
+        ? 'fix the listed sources (wrp sources show <id>), then re-run'
+        : 'every other source still synced; fix the listed sources (wrp sources show <id>), then re-run'
+    fail(
+      `partial sync failure (${failed.length}/${results.length} sources failed)`,
+      failed.map((result) => `#${result.sourceId} ${result.sourceName}`).join(', '),
+      fix,
+    )
+  }
+
+  const commits = results.reduce((sum, result) => sum + (result.commitsCount ?? 0), 0)
+  const events = results.reduce((sum, result) => sum + (result.eventsCount ?? 0), 0)
+  feedback('sources', 'synced', `${results.length}/${results.length} — ${commits} commits scanned, ${events} new events`)
+}
+
+/** `  #7 acme: ✓ 12 commits, 3 new events` / `… ✗ <error> (auto-disabled)`. */
+function formatSyncResult(result) {
+  const autoDisabled = result.autoDisabled ? ' (auto-disabled)' : ''
+  return isFailedSyncResult(result)
+    ? `  #${result.sourceId} ${result.sourceName}: ✗ ${result.error || 'failed'}${autoDisabled}`
+    : `  #${result.sourceId} ${result.sourceName}: ✓ ${result.commitsCount ?? 0} commits, ${result.eventsCount ?? 0} new events`
+}
+
+function isFailedSyncResult(result) {
+  return result.status === 'failed' || Boolean(result.error)
 }
 
 /** `main: ✓ 3 commits` / `dev: ✗ <error>`, one line per collected branch. */

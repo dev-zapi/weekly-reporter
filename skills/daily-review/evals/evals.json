@@ -1,0 +1,57 @@
+{
+  "skill_name": "daily-review",
+  "evals": [
+    {
+      "id": 0,
+      "eval_name": "rich-today-review",
+      "prompt": "今日复盘",
+      "expected_output": "Syncs every enabled collect source once, then lists the timeline for the literal local today without a --source filter, paging past 200 if needed. Writes a chat-only review titled with the date and weekday: six-ish bullets in ascending first-event time, each opening with a real time-of-day anchor and HH:MM or HH:MM–HH:MM, naming the project inferred from ticket prefixes or commit scopes; duplicate cross-branch commits collapsed; ★ kept on bullets backed by manual events; counts in 观察 derived from the listed events. Then 观察 (2–3 items) and 明天 (1–3 items). No timeline write of any kind and no file written to disk.",
+      "files": [],
+      "assertions": [
+        "sync_all_before_list: sources sync --all runs before any events list",
+        "date_is_literal_today: the queried date equals the run's local calendar day",
+        "no_source_filter: events list is queried without --source so manual and auto arrive together",
+        "pagination_followed: when the page is full, the next-page cursor is used to fetch the rest",
+        "bullets_have_real_anchors: every time range matches the actual first and last event of its cluster",
+        "star_preserved: manual-event bullets keep a leading ★",
+        "duplicates_merged: near-identical cross-branch commits appear once",
+        "counts_derived: numbers in the review are countable from the listed events",
+        "no_timeline_writes: no events create, update or delete is called",
+        "chat_only: no file is written unless the user asked for one"
+      ]
+    },
+    {
+      "id": 1,
+      "eval_name": "empty-named-date",
+      "prompt": "复盘一下 10 月 28 号。",
+      "expected_output": "Resolves the date to the current year's 2026-10-28 and uses it verbatim, still syncing once then listing events for that day. With zero events it says plainly that the timeline for that date has nothing, adds a routing hint toward yesterday-recall because it is a past day (not summarize-event), and stops there — no empty skeleton with heading, blank 观察 and padded 明天, no invented work, no event created, no file written.",
+      "files": [],
+      "assertions": [
+        "explicit_date_resolved: the queried date is 2026-10-28",
+        "sync_still_ran: sources sync --all runs before the empty result is reported",
+        "honest_empty: the output states the date has no events instead of fabricating a review",
+        "no_empty_scaffold: no heading-only review with empty 观察/明天 sections is produced",
+        "routing_hint_past_day: the hint points to yesterday-recall for the gap, not summarize-event",
+        "no_writes: no event is created and no file is written"
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "historical-mixed-manual-auto",
+      "prompt": "复盘 11 月 5 号。",
+      "expected_output": "Queries 2026-11-05 as one stream (manual and auto together) and distills them as equal material: a manual summary and the commits it covers merge into one bullet, unrelated commits stay separate, cross-branch duplicates collapse, and ★ marks the bullet carrying the manual event. Projects are named only where the content supports it (ticket prefix, commit scope, repo name) — the source column alone is [manual]/[git-local] and must not be read as a source name. Bullets are ordered by their first event time, each with a truthful time-of-day anchor; 观察 notes the manual/auto mix and any quiet stretch; 明天 lists only leftovers visible in the events.",
+      "files": [],
+      "assertions": [
+        "date_verbatim: the queried date is 2026-11-05",
+        "manual_and_auto_merged: manual events and the commits describing the same work produce a single bullet",
+        "duplicates_merged: near-identical commits across branches appear once",
+        "star_on_manual_bullet: the ★ survives on the bullet backed by the manual event",
+        "project_only_when_supported: no project name is invented from the [manual]/[git-local] source column",
+        "order_by_first_event_time: bullets ascend by their cluster's earliest event time",
+        "anchors_truthful: time-of-day labels and ranges match the events they cover",
+        "observation_mix_reported: 观察 mentions the manual vs auto composition or a quiet stretch",
+        "no_timeline_writes: no events create, update or delete is called"
+      ]
+    }
+  ]
+}
