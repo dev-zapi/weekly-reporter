@@ -105,11 +105,14 @@ describe('unknown commands', () => {
 describe('not-yet-implemented modules', () => {
   it('dispatches a registered verb to a clear ✗ line without hitting the API', async () => {
     const server = await stub()
-    const result = await runWrp(['reports', 'preview', '--start', '2026-10-05'], { stub: server })
+    // Any verb that still has no `run` function works here; the point is the
+    // dispatch line, not the module. `reports preview` used to be the example
+    // until #127 built it; `sources sync` lands last (#128).
+    const result = await runWrp(['sources', 'sync', 'demo'], { stub: server })
 
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ not implemented: wrp reports preview')
+    expect(result.stderr).toContain('✗ not implemented: wrp sources sync')
     expect(server.requests).toHaveLength(0)
   })
 })
