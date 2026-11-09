@@ -94,16 +94,16 @@ export const MODULES = [
         flag('--source', 'value', 'manual | auto'),
         flag('--limit', 'value', 'page size'),
         flag('--cursor', 'value', 'continue a page: <id>@<epoch-millis>'),
-      ], 122, events.list),
+      ], null, events.list),
       command('create', 'events', 'Create an event', 'wrp events create <content> [--time <iso>]', [
         flag('--time', 'value', 'event time (ISO 8601)'),
-      ], 122, events.create),
+      ], null, events.create),
       command('update', 'events', 'Update an event', 'wrp events update <id> [--content] [--time] [--important]', [
         flag('--content', 'value', 'new single-line content'),
         flag('--time', 'value', 'new event time (ISO 8601)'),
         flag('--important', 'value', 'true | false'),
-      ], 122, events.update),
-      command('delete', 'events', 'Delete a manual event (auto-collected ones are refused)', 'wrp events delete <id>', [], 122, events.deleteEvent),
+      ], null, events.update),
+      command('delete', 'events', 'Delete a manual event (auto-collected ones are refused)', 'wrp events delete <id>', [], null, events.deleteEvent),
     ],
   },
   {

@@ -369,7 +369,7 @@ describe('wrp events delete', () => {
 })
 
 describe('wrp events help', () => {
-  it('lists the four verbs with flags instead of a not-implemented note', async () => {
+  it('lists the four verbs instead of a not-implemented note', async () => {
     const result = await runWrp(['events', '--help'])
 
     expect(result.code).toBe(0)
@@ -377,6 +377,15 @@ describe('wrp events help', () => {
     expect(result.stdout).toContain('wrp events create')
     expect(result.stdout).toContain('wrp events update')
     expect(result.stdout).toContain('wrp events delete')
+    expect(result.stdout).not.toContain('Not implemented')
+  })
+
+  it('renders a built command help without the not-implemented note', async () => {
+    const result = await runWrp(['events', 'list', '--help'])
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('wrp events list')
+    expect(result.stdout).toContain('--cursor')
     expect(result.stdout).not.toContain('Not implemented')
   })
 })
