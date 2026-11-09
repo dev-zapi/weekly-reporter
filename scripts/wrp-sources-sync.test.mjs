@@ -1,0 +1,288 @@
+// Behaviour tests for the onboarding & sync half of `wrp sources` (ticket #128):
+// `lookup`, `emails` and `sync`.
+//
+// One seam only: the real CLI as a subprocess against a stub HTTP server. The
+// tests assert the requests the client sends, the lines it prints and its exit
+// codes. `lookup`'s exit code 3 is the clean "not onboarded" branch signal, so it
+// is asserted exactly.
+
+import { describe, it, expect, afterEach } from 'vitest'
+import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+const stubs = []
+
+async function stub(respond) {
+  const server = await startStubServer(respond)
+  stubs.push(server)
+  return server
+}
+
+afterEach(async () => {
+  await Promise.all(stubs.splice(0).map((server) => server.close()))
+})
+
+function source(overrides = {}) {
+  return {
+    id: 7,
+    type: 'git-local',
+    name: 'acme',
+    config: {
+      owner: '/repos/acme',
+      authorEmails: ['a@example.com', 'b@example.com'],
+      aliases: ['acme-local'],
+      branches: [{ name: 'main', lastCommitTime: '2026-10-01T10:00:00.000Z' }],
+      branchCursors: [{ name: 'main', lastCommitTime: '2026-10-01T10:00:00.000Z' }],
+    },
+    enabled: true,
+    status: 'enabled',
+    projectScope: 'work',
+    lastSyncAt: '2026-11-07T10:00:00.000Z',
+    lastSyncStatus: 'success',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function query(url) {
+  return Object.fromEntries(new URL(url, 'http://x').searchParams)
+}
+
+describe('wrp sources lookup', () => {
+  it('prints the record fields for a registered path and exits 0', async () => {
+    const server = await stub(() => ({ status: 200, body: source() }))
+
+    const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests).toHaveLength(1)
+    expect(server.requests[0].method).toBe('GET')
+    expect(query(server.requests[0].url)).toEqual({ type: 'git-local', path: '/repos/acme' })
+    expect(result.stdout).toContain('id:       7')
+    expect(result.stdout).toContain('name:     acme')
+    expect(result.stdout).toContain('status:   enabled')
+    expect(result.stdout).toContain('enabled:  true')
+    expect(result.stdout).toContain('scope:    work')
+    expect(result.stdout).toContain('emails:   a@example.com, b@example.com')
+    expect(result.stdout).toContain('branches: main')
+  })
+
+  it('prints "all branches" for a source with no branch config', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: source({ config: { owner: '/repos/acme', authorEmails: ['a@example.com'] } }),
+    }))
+
+    const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('branches: all branches')
+    expect(result.stdout).toContain('emails:   a@example.com')
+  })
+
+  it('exits 3 with the not-found line when no source is registered for the path', async () => {
+    const server = await stub(() => ({
+      status: 404,
+      body: { error: '采集源不存在', code: 'NOT_FOUND' },
+    }))
+
+    const result = await runWrp(['sources', 'lookup', '--path', '/repos/ghost'], { stub: server })
+
+    expect(result.code).toBe(3)
+    expect(result.stdout).toBe('')
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain("no collect source for path '/repos/ghost'")
+    expect(result.stderr).toContain('exit 3')
+  })
+
+  it('keeps every other lookup failure at a non-3 exit code', async () => {
+    const server = await stub(() => ({ status: 500, body: { error: '查询采集源失败', code: 'LOOKUP_ERROR' } }))
+
+    const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).not.toBe(3)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ LOOKUP_ERROR: 查询采集源失败')
+  })
+
+  it('requires --path before any request', async () => {
+    const server = await stub()
+    const result = await runWrp(['sources', 'lookup'], { stub: server })
+
+    expect(result.code).not.toBe(3)
+    expect(result.stderr).toContain('✗ missing repository path (--path)')
+    expect(server.requests).toHaveLength(0)
+  })
+})
+
+describe('wrp sources emails', () => {
+  it('prints the fixed-width commits/email/name table in server order', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: {
+        authors: [
+          { email: 'a@example.com', name: 'Alice', count: 12 },
+          { email: 'b@example.com', name: 'Bob', count: 3 },
+        ],
+      },
+    }))
+
+    const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(query(server.requests[0].url)).toEqual({ type: 'git-local', path: '/repos/acme' })
+    const lines = result.stdout.trimEnd().split('\n')
+    expect(lines[0]).toBe('commits  email                          name')
+    expect(lines[1]).toBe('     12  a@example.com                   Alice')
+    expect(lines[2]).toBe('      3  b@example.com                   Bob')
+  })
+
+  it('prints the empty hint when the repo has no commit authors', async () => {
+    const server = await stub(() => ({ status: 200, body: { authors: [] } }))
+
+    const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('(no commit authors found in the last 300 commits)')
+  })
+
+  it('passes a server failure through as one ✗ line', async () => {
+    const server = await stub(() => ({ status: 500, body: { error: '读取仓库失败', code: 'EMAILS_ERROR' } }))
+
+    const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ EMAILS_ERROR: 读取仓库失败')
+  })
+})
+
+describe('wrp sources sync', () => {
+  function syncResult(overrides = {}) {
+    return {
+      sourceId: 7,
+      sourceName: 'acme',
+      status: 'success',
+      commitsCount: 3,
+      eventsCount: 1,
+      branches: [
+        { name: 'main', status: 'success', commitsCount: 3 },
+        { name: 'dev', status: 'success', commitsCount: 0 },
+      ],
+      ...overrides,
+    }
+  }
+
+  function syncStub({ get = source(), patch, post }) {
+    return stub((request) => {
+      if (request.method === 'PATCH') return patch ?? { status: 200, body: get }
+      if (request.method === 'POST' && request.url === '/api/collect/git-remote/sync') return post ?? { status: 200, body: { result: syncResult() } }
+      if (/^\/api\/collect\/sources\/\d+$/.test(request.url)) return { status: 200, body: get }
+      return { status: 200, body: { sources: [get], total: 1 } }
+    })
+  }
+
+  it('reads the source first, then triggers the sync and prints summary + branch lines', async () => {
+    const server = await syncStub({})
+
+    const result = await runWrp(['sources', 'sync', '7'], { stub: server })
+
+    expect(result.code).toBe(0)
+    const byId = server.requests.filter((request) => request.method === 'GET')
+    expect(byId[0].url).toBe('/api/collect/sources/7')
+    const post = server.requests.find((request) => request.method === 'POST')
+    expect(post.url).toBe('/api/collect/git-remote/sync')
+    expect(JSON.parse(post.body)).toEqual({ sourceId: 7 })
+    expect(result.stdout).toContain('✓ source synced: #7 acme — 3 commits scanned, 1 new events')
+    expect(result.stdout).toContain('  main: ✓ 3 commits')
+    expect(result.stdout).toContain('  dev: ✓ 0 commits')
+  })
+
+  it('resolves a name or alias through the list endpoint, reusing <ref> resolution', async () => {
+    const server = await syncStub({})
+
+    const result = await runWrp(['sources', 'sync', 'acme-local'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests[0].url).toContain('/api/collect/sources?')
+    expect(JSON.parse(server.requests.find((request) => request.method === 'POST').body)).toEqual({ sourceId: 7 })
+    expect(result.stdout).toContain('✓ source synced: #7 acme')
+  })
+
+  it('PATCHes enabled+status before syncing with --enable', async () => {
+    const server = await syncStub({ get: source({ enabled: false, status: 'disabled' }) })
+
+    const result = await runWrp(['sources', 'sync', '7', '--enable'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(server.requests.map((request) => request.method)).toEqual(['GET', 'PATCH', 'POST'])
+    const patch = server.requests[1]
+    expect(patch.url).toBe('/api/collect/sources/7')
+    expect(JSON.parse(patch.body)).toEqual({ enabled: true, status: 'enabled' })
+    expect(server.requests[2].url).toBe('/api/collect/git-remote/sync')
+    expect(JSON.parse(server.requests[2].body)).toEqual({ sourceId: 7 })
+  })
+
+  it('turns a 409 SOURCE_BUSY into a ✗ line with the retry hint', async () => {
+    const server = await syncStub({
+      post: { status: 409, body: { error: '该仓库正在操作中，请稍后重试', code: 'SOURCE_BUSY' } },
+    })
+
+    const result = await runWrp(['sources', 'sync', '7'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ SOURCE_BUSY: 该仓库正在操作中，请稍后重试')
+    expect(result.stderr).toContain('retry in a few seconds')
+  })
+
+  it('names the auto-disable and the path fix when the source vanished mid-sync', async () => {
+    const server = await syncStub({
+      post: {
+        status: 500,
+        body: {
+          error: '同步失败',
+          code: 'SYNC_FAILED',
+          result: syncResult({ status: 'failed', error: '未配置邮箱', autoDisabled: true, branches: undefined }),
+        },
+      },
+    })
+
+    const result = await runWrp(['sources', 'sync', '7'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('auto-disabled')
+    expect(result.stderr).toContain('未配置邮箱')
+    expect(result.stderr).toContain('wrp sources update 7 --path')
+  })
+
+  it('lists the failed branches on other SYNC_FAILED outcomes', async () => {
+    const server = await syncStub({
+      post: {
+        status: 500,
+        body: {
+          error: '同步失败',
+          code: 'SYNC_FAILED',
+          result: syncResult({
+            status: 'failed',
+            error: 'push rejected',
+            branches: [
+              { name: 'main', status: 'failed', error: 'push rejected' },
+              { name: 'dev', status: 'success', commitsCount: 2 },
+            ],
+          }),
+        },
+      },
+    })
+
+    const result = await runWrp(['sources', 'sync', '7'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ sync failed for #7 acme')
+    expect(result.stderr).toContain('push rejected')
+    expect(result.stderr).toContain('failed branches: main: push rejected')
+    expect(result.stderr).not.toContain('dev:')
+  })
+})

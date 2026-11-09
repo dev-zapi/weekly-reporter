@@ -1,6 +1,6 @@
 # sources — collect sources (采集源)
 
-Manage the repo records the app pulls commits from. Six verbs exist today:
+Manage the repo records the app pulls commits from. Nine verbs exist today:
 
 ```
 wrp sources list   [--name] [--type] [--status] [--scope] [--sync]
@@ -9,11 +9,16 @@ wrp sources create [--type <type>] --name <text> (--path <dir> | --owner <o> --r
 wrp sources update <ref> [--name] [--scope] [--email | --add-email] [--alias | --add-alias] [--branch] [--path] [--owner] [--repo] [--base-url] [--token]
 wrp sources enable <ref> [--off]
 wrp sources delete <ref> [--confirm]
+wrp sources lookup --path <repo root>
+wrp sources emails --path <repo root>
+wrp sources sync   <ref> [--enable]
 ```
 
-`lookup`, `emails` and `sync` are not built yet (ticket #128). For onboarding the
-repository the user is working in, the collect-git-source flow is the better path:
-it walks lookup/emails/sync interactively.
+`lookup`/`emails`/`sync` are the collection half: find a source by directory,
+list its commit authors, and trigger a sync. They are the building blocks of the
+onboarding flow. For the full flow of registering and syncing the repository the
+user is working in, read the `collect-git-source` flow document; the semantics it
+relies on are below.
 
 ## What a source actually is
 
@@ -131,6 +136,125 @@ in the "other" group, then exits non-zero with `NOT EXECUTED — re-run with
 Name resolution means the caller may not have looked at what they matched, so
 never skip the preview.
 
+## Onboarding & sync (lookup / emails / sync)
+
+The collection half of the module. The repository directory is the **only**
+locator for a git-local source: `lookup` matches the normalized absolute path in
+`config.owner` (exact, then realpath-equivalent so symlinked or `~` forms
+resolve), and `name` is display-only. A renamed source is still found by path;
+two directories are never matched by name.
+
+### Onboarding flow
+
+1. Resolve the repo root (a subdirectory auto-resolves to it).
+2. `wrp sources lookup --path <repo root>` and branch on the outcome:
+   - **exit 0** — a source exists. Read `status`:
+     - `enabled` → `wrp sources sync <id>`.
+     - `disabled` → ask the user "启用并同步？", then
+       `wrp sources sync <id> --enable`.
+     - `unavailable` → report the likely cause (see below) and stop. Do not
+       manage emails/branches of an existing source from this flow; fix it with
+       `wrp sources update` only after the user asks.
+   - **exit 3** — no source for that path. This is the clean "not onboarded"
+     branch of the flow: branch on the exit code, never on the error text. Ask
+     once — "要把这个仓库接入并立即同步吗？" — and only on yes continue to
+     step 3.
+   - any other exit — a real error; surface the one `✗` line.
+3. `wrp sources emails --path <repo root>` — present the
+   `commits`/`email`/`name` table and have the user pick at least one author
+   email plus the `projectScope` (default `personal`).
+4. `wrp sources create --type git-local --path <repo root> --name <repo dir
+   basename> --email <a> [...] --scope <work|personal>` — path is the locator,
+   the name is only a label.
+5. `wrp sources sync <new id>` and report the summary.
+
+**Never auto-create and never auto-enable.** Both write live configuration, so
+each needs explicit user confirmation first. Do not guess emails either — offer
+the table and let the user choose.
+
+### lookup — find the source for a path
+
+```bash
+wrp sources lookup --path <repo root>
+```
+
+Exit 0 prints the record fields:
+
+```
+id:       7
+name:     acme
+status:   enabled
+enabled:  true
+scope:    work
+emails:   a@example.com, b@example.com
+branches: main, dev
+```
+
+`branches: all branches` means the branch config is empty, which for git-local
+is the meaningful **all-branches** sentinel (ADR-0017) — not an error and not a
+prompt to pin branches. `unavailable` means the source cannot be collected:
+either no author emails or a local path the server cannot read. Enabling it
+does not fix either cause.
+
+Exit codes: `0` found, `3` not found (clean onboarding branch), `1` other
+errors.
+
+### emails — commit authors for a path
+
+```bash
+wrp sources emails --path <repo root>
+```
+
+Prints the fixed-width table in the server's order (commit count desc), off the
+last 300 commits:
+
+```
+commits  email                          name
+     12  a@example.com                   Alice
+      3  b@example.com                   Bob
+```
+
+No authors prints `(no commit authors found in the last 300 commits)`. A repo
+with no commits or an unreadable path can legitimately produce that empty
+answer, so check the path before concluding the user has no history.
+
+### sync — trigger collection
+
+```bash
+wrp sources sync <ref> [--enable]
+```
+
+`<ref>` resolves exactly like every other sources verb (ID, name or alias). The
+source is read first so the summary can name it. `--enable` PATCHes
+`enabled` **and** `status` together before syncing (a bare `enabled` flip leaves
+`status` stale; only ask for it when the user wants a disabled source turned
+back on).
+
+Success prints the summary and one line per branch:
+
+```
+✓ source synced: #7 acme — 12 commits scanned, 3 new events
+  main: ✓ 12 commits
+  dev: ✓ 0 commits
+```
+
+Failure outcomes:
+
+- **409 `SOURCE_BUSY`** — another sync or manual fetch holds the repo lock.
+  Nothing is wrong; retry in a few seconds.
+- **500 `SYNC_FAILED` with `autoDisabled`** — the server disabled the source
+  because it cannot collect at all (no configured emails or a path that is gone
+  or unreadable). The `✗` line names the auto-disable and prints the fix: check
+  the stored path with `wrp sources show <id>`, fix it with
+  `wrp sources update <id> --path <repo root> --add-email <address>`, then
+  re-enable it.
+- **500 `SYNC_FAILED` without `autoDisabled`** — at least one branch failed; the
+  `✗` line lists the failed branches with their errors. Fix the cause and
+  re-run.
+
+Sync is the only verb here that writes timeline events. Run it only when the
+user asked for a collection (or confirmed onboarding); never as a side effect.
+
 ## Errors
 
 | Message | Cause | Fix |
@@ -143,11 +267,16 @@ never skip the preview.
 | `VALIDATION_ERROR: 数据验证失败` | body failed server-side zod | read the message; check types/enums/lengths |
 | `#N <name> is unavailable` (enable) | no emails or broken path | `--add-email` or fix the path, then enable |
 | `nothing to update: pass at least one field` | no change flags given | pass at least one field flag |
+| `no collect source for path '…'` (lookup, exit 3) | no source for that directory | normal onboarding branch — offer to create and sync |
+| `SOURCE_BUSY: 该仓库正在操作中` (sync) | another sync/fetch holds the repo lock | retry in a few seconds |
+| `sync failed and #N <name> was auto-disabled` (sync) | no emails or unreadable path at sync time | fix the path/emails, then re-enable |
+| `sync failed for #N <name>` (sync) | at least one branch failed | fix the listed branch errors and re-run |
 
 ## Out of scope here
 
-- Triggering a sync (同步) or onboarding the current directory's repo →
-  the collect-git-source flow (`lookup`/`emails`/`sync`, ticket #128).
+- Remote hosted sources (GitHub/GitLab/Gitee repos not cloned locally) are
+  managed like any other source, but `lookup`/`emails` operate on git-local
+  paths only.
 - Single timeline events → `wrp events`.
 - Bulk delete / bulk scope update and `removeBranch` — loop the single-source
   verbs instead.

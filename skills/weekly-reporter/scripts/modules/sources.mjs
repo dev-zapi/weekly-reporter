@@ -1,18 +1,22 @@
-// The sources module (采集源): the management verbs.
+// The sources module (采集源): the management verbs plus onboarding & sync.
 //
 // A collect source is a repo the app pulls commits from. The API's PUT replaces
 // the whole record, so `update` fetches the current source, resends every field
 // it did not change, and never echoes the masked token or the sync cursors back
 // (ADR-0011; the server preserves both). `list`/`show`/`create`/`update`/
 // `enable`/`delete` are ported verbatim from the retired collect-sources skill;
-// only the printed lines follow the wrp output contract.
-//
-// `lookup`, `emails` and `sync` live in ticket #128 and are still unbuilt.
+// `lookup`/`emails`/`sync` are ported verbatim from collect-git-source. Only the
+// printed lines follow the wrp output contract (format law 3 for errors, law 1
+// for feedback); `lookup`'s exit code 3 is preserved as the clean not-found
+// branch signal the onboarding flow switches on.
 
 import { api, json } from '../lib/api.mjs'
-import { requireArg } from '../lib/args.mjs'
+import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listLine, preview } from '../lib/output.mjs'
+
+/** `sources lookup` found nothing: the flow branches on this without parsing text. */
+const LOOKUP_NOT_FOUND_EXIT = 3
 
 export const TYPES = ['git-local', 'git-remote-github', 'git-remote-gitlab', 'git-remote-gitee']
 export const SCOPES = ['work', 'personal']
@@ -446,4 +450,148 @@ export async function deleteSource({ flags = {}, positional = [] } = {}) {
   if (status !== 200) failResponse(status, body, `re-run wrp sources show ${source.id} to check the stored state`)
 
   feedback('source', 'deleted', `#${source.id} ${source.name}`)
+}
+
+/**
+ * `wrp sources lookup --path <repo root>` — which git-local source owns a
+ * directory. The repo is located by its normalized absolute path only (stored
+ * as `config.owner`); the name is display-only, so it can never be the locator.
+ *
+ * A 404 is the *clean* branch signal: one stderr line and exit 3, so the
+ * onboarding flow switches on the exit code instead of parsing error text.
+ */
+export async function lookup({ flags = {} } = {}) {
+  const path = requireFlag(flags, 'path', 'repository path', usageOf('lookup --path <repo-root>')).trim()
+
+  const params = new URLSearchParams({ type: 'git-local', path })
+  const { status, body } = await api(`/api/collect/sources/lookup?${params}`)
+
+  if (status === 404) {
+    fail(
+      `no collect source for path '${path}'`,
+      'that directory is not onboarded yet',
+      'exit 3 is the clean not-onboarded signal: offer to create the source and sync it',
+      { exitCode: LOOKUP_NOT_FOUND_EXIT },
+    )
+  }
+  if (status !== 200) failResponse(status, body, 're-run wrp sources lookup --path <repo-root>')
+
+  const branches = branchNames(body)
+  const emails = body?.config?.authorEmails ?? []
+  console.log(`id:       ${body.id}`)
+  console.log(`name:     ${body.name}`)
+  console.log(`status:   ${body.status}`)
+  console.log(`enabled:  ${body.enabled}`)
+  console.log(`scope:    ${body.projectScope}`)
+  console.log(`emails:   ${emails.length ? emails.join(', ') : '—'}`)
+  // Empty branch config is meaningful: git-local collects every local branch.
+  console.log(`branches: ${branches.length ? branches.join(', ') : 'all branches'}`)
+}
+
+/**
+ * `wrp sources emails --path <repo root>` — the commit authors the API sees for
+ * a directory, in server order (count desc, last 300 commits), so the caller can
+ * pick whose commits get collected.
+ */
+export async function emails({ flags = {} } = {}) {
+  const path = requireFlag(flags, 'path', 'repository path', usageOf('emails --path <repo-root>')).trim()
+
+  const params = new URLSearchParams({ type: 'git-local', path })
+  const { status, body } = await api(`/api/collect/sources/emails?${params}`)
+  if (status !== 200) failResponse(status, body, 'check the path is a readable git repository, then re-run')
+
+  const authors = body?.authors ?? []
+  if (authors.length === 0) {
+    emptyState('(no commit authors found in the last 300 commits)')
+    return
+  }
+
+  // Server order is meaningful (count desc); only the columns are padded. The
+  // header literal is carried over verbatim from the retired script.
+  const countWidth = Math.max(7, String(authors[0].count).length)
+  console.log(`${'commits'.padStart(countWidth)}  email                          name`)
+  for (const author of authors) {
+    console.log(`${String(author.count).padStart(countWidth)}  ${(author.email ?? '').padEnd(30)}  ${author.name ?? ''}`)
+  }
+}
+
+/**
+ * `wrp sources sync <ref> [--enable]` — trigger collection for one source.
+ *
+ * The source is read first for its name (the summary line names it) and to
+ * resolve `<ref>` through the module's usual ID/name/alias rules. `--enable`
+ * PATCHes `enabled` and `status` together before syncing (a bare `enabled` flip
+ * leaves `status` stale), because a disabled source syncs nothing.
+ */
+export async function sync({ flags = {}, positional = [] } = {}) {
+  const usage = usageOf('sync <ref> [--enable]')
+  const source = await resolveSource(requireArg(positional, 0, 'source reference', usage))
+  const sourceName = source.name
+
+  if (flags.enable) {
+    const { status, body } = await api(
+      `/api/collect/sources/${source.id}`,
+      json('PATCH', { enabled: true, status: 'enabled' }),
+    )
+    if (status !== 200) failResponse(status, body, `re-run wrp sources show ${source.id} to check the stored state`)
+  }
+
+  const { status, body } = await api('/api/collect/git-remote/sync', json('POST', { sourceId: source.id }))
+
+  if (status === 409) {
+    // The source operation lock: one repo operation (sync or manual fetch) at a
+    // time, so a concurrent run is the whole story and retrying is the fix.
+    fail(
+      `SOURCE_BUSY: ${body?.error ?? '该仓库正在操作中，请稍后重试'}`,
+      'another sync or fetch is already running for this repo',
+      'retry in a few seconds',
+    )
+  }
+
+  if (status === 500 && body?.code === 'SYNC_FAILED') {
+    const result = body.result ?? {}
+    // autoDisabled is set server-side when the source cannot be collected at all
+    // (no author emails, unreachable path); name the disable and the fix.
+    if (result.autoDisabled) {
+      fail(
+        `sync failed and #${source.id} ${sourceName} was auto-disabled: ${result.error ?? 'unknown'}`,
+        'the server cannot collect from this source',
+        `fix the cause (check the stored path with wrp sources show ${source.id}, or add emails with wrp sources update ${source.id} --path <repo> --add-email <address>), then re-enable it`,
+      )
+    }
+    fail(
+      `sync failed for #${source.id} ${sourceName}: ${result.error ?? 'unknown'}`,
+      'at least one branch did not collect',
+      `failed branches: ${describeFailedBranches(result.branches ?? [])}`,
+    )
+  }
+
+  if (status !== 200) failResponse(status, body, `re-run wrp sources show ${source.id} to check the stored state`)
+
+  const result = body?.result ?? {}
+  feedback(
+    'source',
+    'synced',
+    `#${source.id} ${sourceName} — ${result.commitsCount} commits scanned, ${result.eventsCount} new events`,
+  )
+  for (const line of formatBranches(result.branches ?? [])) console.log(line)
+}
+
+/** `main: ✓ 3 commits` / `dev: ✗ <error>`, one line per collected branch. */
+function formatBranches(branches) {
+  return branches.map((branch) =>
+    isFailedBranch(branch)
+      ? `  ${branch.name}: ✗ ${branch.error || 'failed'}`
+      : `  ${branch.name}: ✓ ${branch.commitsCount} commits`,
+  )
+}
+
+/** `main: <error>; dev: <error>` — the failed-branch list of one ✗ line. */
+function describeFailedBranches(branches) {
+  const failed = branches.filter(isFailedBranch).map((branch) => `${branch.name}: ${branch.error || 'failed'}`)
+  return failed.length > 0 ? failed.join('; ') : 'unknown (no per-branch detail returned)'
+}
+
+function isFailedBranch(branch) {
+  return branch.status === 'failed' || Boolean(branch.error)
 }
