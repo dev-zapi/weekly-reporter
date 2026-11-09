@@ -1,6 +1,6 @@
 ---
 name: summarize-event
-description: Summarize a segment of work and log it to the weekly-reporter timeline. Use when the user asks to summarize or record recent work, and also proactively on your own: after finishing a coherent, nameable accomplishment that isn't logged yet, offer to summarize the segment — and once about three accomplishments have piled up un-logged, or before a session ends with un-logged work remaining, offer rather than wait, so no single summary grows too long or dense.
+description: "Summarize a segment of work and log it to the weekly-reporter timeline. Use when the user asks to summarize or record recent work, and also proactively on your own: after finishing a coherent, nameable accomplishment that isn't logged yet, offer to summarize the segment — and once about three accomplishments have piled up un-logged, or before a session ends with un-logged work remaining, offer rather than wait, so no single summary grows too long or dense."
 ---
 
 Summarize the work done since the last summary or session start into one single-line plain-text event. Distill rather than transcribe: the timeline's reader needs the business core, not a blow-by-blow, so keep what shipped, what got fixed, or what was decided and its result. Simplify the rest — drop routine process steps, dead ends, and side observations, and group related minor items into one accomplishment instead of enumerating each. Name the project or repo the work happened in — the timeline spans many projects.
