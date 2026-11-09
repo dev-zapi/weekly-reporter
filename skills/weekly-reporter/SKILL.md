@@ -63,4 +63,6 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Timeline work log: list/create/update/delete events | `references/events.md` | event content, `#tag`/`@id`/`%id` parsing boundaries, auto-collected delete refusal |
+| Tags (标签) | [references/tags.md](references/tags.md) | `#name` tokens inside manual event content: inventory, global rename (merges), global remove. |
 | Period plans (周计划/月度计划), plan items (计划条目), defer/顺延, item comments (计划项评论) | [references/plans.md](references/plans.md) | list/add/update/defer/delete items; chain-aggregated comments |
