@@ -48,6 +48,9 @@ A collect source (采集源) is a repo the app pulls commits from.
 - **sync cursors** — each branch carries its own cursor (`config.branchCursors`,
   committer-date based, ADR-0001/0017). Cursors are only ever displayed by
   `show`; they are never accepted in a request.
+- **last sync status** — `lastSyncStatus` is written as `failure` by the retired
+  TypeScript server and as `failed` by the Go server. The `--sync failure` filter
+  matches both spellings; either value means the last run failed.
 - **token** — responses always mask it as `[ENCRYPTED]`; `git-local` never uses
   one. Never copy the masked value into a request body: omitting `token` keeps
   the stored one (ADR-0011), and `--token` is the only way to replace it.

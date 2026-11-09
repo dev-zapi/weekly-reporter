@@ -77,6 +77,10 @@ _Avoid_: API Key（会与 AI 配置里的 `api_key` 混淆）、访问 token（�
 一台机器上「用哪个 PAT、打哪个服务地址」的配置，存放于 `~/.config/weekly-reporter/auth.json` 的 `machine` 字段（与启动密码同文件）。环境变量 `WEEKLY_REPORTER_PAT` / `WEEKLY_REPORTER_BASE_URL` 覆盖文件值，`WEEKLY_REPORTER_URL` 是 baseUrl 的向后兼容别名。全部 skill 脚本按同一顺序解析，因此一台机器只需配置一次。
 _Avoid_: 全局配置、环境配置（这两个说法都不区分「凭据」与「设置」）
 
+### 系统客户端 (wrp Client)
+weekly-reporter skill 内的单入口、零依赖 Node.js 客户端，形态是 `wrp <module> <verb>`（`node scripts/wrp.mjs …`），也是 skill 与 agent 通过 HTTP API 读写各实体的**唯一**通道。凭据按 env → 机器级凭据 → dev 默认地址的顺序解析；输出遵守五条格式定律（反馈行、列表行、错误行、预览块、多行载荷只在 show 出现），因此格式本身是接口。
+_Avoid_: skill 集合、脚本目录（它的身份是一个客户端，不是一个技能族）
+
 ### 审计记录 (Audit Record)
 一次经 PAT 鉴权的 API 调用留下的痕迹，存于数据库表 `api_audit_log`，全量保留不清理。字段中三个易混概念：
 - **接口** = 被调用的 endpoint 路径（如 `/api/events`）

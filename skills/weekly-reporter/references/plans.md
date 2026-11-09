@@ -150,6 +150,10 @@ ask the user before running it.
 
 Success: `✓ plan item deleted: %<id>`. A missing item is a 404 `✗` line.
 
+Server drift note: the retired TypeScript route answered `204 No Content`; the
+Go server answers `200 {deleted:true}`. The client accepts both, so the success
+line is identical either way.
+
 ## Comments (计划项评论)
 
 Comments are append-only plan-side context: blockers, scope adjustments,
