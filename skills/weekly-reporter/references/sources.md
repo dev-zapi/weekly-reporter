@@ -11,7 +11,7 @@ wrp sources enable <ref> [--off]
 wrp sources delete <ref> [--confirm]
 wrp sources lookup --path <repo root>
 wrp sources emails --path <repo root>
-wrp sources sync   <ref> [--enable]
+wrp sources sync   <ref> [--enable] | --all
 ```
 
 `lookup`/`emails`/`sync` are the collection half: find a source by directory,
@@ -227,6 +227,7 @@ answer, so check the path before concluding the user has no history.
 
 ```bash
 wrp sources sync <ref> [--enable]
+wrp sources sync --all
 ```
 
 `<ref>` resolves exactly like every other sources verb (ID, name or alias). The
@@ -235,6 +236,14 @@ source is read first so the summary can name it. `--enable` PATCHes
 `status` stale; only ask for it when the user wants a disabled source turned
 back on).
 
+`--all` syncs every **enabled** source in one request. It takes neither `<ref>`
+nor `--enable` (both are rejected) and posts an empty `{}` body to the same
+endpoint as a single-source sync. The server skips sources with no configured
+author email, runs the batch serially, and holds the request open until every
+source has finished. With zero syncable sources — every enabled source has no
+author email — it prints `No enabled sources with author emails to sync.` and
+exits 0.
+
 Success prints the summary and one line per branch:
 
 ```
@@ -242,6 +251,20 @@ Success prints the summary and one line per branch:
   main: ✓ 12 commits
   dev: ✓ 0 commits
 ```
+
+`--all` (HTTP 200 `{results: [...]}`) prints one indented line per source
+(excerpted here), then one summary line:
+
+```
+  #74 office-automation: ✓ 53 commits, 0 new events
+  #39 weekly-reporter: ✓ 67 commits, 0 new events
+  …
+✓ sources synced: 31/31 — 211 commits scanned, 0 new events
+```
+
+Each per-source result carries `sourceId`, `sourceName`, `status`,
+`commitsCount`, `eventsCount` and, where relevant, `error`, `autoDisabled` and
+`branches`.
 
 Failure outcomes:
 
@@ -256,9 +279,19 @@ Failure outcomes:
 - **500 `SYNC_FAILED` without `autoDisabled`** — at least one branch failed; the
   `✗` line lists the failed branches with their errors. Fix the cause and
   re-run.
+- **500 `PARTIAL_SYNC_FAILED` (`--all`)** — at least one source failed. The
+  per-source lines still print (a failed source shows `✗ <error>`, plus
+  `(auto-disabled)` when the server disabled it), then one `✗ partial sync
+  failure (N/M sources failed): <ids and names> → every other source still
+  synced; fix the listed sources (wrp sources show <id>), then re-run`. Exit is
+  non-zero; failures never hide the other sources' results.
+- **409 `SOURCE_BUSY` (`--all`)** — a repo lock is held, so the whole batch
+  fails with the same retry hint.
 
-Sync is the only verb here that writes timeline events. Run it only when the
-user asked for a collection (or confirmed onboarding); never as a side effect.
+Sync — single source or `--all` — is the only verb here that writes timeline
+events. `--all` can touch every enabled source at once, so run either form only
+when the user asked for a collection (or confirmed onboarding); never as a side
+effect.
 
 ## Errors
 
@@ -274,6 +307,7 @@ user asked for a collection (or confirmed onboarding); never as a side effect.
 | `nothing to update: pass at least one field` | no change flags given | pass at least one field flag |
 | `no collect source for path '…'` (lookup, exit 3) | no source for that directory | normal onboarding branch — offer to create and sync |
 | `SOURCE_BUSY: 该仓库正在操作中` (sync) | another sync/fetch holds the repo lock | retry in a few seconds |
+| `partial sync failure (N/M sources failed)` (sync --all) | the API returned `PARTIAL_SYNC_FAILED`: some sources failed, the rest still synced | fix the listed sources (`wrp sources show <id>`), then re-run |
 | `sync failed — #N <name> auto-disabled` (sync) | no emails or unreadable path at sync time | fix the path/emails, then re-enable |
 | `sync failed for #N <name>: <error>` (sync) | at least one branch failed | fix the listed branch errors and re-run |
 

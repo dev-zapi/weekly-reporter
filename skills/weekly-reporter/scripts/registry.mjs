@@ -83,8 +83,9 @@ export const MODULES = [
       command('emails', 'sources', 'List commit authors and counts for a repository', 'wrp sources emails --path <repo-root>', [
         flag('--path', 'value', 'local repository path'),
       ], null, sources.emails),
-      command('sync', 'sources', 'Sync a source, reporting scanned commits and new events', 'wrp sources sync <ref> [--enable]', [
-        flag('--enable', 'boolean', 'enable the source before syncing'),
+      command('sync', 'sources', 'Sync a source, or every enabled source with --all', 'wrp sources sync <ref> [--enable] | wrp sources sync --all', [
+        flag('--enable', 'boolean', 'enable the source before syncing (needs <ref>)'),
+        flag('--all', 'boolean', 'sync every enabled source (the server skips sources without author emails)'),
       ], null, sources.sync),
     ],
   },
