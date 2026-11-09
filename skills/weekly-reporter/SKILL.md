@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Provision, verify or decommission this machine's credential (凭据配置) | `references/init.md` | `wrp init` — `--pat`, interactive `--base-url` (startup password → PAT), `--show`, `--clear`; resolution order and the 401 handoff |
