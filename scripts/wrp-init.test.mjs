@@ -64,6 +64,22 @@ describe('wrp init --pat', () => {
     expect(await modeOf(path)).toBe(0o600)
     expect(await modeOf(dirname(path))).toBe(0o700)
   })
+
+  it('corrects a loosened 644 file back to 600 on the next write', async () => {
+    const machine = { pat: 'wrp_old_0000000000', baseUrl: 'http://127.0.0.1:7021' }
+    const home = await makeHome({ machine })
+    const path = configPathIn(home)
+    await chmod(path, 0o644)
+    expect(await modeOf(path)).toBe(0o644)
+
+    const result = await runWrp(['init', '--pat', 'wrp_new_1111111111'], { home })
+
+    expect(result.code).toBe(0)
+    expect(await modeOf(path)).toBe(0o600)
+    expect(await readConfigIn(home)).toEqual({
+      machine: { pat: 'wrp_new_1111111111', baseUrl: 'http://127.0.0.1:7021' },
+    })
+  })
 })
 
 describe('wrp init --show', () => {
@@ -187,6 +203,7 @@ describe('wrp init --base-url (interactive)', () => {
 
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('Enter startup password: \n')
     expect(result.stderr).toContain('✗')
     expect(result.stderr).toContain('401')
     expect(result.stderr).toContain('→')

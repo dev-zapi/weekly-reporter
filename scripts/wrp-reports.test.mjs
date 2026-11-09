@@ -204,7 +204,7 @@ describe('wrp reports show', () => {
     expect(result.stdout).not.toContain('调休')
   })
 
-  it('accepts --part source as an alias and prints both parts', async () => {
+  it('prints both parts under --part both', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
     const result = await runWrp(['reports', 'show', '12', '--variant', 'personal', '--part', 'both'], {
@@ -216,6 +216,20 @@ describe('wrp reports show', () => {
     expect(result.stdout).toContain('调休')
     expect(result.stdout).toContain('final: stale')
     expect(result.stdout).toContain('adopted before the latest source draft')
+  })
+
+  it('accepts --part source as an alias for draft', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership', '--part', 'source'], {
+      stub: server,
+    })
+
+    expect(result.code).toBe(0)
+    // `source` maps to the draft part: the draft body prints, the final body does not.
+    expect(result.stdout).toContain('source draft:')
+    expect(result.stdout).toContain('2026-02-10 Nexus 上线')
+    expect(result.stdout).not.toContain('交付 Nexus')
   })
 
   it('rejects an unknown --part with the allowed values', async () => {

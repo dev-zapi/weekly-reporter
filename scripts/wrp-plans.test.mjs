@@ -422,6 +422,16 @@ describe('wrp plans add', () => {
       ['plans', 'add', '--scope', 'month', '--month', '2026-10', '--text', 'x', '--urgent', '1'],
       { stub: server },
     )
+    // An empty --project must fail client-side instead of silently defaulting.
+    const emptyProject = await runWrp(
+      ['plans', 'add', '--scope', 'month', '--month', '2026-10', '--text', 'x', '--project', ''],
+      { stub: server },
+    )
+    // A whitespace-only --text must fail client-side instead of creating a blank item.
+    const blankText = await runWrp(
+      ['plans', 'add', '--scope', 'month', '--month', '2026-10', '--text', '   '],
+      { stub: server },
+    )
 
     expect(priority.code).not.toBe(0)
     expect(priority.stderr).toContain('high, normal, low')
@@ -429,6 +439,10 @@ describe('wrp plans add', () => {
     expect(important.stderr).toContain("'true' or 'false'")
     expect(urgent.code).not.toBe(0)
     expect(urgent.stderr).toContain("'true' or 'false'")
+    expect(emptyProject.code).not.toBe(0)
+    expect(emptyProject.stderr).toContain('✗ invalid --project')
+    expect(blankText.code).not.toBe(0)
+    expect(blankText.stderr).toContain('✗ missing item text (--text)')
     expect(server.requests).toHaveLength(0)
   })
 
