@@ -63,4 +63,6 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Timeline work log: list/create/update/delete events | `references/events.md` | event content, `#tag`/`@id`/`%id` parsing boundaries, auto-collected delete refusal |
+| Tags (标签) | [references/tags.md](references/tags.md) | `#name` tokens inside manual event content: inventory, global rename (merges), global remove. |
 | Report templates and AI styles | `references/templates.md` | 周报模板: list/show/create/clone/update/delete (official read-only, clone to edit), the two-ID trap, snapshot independence; AI 风格: `styles list` / `styles show <key>` |
