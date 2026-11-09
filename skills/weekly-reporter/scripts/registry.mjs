@@ -113,10 +113,10 @@ export const MODULES = [
       command('list', 'tags', 'List tags with event counts', 'wrp tags list', [], 123, tags.list),
       command('rename', 'tags', 'Rename a tag everywhere (preview first; merges on collision)', 'wrp tags rename <from> <to> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed rename'),
-      ], 123),
+      ], 123, tags.rename),
       command('remove', 'tags', 'Remove a tag from every event (preview first)', 'wrp tags remove <name> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed removal'),
-      ], 123),
+      ], 123, tags.remove),
     ],
   },
   {
@@ -363,7 +363,7 @@ export function renderCommandHelp(module, entry) {
     const width = Math.max(...entry.flags.map((item) => item.name.length)) + 4
     for (const item of entry.flags) lines.push(`${INDENT}${pad(item.name, width)}${item.summary}`)
   }
-  if (entry.ticket) {
+  if (entry.ticket && !entry.run) {
     lines.push('')
     lines.push(`Not implemented yet (tracked in ticket #${entry.ticket}).`)
   }
