@@ -239,7 +239,7 @@ describe('wrp reports show', () => {
 
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ --part must be one of meta, draft, final, both')
+    expect(result.stderr).toContain('✗ --part must be one of meta, source, draft, final, both')
     expect(server.requests).toHaveLength(0)
   })
 

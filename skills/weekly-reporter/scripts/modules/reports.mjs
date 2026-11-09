@@ -138,9 +138,9 @@ export async function show({ flags, positional }) {
   const part = PARTS[flags.part ?? 'meta']
   if (!part) {
     fail(
-      `--part must be one of meta, draft, final, both`,
+      `--part must be one of meta, source, draft, final, both`,
       `got '${flags.part}'`,
-      'draft is also accepted as source; meta (default) is enough to decide what to read, and --part draft --variant leadership prints the text',
+      'source is an alias for draft; meta (default) is enough to decide what to read, and --part draft --variant leadership prints the text',
     )
   }
 
