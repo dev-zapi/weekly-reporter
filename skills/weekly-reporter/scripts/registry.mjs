@@ -13,6 +13,7 @@
 
 import * as events from './modules/events.mjs'
 import * as init from './modules/init.mjs'
+import * as plans from './modules/plans.mjs'
 import * as reports from './modules/reports.mjs'
 import * as styles from './modules/styles.mjs'
 import * as tags from './modules/tags.mjs'
@@ -133,7 +134,7 @@ export const MODULES = [
         flag('--week-start', 'value', 'week start (YYYY-MM-DD)'),
         flag('--week-end', 'value', 'week end (YYYY-MM-DD)'),
         flag('--month', 'value', 'month key (YYYY-MM)'),
-      ], 125),
+      ], 125, plans.list),
       command('add', 'plans', 'Add a plan item (creating the period plan when needed)', 'wrp plans add --scope <week|month> --text <text> [flags]', [
         flag('--scope', 'value', 'week | month'),
         flag('--text', 'value', 'item text'),
@@ -145,7 +146,7 @@ export const MODULES = [
         flag('--priority', 'value', 'priority level'),
         flag('--important', 'value', 'true | false'),
         flag('--urgent', 'value', 'true | false'),
-      ], 125),
+      ], 125, plans.add),
       command('update', 'plans', 'Update a plan item', 'wrp plans update <id> [--text] [--status] [--position] [--parent] [--priority] [--important] [--urgent]', [
         flag('--text', 'value', 'new text'),
         flag('--status', 'value', 'item status'),
@@ -155,14 +156,14 @@ export const MODULES = [
         flag('--priority', 'value', 'priority level'),
         flag('--important', 'value', 'true | false'),
         flag('--urgent', 'value', 'true | false'),
-      ], 125),
-      command('defer', 'plans', 'Defer an item into the next period (顺延)', 'wrp plans defer <id>', [], 125),
-      command('delete', 'plans', 'Delete a plan item', 'wrp plans delete <id>', [], 125),
-      command('comments list', 'plans', 'List the comment chain of a plan item', 'wrp plans comments list <item-id>', [], 125),
+      ], 125, plans.update),
+      command('defer', 'plans', 'Defer an item into the next period (顺延)', 'wrp plans defer <id>', [], 125, plans.defer),
+      command('delete', 'plans', 'Delete a plan item', 'wrp plans delete <id>', [], 125, plans.remove),
+      command('comments list', 'plans', 'List the comment chain of a plan item', 'wrp plans comments list <item-id>', [], 125, plans.commentsList),
       command('comments add', 'plans', 'Add a comment to a plan item', 'wrp plans comments add <item-id> --text <text>', [
         flag('--text', 'value', 'comment text'),
-      ], 125),
-      command('comments delete', 'plans', 'Delete a comment from a plan item', 'wrp plans comments delete <item-id> <comment-id>', [], 125),
+      ], 125, plans.commentsAdd),
+      command('comments delete', 'plans', 'Delete a comment from a plan item', 'wrp plans comments delete <item-id> <comment-id>', [], 125, plans.commentsDelete),
     ],
   },
   {
