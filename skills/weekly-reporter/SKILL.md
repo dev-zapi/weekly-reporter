@@ -63,3 +63,4 @@ that the commands assume.
 
 | Task | Reference | Scope |
 | ---- | --------- | ----- |
+| Report templates and AI styles | `references/templates.md` | 周报模板: list/show/create/clone/update/delete (official read-only, clone to edit), the two-ID trap, snapshot independence; AI 风格: `styles list` / `styles show <key>` |

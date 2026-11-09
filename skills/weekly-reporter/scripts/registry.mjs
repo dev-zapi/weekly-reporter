@@ -11,7 +11,9 @@
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }
 // `kind` is `value` | `boolean` | `multi` (see lib/args.mjs).
 
+import * as styles from './modules/styles.mjs'
 import * as tags from './modules/tags.mjs'
+import * as templates from './modules/templates.mjs'
 
 export const MODULES = [
   {
@@ -166,10 +168,10 @@ export const MODULES = [
       command('list', 'templates', 'List templates (official and user)', 'wrp templates list [--kind] [--query]', [
         flag('--kind', 'value', 'official | user | all'),
         flag('--query', 'value', 'match name, content, tags or description'),
-      ], 126),
+      ], 126, templates.list),
       command('show', 'templates', 'Show one template', 'wrp templates show <ref> [--part meta|content|both]', [
         flag('--part', 'value', 'meta | content | both (default: both)'),
-      ], 126),
+      ], 126, templates.show),
       command('create', 'templates', 'Create a user template', 'wrp templates create --name <name> (--content <text> | --file <path>) [flags]', [
         flag('--name', 'value', 'template name'),
         flag('--content', 'value', 'single-line content (prefer --file)'),
@@ -177,12 +179,12 @@ export const MODULES = [
         flag('--description', 'value', 'template description'),
         flag('--tags', 'value', 'comma-separated tags'),
         flag('--style', 'value', 'AI style key'),
-      ], 126),
+      ], 126, templates.create),
       command('clone', 'templates', 'Clone a template (the way to adapt an official one)', 'wrp templates clone <ref> [--name] [--content|--file]', [
         flag('--name', 'value', 'name for the copy'),
         flag('--content', 'value', 'single-line content override'),
         flag('--file', 'value', 'read the content override from a file'),
-      ], 126),
+      ], 126, templates.clone),
       command('update', 'templates', 'Update a user template', 'wrp templates update <ref> [--name] [--content|--file] [--description] [--tags] [--style]', [
         flag('--name', 'value', 'template name'),
         flag('--content', 'value', 'single-line content'),
@@ -190,18 +192,18 @@ export const MODULES = [
         flag('--description', 'value', 'template description'),
         flag('--tags', 'value', 'comma-separated tags'),
         flag('--style', 'value', 'AI style key'),
-      ], 126),
+      ], 126, templates.update),
       command('delete', 'templates', 'Delete a user template (preview first)', 'wrp templates delete <ref> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed deletion'),
-      ], 126),
+      ], 126, templates.remove),
     ],
   },
   {
     name: 'styles',
     summary: 'AI writing styles (AI 风格): list, show',
     commands: [
-      command('list', 'styles', 'List the AI style keys', 'wrp styles list', [], 126),
-      command('show', 'styles', 'Show one AI style prompt', 'wrp styles show <key>', [], 126),
+      command('list', 'styles', 'List the AI style keys', 'wrp styles list', [], 126, styles.list),
+      command('show', 'styles', 'Show one AI style prompt', 'wrp styles show <key>', [], 126, styles.show),
     ],
   },
   {
@@ -361,7 +363,7 @@ export function renderCommandHelp(module, entry) {
     const width = Math.max(...entry.flags.map((item) => item.name.length)) + 4
     for (const item of entry.flags) lines.push(`${INDENT}${pad(item.name, width)}${item.summary}`)
   }
-  if (entry.ticket) {
+  if (!entry.run && entry.ticket) {
     lines.push('')
     lines.push(`Not implemented yet (tracked in ticket #${entry.ticket}).`)
   }
