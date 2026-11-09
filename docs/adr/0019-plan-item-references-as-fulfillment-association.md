@@ -18,6 +18,6 @@ ADR-0018 promised plan items an optional association to timeline events as fulfi
 ## Consequences
 
 - ADR-0018's association is now concretely this table; no separate plan→event field or join will be added.
-- The plans page and the timeline plan panel expose item ids in `%<id>` form so users can cite them while writing events; the plan-item client's item handle changes from `#<id>` to `%<id>` for cross-surface consistency.
+- The plans page and the timeline plan panel expose item ids in `%<id>` form so users can cite them while writing events; the period-plans agent skill's item handle changes from `#<id>` to `%<id>` for cross-surface consistency.
 - Report event snapshots freeze content text as-is; `%id` tokens ride along like tags and references and are never rewritten retroactively.
-- The timeline-event and summarize-event skill docs must document the new token.
+- timeline-events and summarize-event skill docs must document the new token.

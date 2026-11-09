@@ -44,7 +44,7 @@ wrp reports create --title "2026 Week 38 Work Report" --start 2026-09-14 --end 2
 
 Nothing stops duplicate reports for one week, so always list first. If a report already exists with a current final, you are in Flow B, not here.
 
-**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with `wrp templates list` and `wrp templates show <ref>` (its `show` prints the full instruction text — that text defines the target structure and writing requirements). For style, unless the user names one, use the template's own AI style, shown by `wrp templates show --part meta`; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
+**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with `wrp templates list` and `wrp templates show <ref>` (its `show` prints the full instruction text — that text defines the target structure and writing requirements). For style, unless the user names one, use the template's own AI style, shown by `wrp templates show <ref> --part meta`; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
 
 ```bash
 wrp styles list            # one line per style
@@ -98,7 +98,7 @@ Otherwise: apply only the requested changes to the existing text (it is the user
 
 | Situation | Meaning | What to do |
 |---|---|---|
-| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (run the exact `! node …/wrp.mjs init` command the `✗` line prints) |
+| `unauthorized (HTTP 401) from <url>` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (run the exact `! node "…/wrp.mjs" init` command the `✗` line prints) |
 | `Cannot reach weekly-reporter` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
 | `SOURCE_REVISION_CONFLICT` (409) on save | Draft regenerated since you read it | Re-read source, rebase your text on the new draft, re-review, re-save |
 | Empty draft on preview/create | No events in range | Stop; suggest sync or date fix |

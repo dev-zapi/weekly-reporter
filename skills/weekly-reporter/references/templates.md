@@ -149,9 +149,10 @@ technical one". Ambiguous substrings and unknown keys fail with the valid keys
 listed.
 
 Styles are referenced by **key** (`formal`, `technical`, `concise`, `detailed` by
-default), not by numeric ID. A style change on the `/prompts` page retroactively
-changes future generations using it; reports already generated keep their own style
-snapshot.
+default), not by numeric ID. A style change on the `/prompts` page edits that
+key for future use. A running generation session snapshots the full style
+prompt; a saved final records only the style key (deleting a style clears that
+reference), and the final text itself never changes.
 
 ## Out of scope
 

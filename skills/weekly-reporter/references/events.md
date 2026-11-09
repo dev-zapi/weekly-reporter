@@ -175,7 +175,7 @@ exit. The fixes point at the actual next step:
 
 | Symptom | Fix |
 | --- | --- |
-| `✗ unauthorized (HTTP 401)` | provision credentials: `! node {baseDir}/scripts/wrp.mjs init` |
+| `✗ unauthorized (HTTP 401)` | provision credentials: `! node "{baseDir}/scripts/wrp.mjs" init` |
 | `✗ Cannot reach weekly-reporter` | start the server (`npm run dev`) or set `WEEKLY_REPORTER_BASE_URL` |
 | `✗ event not found (HTTP 404)` | check the id against `wrp events list` |
 | `✗ delete refused (HTTP 403)` | the event is auto-collected; fix the commit or the collect source |

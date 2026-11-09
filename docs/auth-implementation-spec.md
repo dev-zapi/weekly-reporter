@@ -1,6 +1,6 @@
 # 认证 + PAT + 机器级凭据 + 审计 —— 实现规格
 
-> **历史文档**：本规格描述的是落地时的实现设计与当时的 skill 布局。§2「Skill 侧规格」与凭据配置相关的条目（§2、§4、§6）已被 wrp 客户端取代——凭据配置现在是 `skills/weekly-reporter/scripts/wrp.mjs init`，全部 skill 调用统一走 `wrp`。阅读这些章节时请以 `skills/weekly-reporter/` 的文档为准；服务端章节（认证、PAT、审计）仍然有效。
+> **历史文档（已被 wrp 客户端取代）**：本规格描述的是落地时的实现设计与当时的 skill 布局。§2「Skill 侧规格」，以及 §4、§6 中与凭据配置相关的条目，均已被 wrp 客户端取代——凭据配置现在是 `skills/weekly-reporter/scripts/wrp.mjs init`，全部 skill 调用统一走 `wrp`。阅读这些章节时请以 `skills/weekly-reporter/` 的文档为准；服务端章节（认证、PAT、审计）仍然有效。下文保留的历史路径与脚本清单仅作记录，它们指向的 skill/client 已不存在。
 
 > 本文件是 [Wayfinder map #49](https://github.com/dev-zapi/weekly-reporter/issues/49) 的落笔产物。
 > 决策来源：map Notes 的 16 条 Charter decisions（Round 1–2 grilling 锁定）+ [#50 研究结论](https://github.com/dev-zapi/weekly-reporter/issues/50)（`docs/research/2026-10-20-auth-middleware-and-audit.md`）+ 本轮 4 项拍板。
@@ -378,11 +378,11 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 
 ### 2.1 改动清单（43 个 HTTP 入口，历史口径）
 
-| 类别 | 数量 | 说明 |
+| 类别 | 数量 | 路径（历史记录） |
 | --- | --- | --- |
-| vendored `client.mjs` | **7** | 每个自带 HTTP 逻辑的 skill 各一份拷贝（现已合并为一个 wrp 客户端） |
+| vendored `client.mjs` | **7** | `skills/{collect-git-source,collect-sources,period-plans,report-templates,timeline-tags,weekly-reports,write-weekly-report}/scripts/lib/client.mjs`（现已合并为一个 wrp 客户端） |
 | 经 client.mjs 的脚本 | **32** | 上述 7 个 skill 的 `scripts/*.mjs`（**全部实际发 HTTP**，部分经 `fetchAllSources` / `fetchAll` 间接调用） |
-| 内联 fetch 的脚本 | **4** | 时间线事件那 4 个脚本（**无 client.mjs，自己拼 `WEEKLY_REPORTER_URL` + fetch**） |
+| timeline-events 内联脚本 | **4** | `skills/timeline-events/scripts/{post,query,update,delete}.mjs`（**无 client.mjs，自己拼 `WEEKLY_REPORTER_URL` + fetch**） |
 
 > **总数 43**（7 + 32 + 4）。这是 Charter #15「仅本仓库 `skills/` 下 37 个脚本入口」的实际口径——**37 与 43 的差异**见 §5.1。
 
@@ -498,7 +498,17 @@ function detectAgentName() {
 
 ### 2.5 凭据配置脚本 + skill（Charter #9，D3；历史）
 
-当时的设计是仓库根一个凭据配置脚本 + 一个薄包装 skill，行为：
+当时的设计是仓库根一个凭据配置脚本 + 一个薄包装 skill。脚本用法（历史记录）：
+
+```
+用法:
+  node scripts/configure-pat.mjs --base-url <url> [--name <name>]
+  node scripts/configure-pat.mjs --pat <token> [--base-url <url>]
+  node scripts/configure-pat.mjs --show          # 打印当前配置（PAT 打码）
+  node scripts/configure-pat.mjs --clear         # 清除机器级凭据
+```
+
+行为：
 
 - `--pat` + `--base-url` → 写入 `~/.config/weekly-reporter/auth.json` 的 `machine` 字段（保留同文件的 `password` 字段！）。
 - `--base-url`（无 `--pat`）→ **交互式**：调用 `POST /api/auth/pats` 创建新 PAT（用启动密码认证），把返回的明文写入 `machine.pat`。
@@ -506,7 +516,11 @@ function detectAgentName() {
 - **写文件必须保留 `password` 字段** —— 同一个文件承载启动密码与机器级凭据（§1.2）。读写时用「读 → 改 `machine` → 写回」的语义，**不能整体覆盖**。
 - 文件权限 `chmod 600`。
 
-**Skill**：薄包装，frontmatter 的 `name` 即该 skill 名，正文说明何时用（脚本报 401、需要给 agent 配 PAT）、怎么跑。
+**Skill** `skills/configure-pat/SKILL.md`（薄包装，D3：仓库内，历史记录）：
+
+- frontmatter：`name: configure-pat`，description 说明用途。
+- 正文：何时用（脚本报 401、需要给 agent 配 PAT）、怎么跑（`node scripts/configure-pat.mjs`）、怎么人工用（安全页创建 PAT → 粘贴）。
+- **不复制** client.mjs 逻辑（它自己也要调 API → 用 `scripts/configure-pat.mjs` 里的实现）。
 
 > **人机两用**（Charter #9）：人可以直接开安全页创建 PAT；agent 跑脚本。两条路产出的 token 等价。
 

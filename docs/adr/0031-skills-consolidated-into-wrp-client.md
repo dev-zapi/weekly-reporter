@@ -1,11 +1,10 @@
 ---
 status: accepted
-date: 2026-11-09
 ---
 
-# skills consolidated into the engineered wrp client
+# skills consolidated into the engineered wrp client (2026-11-09)
 
-Eight vendored copies of the same HTTP/auth client (one per old API skill, plus the four flow skills' private copies — roughly 1.7k lines of duplicated logic) drifted apart under a stamping script whose only job was re-syncing a shared auth block into each copy. The configure-pat skill split its doc (inside the skill) from its script (repo root), so an installed copy could not set up its own credentials. And seven skills carried near-identical trigger descriptions, forcing the user and the agent to remember which skill owned which entity.
+Eight vendored copies of the same HTTP/auth client (one in six of the old API skills plus private copies in collect-git-source and write-weekly-report — roughly 1.7k lines of duplicated logic) drifted apart under a stamping script whose only job was re-syncing a shared auth block into each copy. The configure-pat skill split its doc (inside the skill) from its script (repo root), so an installed copy could not set up its own credentials. And seven skills carried near-identical trigger descriptions, forcing the user and the agent to remember which skill owned which entity.
 
 The replacement is one skill, `weekly-reporter`, with a single self-contained, zero-dependency client: `wrp <module> <verb>`, dispatched by `scripts/wrp.mjs`. Auth (credential resolution, self-report headers, 401/connection-failure handling) lives once in `scripts/lib/`, not eight times. Per-module reference docs (`references/init|sources|events|tags|plans|templates|reports.md`) become the knowledge home — the dense domain rules (token boundaries, snapshot immutability, cursor preservation, confirmation gates) move there verbatim, because after the cutover those docs are their only home. The five output format laws (feedback line, list line, error line, preview block, payloads-in-show-only) are a published contract: four upstream flow skills teach agents to parse it, so those docs were rewritten in lockstep in the same change. `wrp init` absorbs configure-pat with all four modes (`--pat`, interactive startup-password → PAT, `--show`, `--clear`). The dependent skills (collect-git-source, write-weekly-report, summarize-event, summarize-event-quick) slim to flow documents that invoke wrp and ship no client of their own. The old artifacts — the seven skill directories including their evals, the auth-block stamper and its template, the repo-root configure-pat script and its tests, the old plan-item comment behavior suite, and the `check:skills` npm script — are deleted in the same cutover.
 
