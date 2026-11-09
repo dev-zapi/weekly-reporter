@@ -1,21 +1,22 @@
 ---
 name: write-weekly-report
 description: >-
-  Author or revise weekly report (周报) finals in the weekly-reporter app as a peer of its built-in generation AI — confirm the week with the user, verify the source draft, pick a template and AI style, write the final yourself, show it in full, and save only after explicit user approval. Use this skill whenever the user wants a weekly report written or revised from outside the app's chat UI: "写一份这周的周报", "帮我生成周报", "写领导版/个人版", "用技术研发模板写周报", "revise last week's final", "改一下周报的口气", or any request to produce a 周报终版 rather than just read one. For merely listing/reading reports use the weekly-reports skill; for single timeline work-log entries use timeline-events.
+  Author or revise weekly report (周报) finals in the weekly-reporter app as a peer of its built-in generation AI — confirm the week with the user, verify the source draft, pick a template and AI style, write the final yourself, show it in full, and save only after explicit user approval. Use this skill whenever the user wants a weekly report written or revised from outside the app's chat UI: "写一份这周的周报", "帮我生成周报", "写领导版/个人版", "用技术研发模板写周报", "revise last week's final", "改一下周报的口气", or any request to produce a 周报终版 rather than just read one. For merely listing/reading reports use the weekly-reporter skill's `wrp reports …`; for single timeline work-log entries use `wrp events …`.
 ---
 
 You are the writer. The weekly-reporter app has its own chat-driven generation AI, but through this skill you author finals as its **peer**: you consume the same inputs it does (source draft, template, AI style), write the final yourself, and save it through the same API. The user must get the same quality and the same safety guarantees either way.
 
-All scripts talk to a running weekly-reporter server (built-in `fetch`, Node 18+, no deps). They read credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`, defaulting the base URL to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run the **configure-pat** skill to set one up.
+All data access goes through the **weekly-reporter** skill's wrp client, written shorthand as `wrp …` and run as `node <weekly-reporter>/scripts/wrp.mjs …` (Node 18+, no dependencies). It reads credentials from the env (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, or its alias `WEEKLY_REPORTER_URL`, for the base URL) or from the machine credential at `~/.config/weekly-reporter/auth.json`, defaulting the base URL to `http://localhost:6868`. Without a PAT every `/api/**` call returns 401 — run `wrp init` (the weekly-reporter skill) to set one up.
 
 ## Prerequisites
 
-Two sibling skills provide the data-access scripts this skill orchestrates:
+Only the **weekly-reporter** skill's wrp client is needed. It provides the whole command surface this skill orchestrates:
 
-- **weekly-reports** — `preview.mjs`, `list.mjs`, `create.mjs`, `show.mjs`, `save-final.mjs` (repo: `skills/weekly-reports/scripts/`)
-- **report-templates** — listing and reading 周报模板 (repo: `skills/report-templates/scripts/`)
+- `wrp reports …` — preview, list, create, show, save-final
+- `wrp templates …` — listing and reading 周报模板
+- `wrp styles …` — listing and reading AI 风格
 
-If a sibling script is not installed as a skill, run it directly from the weekly-reporter repo's `skills/` directory. This skill's own script (`{baseDir}/scripts/show-style.mjs`) is self-contained.
+If the weekly-reporter skill is not installed, run the client directly from the weekly-reporter repo's `skills/weekly-reporter/` directory. This skill ships no scripts of its own.
 
 ## The model that keeps you honest
 
@@ -29,7 +30,7 @@ If a sibling script is not installed as a skill, run it directly from the weekly
 **1. Pin the week.** Agree the exact date range with the user ("this week" → which Monday–Sunday?). Then verify what it holds *before* creating anything:
 
 ```bash
-node <weekly-reports>/preview.mjs --start 2026-09-14 --end 2026-09-20
+wrp reports preview --start 2026-09-14 --end 2026-09-20
 ```
 
 Empty draft for a variant → say so and stop for that variant; the fix is a collect-source sync or a date correction, not writing.
@@ -37,23 +38,23 @@ Empty draft for a variant → say so and stop for that variant; the fix is a col
 **2. Reuse or create.** Check the week isn't already covered, then create if needed:
 
 ```bash
-node <weekly-reports>/list.mjs --start 2026-09-14 --end 2026-09-20
-node <weekly-reports>/create.mjs --title "2026 Week 38 Work Report" --start 2026-09-14 --end 2026-09-20
+wrp reports list --start 2026-09-14 --end 2026-09-20
+wrp reports create --title "2026 Week 38 Work Report" --start 2026-09-14 --end 2026-09-20
 ```
 
 Nothing stops duplicate reports for one week, so always list first. If a report already exists with a current final, you are in Flow B, not here.
 
-**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with the report-templates skill (its `show` prints the full instruction text — that text defines the target structure and writing requirements). For style, unless the user names one, use the template's own AI style, shown by report-templates; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
+**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with `wrp templates list` and `wrp templates show <ref>` (its `show` prints the full instruction text — that text defines the target structure and writing requirements). For style, unless the user names one, use the template's own AI style, shown by `wrp templates show --part meta`; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
 
 ```bash
-node {baseDir}/scripts/show-style.mjs            # one line per style
-node {baseDir}/scripts/show-style.mjs technical  # full writing prompt
+wrp styles list            # one line per style
+wrp styles show technical  # full writing prompt
 ```
 
 **4. Read the source draft** for the variant you are writing:
 
 ```bash
-node <weekly-reports>/show.mjs <id> --variant leadership --part source
+wrp reports show <id> --variant leadership --part source
 ```
 
 Note the `sourceRevision` in the metadata — you will pass it when saving.
@@ -61,8 +62,8 @@ Note the `sourceRevision` in the metadata — you will pass it when saving.
 **5. Optionally consult the previous week's final.** If you want continuity, look up the previous week (weekStart − 7) and, if that report has a current final for the same variant, read its 下周计划 section:
 
 ```bash
-node <weekly-reports>/list.mjs --start 2026-09-07 --end 2026-09-13
-node <weekly-reports>/show.mjs <prevId> --variant leadership --part final
+wrp reports list --start 2026-09-07 --end 2026-09-13
+wrp reports show <prevId> --variant leadership --part final
 ```
 
 Treat anything you read there as *reference, not fact*: this week's plan section is your own prose, grounded in this week's draft. Nothing carries forward automatically, and skipping this step is fine — if there is no previous final, there is simply nothing to consult.
@@ -74,7 +75,7 @@ Treat anything you read there as *reference, not fact*: this week's plan section
 **8. Save.** Write the final to a temp file (never inline multi-line markdown through shell quoting) and save with provenance:
 
 ```bash
-node <weekly-reports>/save-final.mjs <id> --variant leadership --file /tmp/final-leadership.md \
+wrp reports save-final <id> --variant leadership --file /tmp/final-leadership.md \
   --source-revision <n> --template-id <templateId> --ai-style-key <styleKey>
 ```
 
@@ -85,8 +86,8 @@ node <weekly-reports>/save-final.mjs <id> --variant leadership --file /tmp/final
 Read the current final and the current source draft:
 
 ```bash
-node <weekly-reports>/show.mjs <id> --variant personal --part final
-node <weekly-reports>/show.mjs <id> --variant personal --part source
+wrp reports show <id> --variant personal --part final
+wrp reports show <id> --variant personal --part source
 ```
 
 If the final's status is `stale`, say so: the draft was regenerated after it was written. Editing stale text forward is usually wrong — offer to re-author from the fresh draft instead (Flow A from step 3).
@@ -97,12 +98,12 @@ Otherwise: apply only the requested changes to the existing text (it is the user
 
 | Situation | Meaning | What to do |
 |---|---|---|
-| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Run the **configure-pat** skill (`node scripts/configure-pat.mjs`) |
-| `Cannot reach weekly-reporter` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_URL` |
+| `Unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (run the exact `! node …/wrp.mjs init` command the `✗` line prints) |
+| `Cannot reach weekly-reporter` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
 | `SOURCE_REVISION_CONFLICT` (409) on save | Draft regenerated since you read it | Re-read source, rebase your text on the new draft, re-review, re-save |
 | Empty draft on preview/create | No events in range | Stop; suggest sync or date fix |
-| Save with unknown template/style | 400 `VALIDATION_ERROR` | Re-check ids via report-templates / `show-style.mjs` |
+| Save with unknown template/style | 400 `VALIDATION_ERROR` | Re-check ids via `wrp templates list` / `wrp styles list` |
 
 ## Out of scope
 
-Collect-source syncing and timeline event logging belong to their own skills (suggest them when a draft is empty or thin). The app-internal generation sessions (`/edit/[id]` chat) are a parallel path — don't drive them from here. Deleting reports is `weekly-reports`' job, and finals you save through this skill are deletable precisely because they carry no proposal audit trail.
+Collect-source syncing and timeline event logging belong to the weekly-reporter skill (`wrp sources …`, `wrp events …`; the collect-git-source flow covers syncing) — suggest them when a draft is empty or thin. The app-internal generation sessions (`/edit/[id]` chat) are a parallel path — don't drive them from here. Deleting reports is `wrp reports delete --confirm`'s job, and finals you save through this skill are deletable precisely because they carry no proposal audit trail.
