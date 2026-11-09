@@ -294,6 +294,17 @@ describe('wrp events update', () => {
     expect(server.requests).toHaveLength(0)
   })
 
+  it('refuses an empty --time before calling the API', async () => {
+    const server = await stub()
+
+    const result = await run(['events', 'update', '6991', '--time', ''], server)
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ missing value for --time')
+    expect(server.requests).toHaveLength(0)
+  })
+
   it('rejects a non-numeric id before calling the API', async () => {
     const server = await stub()
 
