@@ -95,7 +95,7 @@ commits scanned, Y new events` plus per-branch lines.
 |---|---|---|
 | `unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (the exact command is printed in the `✗` line) |
 | `SOURCE_BUSY` | Another sync/fetch is running for this source | Retry in a few seconds |
-| `sync failed and #N <name> was auto-disabled` | Repo path gone or unreadable during sync | Check the path exists and is readable, fix it with `wrp sources update`, then re-enable |
+| `sync failed — #N <name> auto-disabled` | Repo path gone or unreadable during sync | Check the path exists and is readable, fix it with `wrp sources update`, then re-enable |
 | `no collect source for path '…'` (exit 3) | No git-local source registered for that path | Normal onboarding path — not an error |
 | `Cannot reach weekly-reporter` | Server not running | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
 

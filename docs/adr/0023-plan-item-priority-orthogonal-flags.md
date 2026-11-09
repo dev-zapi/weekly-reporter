@@ -18,5 +18,5 @@ Plan items gain three mutually orthogonal fields: a **priority** (`high`/`normal
 - CONTEXT.md gains 优先级 (Priority), 重要标记 (Important Flag), and 紧急标记 (Urgent Flag) entries under 周期计划; the plan-item 重要标记 is distinct from the timeline-event importance toggle (same word, different entity).
 - Every plan-item surface orders by (priority, position); drag-and-drop reorders within a priority group only, and priority changes go through an explicit control — dragging never changes priority.
 - Deferral copies priority and both flags to the new item; nothing is reset except status.
-- API and the plan-item client accept the three fields with enum/boolean validation; existing items backfill to `normal`/false/false.
+- API and the period-plans skill accept the three fields with enum/boolean validation; existing items backfill to `normal`/false/false.
 - Filters and AI consumption are explicit non-goals for now; the AI question resurfaces when final generation starts reading plan items at all.
