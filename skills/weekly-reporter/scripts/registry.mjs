@@ -11,6 +11,7 @@
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }
 // `kind` is `value` | `boolean` | `multi` (see lib/args.mjs).
 
+import * as events from './modules/events.mjs'
 import * as reports from './modules/reports.mjs'
 import * as tags from './modules/tags.mjs'
 
@@ -86,23 +87,24 @@ export const MODULES = [
     name: 'events',
     summary: 'Timeline events (时间线事件): list, create, update, delete',
     commands: [
-      command('list', 'events', 'List events', 'wrp events list [--date] [--week-start --week-end] [--tags] [--source] [--limit]', [
+      command('list', 'events', 'List events', 'wrp events list [--date] [--week-start --week-end] [--tags] [--source] [--limit] [--cursor]', [
         flag('--date', 'value', 'single day (YYYY-MM-DD)'),
         flag('--week-start', 'value', 'week start (YYYY-MM-DD)'),
         flag('--week-end', 'value', 'week end (YYYY-MM-DD)'),
         flag('--tags', 'value', 'comma-separated tag names'),
         flag('--source', 'value', 'manual | auto'),
         flag('--limit', 'value', 'page size'),
-      ], 122),
+        flag('--cursor', 'value', 'continue a page: <id>@<epoch-millis>'),
+      ], null, events.list),
       command('create', 'events', 'Create an event', 'wrp events create <content> [--time <iso>]', [
         flag('--time', 'value', 'event time (ISO 8601)'),
-      ], 122),
+      ], null, events.create),
       command('update', 'events', 'Update an event', 'wrp events update <id> [--content] [--time] [--important]', [
         flag('--content', 'value', 'new single-line content'),
         flag('--time', 'value', 'new event time (ISO 8601)'),
         flag('--important', 'value', 'true | false'),
-      ], 122),
-      command('delete', 'events', 'Delete a manual event (auto-collected ones are refused)', 'wrp events delete <id>', [], 122),
+      ], null, events.update),
+      command('delete', 'events', 'Delete a manual event (auto-collected ones are refused)', 'wrp events delete <id>', [], null, events.deleteEvent),
     ],
   },
   {
@@ -112,10 +114,10 @@ export const MODULES = [
       command('list', 'tags', 'List tags with event counts', 'wrp tags list', [], 123, tags.list),
       command('rename', 'tags', 'Rename a tag everywhere (preview first; merges on collision)', 'wrp tags rename <from> <to> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed rename'),
-      ], 123),
+      ], 123, tags.rename),
       command('remove', 'tags', 'Remove a tag from every event (preview first)', 'wrp tags remove <name> [--confirm]', [
         flag('--confirm', 'boolean', 'execute the previewed removal'),
-      ], 123),
+      ], 123, tags.remove),
     ],
   },
   {
