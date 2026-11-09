@@ -1,4 +1,4 @@
--- B4 collect sources read path (blueprint 5 B4, ticket #103).
+-- B4 collect-sources read path (blueprint 5 B4, ticket #103).
 -- ASCII-only comments on purpose: see queries/common.sql for the sqlc finding.
 --
 -- The config column is a drizzle mode:'json' column: it holds JSON *text*, and the
