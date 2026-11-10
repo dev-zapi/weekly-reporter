@@ -8,7 +8,7 @@ import { Link } from 'react-router'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { toOffsetInstant } from '@/lib/periods'
+import { toBrowserOffsetInstant } from '@/lib/time-format'
 import {
   PLAN_ITEM_PRIORITY_LABELS,
   PLAN_ITEM_PRIORITY_TINTS,
@@ -159,7 +159,7 @@ export function TimelinePlanPanel({ refreshKey = 0 }: { refreshKey?: number }) {
     const controller = new AbortController()
     // The date wire param is an RFC3339 instant in the browser's offset: the
     // server aligns the week in that offset's calendar, not the server's zone.
-    const today = toOffsetInstant(startOfDay(new Date()))
+    const today = toBrowserOffsetInstant(startOfDay(new Date()))
     const url = `/api/plans?scope=week&date=${encodeURIComponent(today)}`
 
     void apiFetch(url, { signal: controller.signal })

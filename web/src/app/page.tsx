@@ -18,6 +18,7 @@ import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
 import { PlanItemPreviewDialog } from '@/components/PlanItemPreviewDialog'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 import { buildPlansDeepLink } from '@/lib/plan-links'
+import { dateOnlyToOffsetInstant } from '@/lib/periods'
 import styles from '@/components/timeline.module.css'
 
 const EVENTS_PAGE_LIMIT = 30
@@ -61,25 +62,6 @@ function formatLocalDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
-}
-
-/** `480` → `+08:00`, `-300` → `-05:00`. */
-function formatOffset(minutes: number): string {
-  const sign = minutes >= 0 ? '+' : '-'
-  const absolute = Math.abs(minutes)
-  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
-}
-
-/**
- * A heatmap date key (`YYYY-MM-DD`) → the browser's midnight for that calendar
- * day, with the browser offset kept on the wire (`2026-11-09T00:00:00+08:00`).
- * The offset is required: the server rounds the window by the offset the
- * request carries, so sending the UTC equivalent would shift the day.
- */
-function formatLocalMidnightInstant(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  const midnight = new Date(year, month - 1, day)
-  return `${dateStr}T00:00:00${formatOffset(-midnight.getTimezoneOffset())}`
 }
 
 function browserTimeZone(): string {
@@ -144,7 +126,10 @@ export default function TimelinePage() {
     if (tags.length > 0) {
       params.set('tags', tags.join(','))
     } else if (heatmapDate) {
-      params.set('date', formatLocalMidnightInstant(heatmapDate))
+      // Date key → browser midnight with the browser offset on the wire; the
+      // server rounds the window by the request's offset, so a UTC equivalent
+      // would shift the day.
+      params.set('date', dateOnlyToOffsetInstant(heatmapDate))
     }
     if (cursor) {
       params.set('cursorId', String(cursor.id))

@@ -7,11 +7,15 @@ export function toValidDate(value: Date | string | number): Date | null {
 }
 
 /**
- * A Date as browser-local RFC3339 with its offset, e.g.
+ * A Date as an RFC3339 instant carrying the browser's own offset, e.g.
  * `2026-11-03T00:00:00+08:00`. The wire needs the caller's offset so the server
- * can fold calendar days in the user's zone instead of the server's.
+ * can fold calendar days in the user's zone instead of the server's. Lowercase
+ * `xxx` never emits `Z`, which would move an east-of-UTC zero point backwards.
+ *
+ * This is the one implementation of the browser-offset wire form; `periods.ts`
+ * and the pages all call it instead of re-formatting offsets by hand.
  */
-export function formatSystemInstant(date: Date): string {
+export function toBrowserOffsetInstant(date: Date): string {
   return format(date, "yyyy-MM-dd'T'HH:mm:ssxxx")
 }
 
