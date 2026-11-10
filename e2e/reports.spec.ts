@@ -9,14 +9,14 @@ test.describe('周报列表页', () => {
       {
         title: 'E2E 测试周报 1',
         content: '内容 1',
-        weekStart: '2024-01-08',
-        weekEnd: '2024-01-14',
+        weekStart: '2024-01-08T00:00:00+00:00',
+        weekEnd: '2024-01-14T00:00:00+00:00',
       },
       {
         title: 'E2E 测试周报 2',
         content: '内容 2',
-        weekStart: '2024-01-15',
-        weekEnd: '2024-01-21',
+        weekStart: '2024-01-15T00:00:00+00:00',
+        weekEnd: '2024-01-21T00:00:00+00:00',
       },
     ]
 

@@ -3,6 +3,7 @@ package reports_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -16,7 +17,7 @@ func TestPreviewReturnsBothSourceDrafts(t *testing.T) {
 	h.seedEvent(1705000000, "manual", "工作事项", "")
 	h.seedEvent(1705000001, "manual", "个人事项", "")
 
-	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -53,7 +54,7 @@ func TestPreviewReturnsBothSourceDrafts(t *testing.T) {
 func TestPreviewRejectsInvalidDateRange(t *testing.T) {
 	h := newHarness(t)
 
-	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-20","weekEnd":"2024-01-14"}`)
+	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-20T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -91,7 +92,7 @@ func TestPreviewBuildsOriginRankedDraft(t *testing.T) {
 	_ = weekEnd
 
 	rec := h.do(http.MethodPost, "/api/reports/preview",
-		`{"weekStart":"`+weekStart.Format("2006-01-02")+`","weekEnd":"`+weekEnd.Format("2006-01-02")+`"}`)
+		`{"weekStart":"`+weekStart.Format(time.RFC3339)+`","weekEnd":"`+weekEnd.Format(time.RFC3339)+`"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -363,7 +364,9 @@ func TestDeleteReportErrorShapes(t *testing.T) {
 // regenerate-source 版本号 +1，旧终版标 stale，报告 content 写回个人版原稿。
 func TestRegenerateSourceBumpsRevision(t *testing.T) {
 	h := newHarness(t)
-	weekStart := time.Date(2024, 1, 8, 0, 0, 0, 0, time.Local)
+	// regenerate-source has no client offset, so the window is folded in UTC;
+	// seed the event inside that deterministic window.
+	weekStart := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
 	reportID := h.seedReport("报告", "旧内容", weekStart.Format("2006-01-02"), "2024-01-14", 1705310800)
 	final := "旧终版"
 	h.seedVariant(reportID, "leadership", "- 旧原稿", &final, 1, nil)
@@ -461,7 +464,7 @@ func TestSearchReports(t *testing.T) {
 	}
 
 	// 日期过滤：weekStart < startDate 或 weekEnd > endDate 都被排除。
-	rec = h.do(http.MethodGet, "/api/reports/search?startDate=2024-01-08&endDate=2024-01-14", "")
+	rec = h.do(http.MethodGet, "/api/reports/search?startDate=2024-01-08T00:00:00Z&endDate=2024-01-14T00:00:00Z", "")
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -496,12 +499,12 @@ func TestSourceDraftRoutesRejectCorruptEventMetadata(t *testing.T) {
 	h := newHarness(t)
 	h.seedEvent(1705000000, "git-remote-github", "损坏元数据", `{"sourceId":`)
 
-	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	rec := h.do(http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"PREVIEW_ERROR"`) {
 		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = h.do(http.MethodPost, "/api/reports", `{"title":"周报","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	rec = h.do(http.MethodPost, "/api/reports", `{"title":"周报","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"CREATE_ERROR"`) {
 		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
 	}
@@ -517,5 +520,152 @@ func TestSourceDraftRoutesRejectCorruptEventMetadata(t *testing.T) {
 	rec = h.do(http.MethodPost, "/api/reports/"+itoa(reportID)+"/regenerate-source", "")
 	if rec.Code != http.StatusInternalServerError || !contains(rec.Body.String(), `"code":"REGENERATE_ERROR"`) {
 		t.Fatalf("regenerate: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// wire 上的日期/周界参数只认 RFC3339 带偏移；date-only 一律 400，且信息里
+// 给出可复制的格式示例。
+func TestReportDateParamsRejectDateOnly(t *testing.T) {
+	h := newHarness(t)
+
+	preview := h.do(http.MethodPost, "/api/reports/preview",
+		`{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	if preview.Code != http.StatusBadRequest {
+		t.Fatalf("preview status = %d, want 400 (body %s)", preview.Code, preview.Body.String())
+	}
+	for _, want := range []string{"Date must be an RFC3339 timestamp with an offset", "2026-11-03T00:00:00+08:00"} {
+		if !contains(preview.Body.String(), want) {
+			t.Fatalf("preview body = %s, want %q", preview.Body.String(), want)
+		}
+	}
+
+	create := h.do(http.MethodPost, "/api/reports",
+		`{"title":"x","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+	if create.Code != http.StatusBadRequest {
+		t.Fatalf("create status = %d, want 400 (body %s)", create.Code, create.Body.String())
+	}
+	if !contains(create.Body.String(), "2026-11-03T00:00:00+08:00") {
+		t.Fatalf("create body = %s, want the format example", create.Body.String())
+	}
+
+	search := h.do(http.MethodGet, "/api/reports/search?startDate=2024-01-08", "")
+	if search.Code != http.StatusBadRequest {
+		t.Fatalf("search status = %d, want 400 (body %s)", search.Code, search.Body.String())
+	}
+	if !contains(search.Body.String(), "startDate must be an RFC3339 timestamp with an offset") ||
+		!contains(search.Body.String(), "2026-11-03T00:00:00+08:00") {
+		t.Fatalf("search body = %s", search.Body.String())
+	}
+
+	badEnd := h.do(http.MethodGet, "/api/reports/search?endDate=not-a-date", "")
+	if badEnd.Code != http.StatusBadRequest || !contains(badEnd.Body.String(), "endDate must be an RFC3339 timestamp") {
+		t.Fatalf("search endDate status = %d body = %s", badEnd.Code, badEnd.Body.String())
+	}
+}
+
+// 搜索把入参按请求偏移折成 date-only 周期键，再沿用既有字符串比较。
+// 若错误地按 UTC 取日期，+08 零点会折到前一天，下面的 inclusive/exclusive
+// 断言就会翻转。
+func TestSearchFoldsDatesByRequestOffset(t *testing.T) {
+	h := newHarness(t)
+	h.seedReport("第 2 周", "", "2024-01-08", "2024-01-14", 1705310800)
+
+	// endDate 是 +08 的 01-14 零点：折键后等于 weekEnd，应保留。
+	rec := h.do(http.MethodGet,
+		"/api/reports/search?startDate=2024-01-08T00:00:00%2B08:00&endDate=2024-01-14T00:00:00%2B08:00", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	if !contains(rec.Body.String(), "第 2 周") {
+		t.Fatalf("body = %s, want the report included", rec.Body.String())
+	}
+
+	// startDate 是 +08 的 01-09 零点：折键后晚于 weekStart，应排除。
+	rec = h.do(http.MethodGet, "/api/reports/search?startDate=2024-01-09T00:00:00%2B08:00", "")
+	if !contains(rec.Body.String(), `"reports":[]`) {
+		t.Fatalf("body = %s, want the report excluded", rec.Body.String())
+	}
+}
+
+// 折键取请求偏移的墙钟日，而不是 UTC 投影日：半时区与跨年边界都不能把键
+// 挪到相邻一天。报告键与该墙钟日相同，只有折键精确命中时才会保留。
+func TestSearchDateKeyFoldingMatrix(t *testing.T) {
+	h := newHarness(t)
+	cases := []struct {
+		name  string
+		input string
+		key   string
+	}{
+		{"half-hour offset keeps the wall-clock day", "2026-03-10T00:00:00+05:30", "2026-03-10"},
+		{"cross-year wall clock beats the UTC projection", "2026-01-01T00:00:00+05:30", "2026-01-01"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			title := "folded-" + tc.key
+			h.seedReport(title, "", tc.key, tc.key, 1700000000)
+			encoded := url.QueryEscape(tc.input)
+			rec := h.do(http.MethodGet,
+				"/api/reports/search?startDate="+encoded+"&endDate="+encoded, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			if !contains(rec.Body.String(), title) {
+				t.Fatalf("body = %s, want %q included for key %s", rec.Body.String(), title, tc.key)
+			}
+		})
+	}
+}
+
+// preview 的事件窗口按请求偏移取整，而不是服务器本地：用 -05:00 与进程时区
+// 区分开，断言跨零点的两个事件各自归属正确。
+func TestPreviewFoldsWeekBoundsByRequestOffset(t *testing.T) {
+	h := newHarness(t)
+	loc := time.FixedZone("", -5*60*60)
+	start := time.Date(2024, 1, 8, 0, 0, 0, 0, loc)
+	end := time.Date(2024, 1, 14, 23, 59, 59, 0, loc)
+
+	h.seedEvent(start.Unix()-1, "manual", "BEFORE_START", "")
+	h.seedEvent(start.Unix(), "manual", "AT_START", "")
+	h.seedEvent(end.Unix(), "manual", "AT_END", "")
+	h.seedEvent(end.Unix()+1, "manual", "AFTER_END", "")
+
+	rec := h.do(http.MethodPost, "/api/reports/preview",
+		`{"weekStart":"2024-01-08T00:00:00-05:00","weekEnd":"2024-01-14T00:00:00-05:00"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{"AT_START", "AT_END"} {
+		if !contains(rec.Body.String(), want) {
+			t.Fatalf("body = %s, want %q included", rec.Body.String(), want)
+		}
+	}
+	for _, unwanted := range []string{"BEFORE_START", "AFTER_END"} {
+		if contains(rec.Body.String(), unwanted) {
+			t.Fatalf("body = %s, want %q excluded", rec.Body.String(), unwanted)
+		}
+	}
+}
+
+// 周期键的存储与响应保持 date-only 文本：带偏移的入参只影响窗口，不改变键。
+func TestCreateStoresDateOnlyPeriodKeys(t *testing.T) {
+	h := newHarness(t)
+
+	rec := h.do(http.MethodPost, "/api/reports",
+		`{"title":"第 2 周","weekStart":"2024-01-08T00:00:00-05:00","weekEnd":"2024-01-14T00:00:00-05:00"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Report struct {
+			WeekStart string `json:"weekStart"`
+			WeekEnd   string `json:"weekEnd"`
+		} `json:"report"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v (body %s)", err, rec.Body.String())
+	}
+	if body.Report.WeekStart != "2024-01-08" || body.Report.WeekEnd != "2024-01-14" {
+		t.Fatalf("week keys = %q~%q, want date-only", body.Report.WeekStart, body.Report.WeekEnd)
 	}
 }

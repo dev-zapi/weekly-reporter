@@ -274,11 +274,13 @@ func createReportHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		created, err := reportlib.CreateReportWithSourceDrafts(r.Context(), deps.Queries, struct {
-			Title     string
-			WeekStart string
-			WeekEnd   string
-		}{Title: input.Title, WeekStart: input.WeekStart, WeekEnd: input.WeekEnd}, nowUnix())
+		created, err := reportlib.CreateReportWithSourceDrafts(r.Context(), deps.Queries, reportlib.CreateReportInput{
+			Title:         input.Title,
+			WeekStart:     input.WeekStart,
+			WeekEnd:       input.WeekEnd,
+			StartLocation: input.StartLocation,
+			EndLocation:   input.EndLocation,
+		}, nowUnix())
 		if err != nil {
 			log.Printf("POST /api/reports error: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
@@ -310,7 +312,7 @@ func previewHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		variants, err := reportlib.PreviewReportSourceDrafts(r.Context(), deps.Queries, input.WeekStart, input.WeekEnd)
+		variants, err := reportlib.PreviewReportSourceDrafts(r.Context(), deps.Queries, input.WeekStart, input.WeekEnd, input.StartLocation, input.EndLocation)
 		if err != nil {
 			log.Printf("POST /api/reports/preview error: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
@@ -329,12 +331,39 @@ type searchResultItem struct {
 	Variants []reportlib.VariantJSON `json:"variants"`
 }
 
+// searchDateKey 把一个搜索日期参数折算成 date-only 周期键。
+//
+// 空串表示未过滤（ok=true）。非空时必须能按请求偏移折出日历日——date-only 与
+// naive datetime 都会被 time.Parse(RFC3339) 拒绝，调用方据此回 400。
+func searchDateKey(raw string) (key string, ok bool) {
+	if raw == "" {
+		return "", true
+	}
+	parsed, ok := parseWeekInstant(raw)
+	if !ok {
+		return "", false
+	}
+	return parsed.key, true
+}
+
 func searchHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		searchQuery := lowerJS(trimJS(query.Get("q")))
-		startDate := query.Get("startDate")
-		endDate := query.Get("endDate")
+		startDate, startOK := searchDateKey(query.Get("startDate"))
+		if !startOK {
+			respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{
+				Error: "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00",
+			})
+			return
+		}
+		endDate, endOK := searchDateKey(query.Get("endDate"))
+		if !endOK {
+			respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{
+				Error: "endDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-09T00:00:00+08:00",
+			})
+			return
+		}
 
 		reportRows, err := deps.Queries.ListReportsForReportRoutes(r.Context(), db.ListReportsForReportRoutesParams{
 			Limit:  -1,

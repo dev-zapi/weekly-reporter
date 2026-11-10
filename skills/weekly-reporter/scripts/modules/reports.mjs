@@ -20,7 +20,7 @@ import { api } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { block, emptyState, feedback, listFooter, listLine, preview as previewPlan } from '../lib/output.mjs'
-import { formatInstant } from '../lib/time.mjs'
+import { formatInstant, naiveInstantWithOffset } from '../lib/time.mjs'
 
 const VARIANTS = ['leadership', 'personal']
 
@@ -42,6 +42,24 @@ function requireDate(value, flag) {
     fail(`${flag} must be a YYYY-MM-DD date`, `got '${value ?? ''}'`, `pass ${flag} 2026-01-05`)
   }
   return value
+}
+
+/**
+ * A CLI date (`YYYY-MM-DD`) as the wire instant: system-zone midnight with its
+ * offset (`2026-11-03T00:00:00+08:00`). The server folds the calendar day in
+ * the request's own offset, so this must stay an offset-bearing wall clock -
+ * converting it to a `Z` instant would shift a Shanghai midnight to the day
+ * before.
+ */
+function wireDate(dateString) {
+  // `naiveInstantWithOffset` appends the system-zone offset to the wall clock,
+  // so midnight stays midnight in the caller's zone (the server folds the
+  // calendar day from that same offset).
+  const wire = naiveInstantWithOffset(`${dateString}T00:00:00`)
+  if (wire == null) {
+    fail(`${dateString} is not a calendar date`, '', 'pass a real date such as 2026-01-05')
+  }
+  return wire
 }
 
 /**
@@ -91,8 +109,8 @@ export async function list({ flags }) {
   if (isSearch) {
     const params = new URLSearchParams()
     if (flags.query) params.set('q', flags.query)
-    if (flags.start) params.set('startDate', requireDate(flags.start, '--start'))
-    if (flags.end) params.set('endDate', requireDate(flags.end, '--end'))
+    if (flags.start) params.set('startDate', wireDate(requireDate(flags.start, '--start')))
+    if (flags.end) params.set('endDate', wireDate(requireDate(flags.end, '--end')))
     path = `/api/reports/search?${params}`
   } else {
     const params = new URLSearchParams()
@@ -201,7 +219,7 @@ export async function preview({ flags }) {
   const { status, body } = await api('/api/reports/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ weekStart, weekEnd }),
+    body: JSON.stringify({ weekStart: wireDate(weekStart), weekEnd: wireDate(weekEnd) }),
   })
   if (status !== 200) failResponse(status, body, 'check --start/--end and retry')
 
@@ -230,8 +248,8 @@ export async function preview({ flags }) {
 // ---------------------------------------------------------------------------
 
 /** Reports already covering the range, as a "you may be duplicating" nudge. */
-async function overlappingReports(weekStart, weekEnd) {
-  const params = new URLSearchParams({ startDate: weekStart, endDate: weekEnd })
+async function overlappingReports(wireStart, wireEnd) {
+  const params = new URLSearchParams({ startDate: wireStart, endDate: wireEnd })
   const { status, body } = await api(`/api/reports/search?${params}`)
   // The nudge is advisory: a search that fails must not block the create.
   return status === 200 ? (body?.reports ?? []) : []
@@ -253,11 +271,11 @@ export async function create({ flags }) {
     '--end',
   )
 
-  const existing = await overlappingReports(weekStart, weekEnd)
+  const existing = await overlappingReports(wireDate(weekStart), wireDate(weekEnd))
   const { status, body } = await api('/api/reports', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, weekStart, weekEnd }),
+    body: JSON.stringify({ title, weekStart: wireDate(weekStart), weekEnd: wireDate(weekEnd) }),
   })
   if (status !== 201 && status !== 200) failResponse(status, body, 'check --title and that --start is not after --end')
 

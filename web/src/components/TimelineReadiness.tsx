@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { startOfDay } from 'date-fns'
 import { Activity } from 'lucide-react'
 import { getWeekPeriodRange, toOffsetInstant } from '@/lib/periods'
+import { formatSystemInstant } from '@/lib/time-format'
 import styles from './timeline.module.css'
 
 type Audience = 'leadership' | 'personal'
@@ -89,6 +90,12 @@ export function TimelineReadiness({
     // The plans date param is an RFC3339 instant in the browser's offset.
     const planDate = toOffsetInstant(startOfDay(now))
     const week = getWeekPeriodRange(now)
+    // Reports search takes browser-zone midnights with an explicit offset; the
+    // query string must be encoded so `+08:00` is not decoded as a space.
+    const reportWindow = new URLSearchParams({
+      startDate: formatSystemInstant(new Date(`${week.start}T00:00:00`)),
+      endDate: formatSystemInstant(new Date(`${week.end}T00:00:00`)),
+    }).toString()
 
     async function load() {
       setLoading(true)
@@ -103,10 +110,7 @@ export function TimelineReadiness({
 
       const [planResult, reportResult] = await Promise.allSettled([
         request(`/api/plans?scope=week&date=${encodeURIComponent(planDate)}`),
-        // TODO(#139): reports search startDate/endDate still speak date-only
-        // period keys; they migrate to RFC3339 offset instants in the reports
-        // family ticket. The plans date above is already on the new wire.
-        request(`/api/reports/search?startDate=${week.start}&endDate=${week.end}`),
+        request(`/api/reports/search?${reportWindow}`),
       ])
 
       if (controller.signal.aborted) return

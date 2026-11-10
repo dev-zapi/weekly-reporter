@@ -1,7 +1,18 @@
 /** Browser-locale date and relative-time formatting helpers. */
+import { format } from 'date-fns'
+
 export function toValidDate(value: Date | string | number): Date | null {
   const date = value instanceof Date ? value : new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+/**
+ * A Date as browser-local RFC3339 with its offset, e.g.
+ * `2026-11-03T00:00:00+08:00`. The wire needs the caller's offset so the server
+ * can fold calendar days in the user's zone instead of the server's.
+ */
+export function formatSystemInstant(date: Date): string {
+  return format(date, "yyyy-MM-dd'T'HH:mm:ssxxx")
 }
 
 export function formatSystemDateTime(value: Date | string | number): string {

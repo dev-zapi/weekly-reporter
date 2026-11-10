@@ -118,12 +118,16 @@ describe('wrp reports list', () => {
 
     const result = await runWrp(
       ['reports', 'list', '--start', '2026-02-01', '--end', '2026-02-28'],
-      { stub: server },
+      { stub: server, env: { TZ: 'Asia/Shanghai' } },
     )
 
     const { path, params } = parseRequest(server.requests[0])
     expect(path).toBe('/api/reports/search')
-    expect(params).toEqual({ startDate: '2026-02-01', endDate: '2026-02-28' })
+    // System-zone midnight with the offset kept on the wire - not a UTC instant.
+    expect(params).toEqual({
+      startDate: '2026-02-01T00:00:00+08:00',
+      endDate: '2026-02-28T00:00:00+08:00',
+    })
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('No reports matched')
     // The empty state is the whole answer: no count footer and no page hint.
@@ -298,13 +302,17 @@ describe('wrp reports preview', () => {
 
     const result = await runWrp(['reports', 'preview', '--start', '2026-02-09', '--end', '2026-02-15'], {
       stub: server,
+      env: { TZ: 'Asia/Shanghai' },
     })
 
     expect(result.code).toBe(0)
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('POST')
     expect(server.requests[0].url).toBe('/api/reports/preview')
-    expect(requestBody(server.requests[0])).toEqual({ weekStart: '2026-02-09', weekEnd: '2026-02-15' })
+    expect(requestBody(server.requests[0])).toEqual({
+      weekStart: '2026-02-09T00:00:00+08:00',
+      weekEnd: '2026-02-15T00:00:00+08:00',
+    })
 
     expect(result.stdout).toContain('── leadership ── 15 line(s),')
     expect(result.stdout).toContain('- event 12')
@@ -368,7 +376,7 @@ describe('wrp reports create', () => {
 
     const result = await runWrp(
       ['reports', 'create', '--title', '第 8 周周报', '--start', '2026-02-16', '--end', '2026-02-22'],
-      { stub: server },
+      { stub: server, env: { TZ: 'Asia/Shanghai' } },
     )
 
     expect(result.code).toBe(0)
@@ -376,8 +384,8 @@ describe('wrp reports create', () => {
     expect(created.url).toBe('/api/reports')
     expect(requestBody(created)).toEqual({
       title: '第 8 周周报',
-      weekStart: '2026-02-16',
-      weekEnd: '2026-02-22',
+      weekStart: '2026-02-16T00:00:00+08:00',
+      weekEnd: '2026-02-22T00:00:00+08:00',
     })
 
     const lines = result.stdout.split('\n')
