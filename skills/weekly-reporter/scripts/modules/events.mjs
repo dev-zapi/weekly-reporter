@@ -45,11 +45,12 @@ function formatEventTime(value) {
 /**
  * A `--time` the wire can carry: an absolute instant, so `Z` or `±HH:MM` is
  * mandatory. A naive timestamp is refused with the detected zone and a
- * copy-pasteable fix instead of being reinterpreted server-side.
+ * copy-pasteable fix instead of being reinterpreted server-side. A valid input
+ * is normalized to UTC, the one shape the client ever sends.
  */
 function requireInstant(value, flag) {
   const parsed = parseStrictInstant(value)
-  if (parsed.ok) return value
+  if (parsed.ok) return new Date(parsed.epochMillis).toISOString()
 
   const timeZone = detectSystemTimeZone()
   if (parsed.reason === 'missing-offset') {
@@ -61,10 +62,12 @@ function requireInstant(value, flag) {
       `add an offset, e.g. ${localExample ?? '2026-11-10T09:00:00+08:00'} or ${zuluExample}`,
     )
   }
+  const localExample =
+    naiveInstantWithOffset('2026-11-10T09:00:00', timeZone) ?? '2026-11-10T09:00:00+00:00'
   fail(
     `invalid ${flag}: ${value}`,
     `not a valid ISO 8601 instant (system time zone: ${timeZone})`,
-    'pass e.g. 2026-11-10T09:00:00+08:00 or 2026-11-10T09:00:00Z',
+    `pass e.g. ${localExample} or ${localExample.slice(0, 19)}Z`,
   )
 }
 
@@ -137,8 +140,8 @@ export async function create({ positional, flags }) {
   }
 
   // Verbatim port: only eventTime is conditional; content is the source of truth.
-  if (flags.time !== undefined) requireInstant(flags.time, '--time')
-  const payload = flags.time !== undefined ? { content, eventTime: flags.time } : { content }
+  const eventTime = flags.time === undefined ? undefined : requireInstant(flags.time, '--time')
+  const payload = eventTime === undefined ? { content } : { content, eventTime }
   const { status, body } = await api('/api/events', json('POST', payload))
 
   if (status === 200 || status === 201) {

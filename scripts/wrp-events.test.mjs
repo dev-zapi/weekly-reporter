@@ -209,7 +209,7 @@ describe('wrp events create', () => {
     expect(JSON.parse(server.requests[0].body)).toEqual({ content: 'fix login timeout #工作' })
   })
 
-  it('honours --time by sending eventTime', async () => {
+  it('normalizes --time to a UTC instant on the wire', async () => {
     const server = await stub(() => ({ status: 200, body: event({ id: 7002 }) }))
 
     const result = await run(
@@ -221,11 +221,11 @@ describe('wrp events create', () => {
     expect(result.stdout).toBe('✓ event created: #7002\n')
     expect(JSON.parse(server.requests[0].body)).toEqual({
       content: 'wrote the ADR',
-      eventTime: '2026-11-08T09:30:00+08:00',
+      eventTime: '2026-11-08T01:30:00.000Z',
     })
   })
 
-  it('accepts a Z timestamp and sends it verbatim', async () => {
+  it('normalizes a Z timestamp to the canonical UTC instant', async () => {
     const server = await stub(() => ({ status: 200, body: event({ id: 7003 }) }))
 
     const result = await run(
@@ -236,7 +236,7 @@ describe('wrp events create', () => {
     expect(result.code).toBe(0)
     expect(JSON.parse(server.requests[0].body)).toEqual({
       content: 'wrote the ADR',
-      eventTime: '2026-11-08T01:30:00Z',
+      eventTime: '2026-11-08T01:30:00.000Z',
     })
   })
 
@@ -323,6 +323,20 @@ describe('wrp events update', () => {
     expect(JSON.parse(server.requests[0].body)).toEqual({
       content: 'fixed login timeout @6990 #工作',
       isImportant: true,
+    })
+  })
+
+  it('normalizes an offset --time to UTC on update too', async () => {
+    const server = await stub(() => ({ status: 200, body: event() }))
+
+    const result = await run(
+      ['events', 'update', '6991', '--time', '2026-11-08T09:30:00+08:00'],
+      server,
+    )
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(server.requests[0].body)).toEqual({
+      eventTime: '2026-11-08T01:30:00.000Z',
     })
   })
 
