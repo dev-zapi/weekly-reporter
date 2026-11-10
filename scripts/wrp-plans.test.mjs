@@ -11,6 +11,19 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { runWrp, startStubServer, errorLines } from './wrp-cli-harness.mjs'
 
+// The plans wire now carries RFC3339 instants in the caller's own offset. These
+// helpers spell the system-zone form the client must emit under TZ=Asia/Shanghai.
+const SHANGHAI = { TZ: 'Asia/Shanghai' }
+function wireDate(date) {
+  return `${date}T00:00:00+08:00`
+}
+function wireMonth(month) {
+  return `${month}-01T00:00:00+08:00`
+}
+function plansUrl(params) {
+  return `/api/plans?${new URLSearchParams(params)}`
+}
+
 const stubs = []
 
 async function stub(respond) {
@@ -274,12 +287,13 @@ describe('wrp plans list', () => {
 
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
+      env: SHANGHAI,
     })
 
     expect(result.code).toBe(0)
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
-    expect(server.requests[0].url).toBe('/api/plans?scope=week&date=2026-10-15')
+    expect(server.requests[0].url).toBe(plansUrl({ scope: 'week', date: wireDate('2026-10-15') }))
 
     expect(result.stdout).toContain('plan 3 [week] [2026-10-12 → 2026-10-18]')
     // Order is the API's (priority group, then position); the client prints it.
@@ -302,22 +316,41 @@ describe('wrp plans list', () => {
 
     const result = await runWrp(
       ['plans', 'list', '--scope', 'week', '--week-start', '2026-10-12', '--week-end', '2026-10-18'],
-      { stub: server },
+      { stub: server, env: SHANGHAI },
     )
 
     expect(result.code).toBe(0)
-    expect(server.requests[0].url).toBe('/api/plans?scope=week&weekStart=2026-10-12&weekEnd=2026-10-18')
+    expect(server.requests[0].url).toBe(plansUrl({
+      scope: 'week',
+      weekStart: wireDate('2026-10-12'),
+      weekEnd: wireDate('2026-10-18'),
+    }))
     expect(result.stdout).toContain('No items in this plan.')
   })
 
   it('sends the month key or a date for month scope', async () => {
     const server = await stub(() => ({ status: 200, body: { plan: WEEK_PLAN, items: [] } }))
 
-    await runWrp(['plans', 'list', '--scope', 'month', '--month', '2026-10'], { stub: server })
-    await runWrp(['plans', 'list', '--scope', 'month', '--date', '2026-10-15'], { stub: server })
+    await runWrp(['plans', 'list', '--scope', 'month', '--month', '2026-10'], { stub: server, env: SHANGHAI })
+    await runWrp(['plans', 'list', '--scope', 'month', '--date', '2026-10-15'], { stub: server, env: SHANGHAI })
 
-    expect(server.requests[0].url).toBe('/api/plans?scope=month&month=2026-10')
-    expect(server.requests[1].url).toBe('/api/plans?scope=month&date=2026-10-15')
+    expect(server.requests[0].url).toBe(plansUrl({ scope: 'month', month: wireMonth('2026-10') }))
+    expect(server.requests[1].url).toBe(plansUrl({ scope: 'month', date: wireDate('2026-10-15') }))
+  })
+
+  it('keeps a negative system offset on the wire', async () => {
+    const server = await stub(() => ({ status: 200, body: { plan: WEEK_PLAN, items: [] } }))
+
+    // 2026-11-01 00:00 is still EDT (-04:00). The minus sign is literal in
+    // URLSearchParams; only the colons are percent-encoded.
+    await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-11-01'], {
+      stub: server,
+      env: { TZ: 'America/New_York' },
+    })
+
+    expect(server.requests[0].url).toBe(
+      '/api/plans?scope=week&date=2026-11-01T00%3A00%3A00-04%3A00',
+    )
   })
 
   it('prints an explicit empty state when no plan exists', async () => {
@@ -350,15 +383,29 @@ describe('wrp plans list', () => {
   })
 
   it('surfaces an API 400 as one ✗ line', async () => {
-    const server = await stub(() => ({ status: 400, body: { error: 'Invalid date format. Use YYYY-MM-DD' } }))
+    const server = await stub(() => ({
+      status: 400,
+      body: { error: 'Invalid date format. Use an RFC3339 timestamp with offset, e.g. 2026-11-03T00:00:00+08:00' },
+    }))
 
-    const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-13-01'], {
+    const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
+      env: SHANGHAI,
     })
 
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Invalid date format. Use YYYY-MM-DD')
+    expect(result.stderr).toContain('Invalid date format. Use an RFC3339 timestamp with offset')
+  })
+
+  it('rejects an impossible calendar date before calling the API', async () => {
+    const server = await stub()
+
+    const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-13-01'], { stub: server })
+
+    expect(result.code).not.toBe(0)
+    expect(result.stderr).toContain('invalid --date')
+    expect(server.requests).toHaveLength(0)
   })
 })
 
@@ -379,7 +426,7 @@ describe('wrp plans add', () => {
         '--important', 'true',
         '--urgent', 'true',
       ],
-      { stub: server },
+      { stub: server, env: SHANGHAI },
     )
 
     expect(result.code).toBe(0)
@@ -391,8 +438,8 @@ describe('wrp plans add', () => {
       scope: 'week',
       text: 'Write the report',
       projectScope: 'personal',
-      weekStart: '2026-10-12',
-      weekEnd: '2026-10-18',
+      weekStart: wireDate('2026-10-12'),
+      weekEnd: wireDate('2026-10-18'),
       priority: 'high',
       isImportant: true,
       isUrgent: true,
@@ -404,13 +451,14 @@ describe('wrp plans add', () => {
 
     await runWrp(['plans', 'add', '--scope', 'month', '--month', '2026-10', '--text', 'Monthly goal'], {
       stub: server,
+      env: SHANGHAI,
     })
 
     expect(JSON.parse(server.requests[0].body)).toEqual({
       scope: 'month',
       text: 'Monthly goal',
       projectScope: 'work',
-      month: '2026-10',
+      month: wireMonth('2026-10'),
     })
   })
 
