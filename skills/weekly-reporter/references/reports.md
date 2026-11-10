@@ -72,9 +72,13 @@ time zone** as ISO 8601 with an explicit offset and seconds; the covered week
 stays a date-only key and the snapshot count follows:
 
 ```
-#12 [2026-02-09~2026-02-15] [leadership:current] [personal:none] 2026 Week 7 Work Report
+#12 [2026-02-09~2026-02-15] 2026 Week 7 Work Report
 updated: 2026-02-15T18:00:00+08:00   snapshots: 42 event(s)
 ```
+
+The header is `#id [weekStart~weekEnd] title`; per-variant final status
+(`[leadership:current] [personal:none]`) appears only on `wrp reports list`
+lines, never on `show`.
 
 `TZ` overrides the display zone (e.g. `TZ=UTC wrp reports show 12`). Date-range
 flags (`--start`/`--end`) remain date-only `YYYY-MM-DD`; the client expands each
