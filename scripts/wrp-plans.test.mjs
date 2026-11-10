@@ -338,6 +338,21 @@ describe('wrp plans list', () => {
     expect(server.requests[1].url).toBe(plansUrl({ scope: 'month', date: wireDate('2026-10-15') }))
   })
 
+  it('keeps a negative system offset on the wire', async () => {
+    const server = await stub(() => ({ status: 200, body: { plan: WEEK_PLAN, items: [] } }))
+
+    // 2026-11-01 00:00 is still EDT (-04:00). The minus sign is literal in
+    // URLSearchParams; only the colons are percent-encoded.
+    await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-11-01'], {
+      stub: server,
+      env: { TZ: 'America/New_York' },
+    })
+
+    expect(server.requests[0].url).toBe(
+      '/api/plans?scope=week&date=2026-11-01T00%3A00%3A00-04%3A00',
+    )
+  })
+
   it('prints an explicit empty state when no plan exists', async () => {
     const server = await stub(() => ({ status: 200, body: { plan: null, items: [] } }))
 

@@ -25,6 +25,19 @@ func wireMonth(month string) string { return month + "-01T00:00:00+08:00" }
 // decode as a space, so real clients send %2B (URLSearchParams does this).
 func q(value string) string { return url.QueryEscape(value) }
 
+// invalidInstantMessage mirrors the events family's 400 template so the wire
+// contract reads the same across families.
+func invalidInstantMessage(name string) string {
+	return "Invalid " + name + ": expected an RFC3339 timestamp with an explicit offset, e.g. 2026-11-03T00:00:00+08:00"
+}
+
+// assertInvalidInstant checks both the template message and the family code.
+func assertInvalidInstant(t *testing.T, body map[string]any, name, code string) {
+	t.Helper()
+	assertField(t, "error", body["error"], invalidInstantMessage(name))
+	assertField(t, "code", body["code"], code)
+}
+
 func TestPlansWeekDateAcceptsOffsetInstant(t *testing.T) {
 	h := newHarness(t)
 	planID := h.seedPlan("week", "2026-11-02", "2026-11-08", nil)
@@ -96,7 +109,7 @@ func TestPlansWeekRejectsDateOnly(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "error", body["error"], "Invalid date format. Use an RFC3339 timestamp with offset, e.g. 2026-11-03T00:00:00+08:00")
+	assertInvalidInstant(t, body, "date", "INVALID_DATE")
 }
 
 func TestPlansWeekRejectsTodayLiteral(t *testing.T) {
@@ -107,20 +120,27 @@ func TestPlansWeekRejectsTodayLiteral(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	if !stringsContains(body["error"], "RFC3339") {
-		t.Fatalf("error = %v", body["error"])
-	}
+	assertInvalidInstant(t, body, "date", "INVALID_DATE")
 }
 
 func TestPlansWeekPairRejectsDateOnly(t *testing.T) {
 	h := newHarness(t)
 
+	// weekStart is validated first, so a date-only pair names weekStart.
 	status, body := decode(t, h.do(http.MethodGet,
 		"/api/plans?scope=week&weekStart=2026-11-02&weekEnd=2026-11-08", "", testPassword))
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "error", body["error"], "Invalid weekStart or weekEnd format. Use an RFC3339 timestamp with offset, e.g. 2026-11-03T00:00:00+08:00")
+	assertInvalidInstant(t, body, "weekStart", "INVALID_WEEK_START")
+
+	// A bad weekEnd alone is named separately.
+	status, body = decode(t, h.do(http.MethodGet,
+		"/api/plans?scope=week&weekStart="+q(wireDate("2026-11-02"))+"&weekEnd=2026-11-08", "", testPassword))
+	if status != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %v", status, body)
+	}
+	assertInvalidInstant(t, body, "weekEnd", "INVALID_WEEK_END")
 }
 
 func TestPlansMonthRejectsBareKey(t *testing.T) {
@@ -131,7 +151,7 @@ func TestPlansMonthRejectsBareKey(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "error", body["error"], "Invalid month format. Use an RFC3339 timestamp with offset for the month start, e.g. 2026-11-01T00:00:00+08:00")
+	assertInvalidInstant(t, body, "month", "INVALID_MONTH")
 }
 
 // 2026-03-01T00:00:00+08:00 is 2026-02-28T16:00Z: a UTC read would derive the
@@ -162,6 +182,70 @@ func TestPlansMonthByDateAcceptsOffsetInstant(t *testing.T) {
 	}
 	if body["plan"].(map[string]any)["id"].(float64) != float64(planID) {
 		t.Fatalf("plan id = %v, want %d", body["plan"].(map[string]any)["id"], planID)
+	}
+}
+
+// A Sunday midnight at -05:00 stays in that offset's calendar: it belongs to
+// the Monday-start week that began six days earlier.
+func TestPlansWeekNegativeOffsetSundayAlignsToPreviousWeek(t *testing.T) {
+	h := newHarness(t)
+	planID := h.seedPlan("week", "2026-10-26", "2026-11-01", nil)
+
+	status, body := decode(t, h.do(http.MethodGet,
+		"/api/plans?scope=week&date="+q("2026-11-01T00:00:00-05:00"), "", testPassword))
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %v", status, body)
+	}
+	if body["plan"].(map[string]any)["id"].(float64) != float64(planID) {
+		t.Fatalf("plan id = %v, want %d", body["plan"].(map[string]any)["id"], planID)
+	}
+}
+
+// The same negative-offset instant keeps November: its calendar month does not
+// drift forward into December.
+func TestPlansMonthNegativeOffsetKeepsMonthKey(t *testing.T) {
+	h := newHarness(t)
+	h.seedPlan("month", "2026-11-01", "2026-11-30", ptr("2026-11"))
+
+	status, body := decode(t, h.do(http.MethodGet,
+		"/api/plans?scope=month&date="+q("2026-11-01T00:00:00-05:00"), "", testPassword))
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %v", status, body)
+	}
+	plan := body["plan"].(map[string]any)
+	if plan["monthKey"] != "2026-11" || plan["periodStart"] != "2026-11-01" || plan["periodEnd"] != "2026-11-30" {
+		t.Fatalf("plan = %v", plan)
+	}
+}
+
+// A year-end week spans the year boundary; the keys stay date-only text.
+func TestPlansWeekCrossesYearAtYearEnd(t *testing.T) {
+	h := newHarness(t)
+	planID := h.seedPlan("week", "2026-12-28", "2027-01-03", nil)
+
+	status, body := decode(t, h.do(http.MethodGet,
+		"/api/plans?scope=week&date="+q(wireDate("2026-12-31")), "", testPassword))
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %v", status, body)
+	}
+	if body["plan"].(map[string]any)["id"].(float64) != float64(planID) {
+		t.Fatalf("plan id = %v, want %d", body["plan"].(map[string]any)["id"], planID)
+	}
+}
+
+// An instant late on the last day of December still derives the December key.
+func TestPlansMonthCrossesYearAtDecemberEnd(t *testing.T) {
+	h := newHarness(t)
+	h.seedPlan("month", "2026-12-01", "2026-12-31", ptr("2026-12"))
+
+	status, body := decode(t, h.do(http.MethodGet,
+		"/api/plans?scope=month&month="+q("2026-12-31T23:00:00+08:00"), "", testPassword))
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %v", status, body)
+	}
+	plan := body["plan"].(map[string]any)
+	if plan["monthKey"] != "2026-12" || plan["periodStart"] != "2026-12-01" || plan["periodEnd"] != "2026-12-31" {
+		t.Fatalf("plan = %v", plan)
 	}
 }
 
@@ -211,7 +295,7 @@ func TestCreatePlanItemRejectsDateOnlyWeekParams(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "error", body["error"], "Invalid weekStart or weekEnd format. Use an RFC3339 timestamp with offset, e.g. 2026-11-03T00:00:00+08:00")
+	assertInvalidInstant(t, body, "weekStart", "INVALID_WEEK_START")
 }
 
 func TestCreatePlanItemRejectsBareMonth(t *testing.T) {
@@ -222,5 +306,5 @@ func TestCreatePlanItemRejectsBareMonth(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	assertField(t, "error", body["error"], "Invalid month format. Use an RFC3339 timestamp with offset for the month start, e.g. 2026-11-01T00:00:00+08:00")
+	assertInvalidInstant(t, body, "month", "INVALID_MONTH")
 }

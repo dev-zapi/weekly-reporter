@@ -107,9 +107,13 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 				weekStart, weekStartIsString := asString(rawWeekStart)
 				weekEnd, weekEndIsString := asString(rawWeekEnd)
 				startInstant, startOK := parseOffsetInstant(weekStart)
+				if !weekStartIsString || !startOK {
+					invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					return
+				}
 				endInstant, endOK := parseOffsetInstant(weekEnd)
-				if !weekStartIsString || !weekEndIsString || !startOK || !endOK {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidWeekFormatError()})
+				if !weekEndIsString || !endOK {
+					invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 与 plans 的 GET 不同：这里不归一化到周一，直接采信入参区间。
@@ -124,7 +128,7 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 				month, isString := asString(rawMonth)
 				instant, ok := parseOffsetInstant(month)
 				if !isString || !ok {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidMonthFormatError()})
+					invalidInstantParam(w, "month", "INVALID_MONTH")
 					return
 				}
 				var key string

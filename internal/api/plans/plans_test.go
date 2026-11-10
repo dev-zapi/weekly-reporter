@@ -190,9 +190,7 @@ func TestPlansWeekRejectsInvalidDateFormat(t *testing.T) {
 	if status != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
-	if !stringsContains(body["error"], "RFC3339") {
-		t.Fatalf("error = %v", body["error"])
-	}
+	assertInvalidInstant(t, body, "date", "INVALID_DATE")
 }
 
 // DB 故障落进 route.ts 的 catch：500 + {error, code}，不是空列表。

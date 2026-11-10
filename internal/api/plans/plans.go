@@ -208,15 +208,18 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 			case dateParam != "":
 				date, ok := parseOffsetInstant(dateParam)
 				if !ok {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidDateFormatError()})
+					invalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				periodStart, periodEnd = weekPeriodRange(date)
 			case weekStart != "" && weekEnd != "":
 				startInstant, startOK := parseOffsetInstant(weekStart)
-				_, endOK := parseOffsetInstant(weekEnd)
-				if !startOK || !endOK {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidWeekFormatError()})
+				if !startOK {
+					invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					return
+				}
+				if _, endOK := parseOffsetInstant(weekEnd); !endOK {
+					invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 以 weekStart 归一到周一开头的规范周，不信任原始成对区间：
@@ -231,14 +234,14 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 			case month != "":
 				instant, ok := parseOffsetInstant(month)
 				if !ok {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidMonthFormatError()})
+					invalidInstantParam(w, "month", "INVALID_MONTH")
 					return
 				}
 				_, periodStart, periodEnd = monthPeriodRange(instant)
 			case dateParam != "":
 				date, ok := parseOffsetInstant(dateParam)
 				if !ok {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: invalidDateFormatError()})
+					invalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				_, periodStart, periodEnd = monthPeriodRange(date)

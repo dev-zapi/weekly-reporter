@@ -1,9 +1,12 @@
 package plans
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 )
 
 // 本文件移植 src/lib/periods.ts，但周期语义改为按请求自带偏移解释：
@@ -13,23 +16,18 @@ import (
 // 周期键（period_start/period_end/month_key）仍是 date-only 文本：入参时刻
 // 折算成键后才进查询与响应，存储形态不变。
 
-// wireDateFormatExample 是 400 文案里给出的期望形态示例。保留 +08:00 而不是
-// 折成 UTC Z —— 日历按请求偏移读，Z 会把上海零点截到前一天。
-const (
-	wireDateFormatExample  = "2026-11-03T00:00:00+08:00"
-	wireMonthFormatExample = "2026-11-01T00:00:00+08:00"
-)
+// instantExample 是 400 文案里给出的合法 wire 形态示例（保留客户端偏移）。
+const instantExample = "2026-11-03T00:00:00+08:00"
 
-func invalidDateFormatError() string {
-	return "Invalid date format. Use an RFC3339 timestamp with offset, e.g. " + wireDateFormatExample
-}
-
-func invalidWeekFormatError() string {
-	return "Invalid weekStart or weekEnd format. Use an RFC3339 timestamp with offset, e.g. " + wireDateFormatExample
-}
-
-func invalidMonthFormatError() string {
-	return "Invalid month format. Use an RFC3339 timestamp with offset for the month start, e.g. " + wireMonthFormatExample
+// invalidInstantParam 写 400：date-only 等非法形态必须看到期望格式示例。
+// 与 events 家族的 invalidInstantParam 同构，保证同一条 wire 契约跨族一致。
+func invalidInstantParam(w http.ResponseWriter, name, code string) {
+	respond.Error(
+		w,
+		http.StatusBadRequest,
+		"Invalid "+name+": expected an RFC3339 timestamp with an explicit offset, e.g. "+instantExample,
+		code,
+	)
 }
 
 // parseOffsetInstant 解析 wire 上的日期/周界/月界参数：只接受 RFC3339 带偏移
