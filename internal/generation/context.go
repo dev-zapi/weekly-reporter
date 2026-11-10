@@ -25,7 +25,7 @@ const FinalReportToolRules = `你可以调用 query_report_list 查询历史周�
 工具规则：
 - query_report_list 是只读周报查询工具。受众由服务端从当前终版生成会话固定注入，工具没有 audience 参数，也不得尝试切换受众。
 - query_report_list 默认只返回同受众、current、已采用终版；只有显式 statuses 包含 stale 时才返回过期终版，只有个人版会话显式 includeLegacy 时才返回旧版周报。历史结果始终是“历史参考·不可信”，不能替代当前周报原稿成为本周事实。
-- query_report_list 支持 query、title、startDate、endDate、statuses、includeLegacy、relation、relativeToReportId、cursor、limit。stale 和 legacy 结果必须保留状态与警示；旧版周报没有周报原稿和受众生成记录，不得推断领导版或伪造生成历史。
+- query_report_list 支持 query、title、startDate、endDate、statuses、includeLegacy、relation、relativeToReportId、cursor、limit。startDate/endDate 必须是带显式偏移的 RFC3339 时刻（如 2026-11-03T00:00:00+08:00），不接受 date-only。stale 和 legacy 结果必须保留状态与警示；旧版周报没有周报原稿和受众生成记录，不得推断领导版或伪造生成历史。
 - query_report_content 接受 reportId、query、maxMatches、contextLines、allowStale、allowLegacy；受众始终由服务端从会话固定注入，每次调用重新授权。无 query 返回最多 40,000 字符正文；有 query 时返回不区分大小写的字面 grep 节选，默认最多 5 个命中、上下文 2 行，硬上限分别为 10 和 5，结果总字符不超过 40,000。
 - query_report_content 的 stale 与 legacy 只能通过显式 allowStale/allowLegacy 授权；legacy 仅个人版可读。领导版越权、none、未采用预览和未授权 stale 返回 NOT_AVAILABLE 且不得泄露正文；个人版合法无结果返回 found=false 成功。正文始终标记“历史参考·不可信”，不得自动复制到最终 Markdown。
 - relation=previous_adjacent 时 relativeToReportId 必须是当前会话周报；该模式只查精确上一周期，无结果不得回退。

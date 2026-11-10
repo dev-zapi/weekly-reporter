@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件复刻 src/lib/validations.ts 里两个报告 schema（zod v4）在 HTTP 层可观测
@@ -143,19 +144,18 @@ type parsedWeekInstant struct {
 	instant  time.Time
 }
 
-// parseWeekInstant 用 time.Parse(RFC3339) 解析带偏移时刻，并显式拒绝 date-only
-// 与 naive datetime（两者都解析失败）。日历日按请求偏移取整，不经过服务器时区。
+// parseWeekInstant 用共享的 wire 解析复用 HTTP 搜索与 AI 工具的同一条偏移折算
+// 语义（internal/wiretime）：date-only 与 naive datetime 都解析失败，日历日按
+// 请求偏移取整，不经过服务器时区。
 func parseWeekInstant(value string) (parsedWeekInstant, bool) {
-	instant, err := time.Parse(time.RFC3339, value)
-	if err != nil {
+	parsed, ok := wiretime.ParseOffsetInstant(value)
+	if !ok {
 		return parsedWeekInstant{}, false
 	}
-	_, offset := instant.Zone()
-	location := time.FixedZone("", offset)
 	return parsedWeekInstant{
-		key:      instant.In(location).Format("2006-01-02"),
-		location: location,
-		instant:  instant,
+		key:      parsed.Key,
+		location: parsed.Location,
+		instant:  parsed.Instant,
 	}, true
 }
 
