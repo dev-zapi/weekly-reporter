@@ -147,11 +147,13 @@ node {baseDir}/scripts/board.mjs --confirm /tmp/yesterday-recall-confirm-<D>.jso
 
 ### 阶段 5 — 落库与收尾
 
-对 `confirmed` 里的每一条，经 **weekly-reporter（wrp）** 的 `wrp events create` 创建手动事件，并用 `--time` 把时间回填到回忆日（无时区的 naive 时间按本地时区解释，正合「那天的那个时刻」）：
+对 `confirmed` 里的每一条，经 **weekly-reporter（wrp）** 的 `wrp events create` 创建手动事件，并用 `--time` 把时间回填到回忆日。`--time` 必须是带显式偏移的绝对时刻：偏移从运行系统的时区取（`date +%:z` 可得到当前偏移，如 `+08:00`），让「那天的那个时刻」落在用户日历上；缺偏移的 naive 时间会被客户端直接拒绝：
 
 ```bash
-node <weekly-reporter>/scripts/wrp.mjs events create "<content>" --time "<D>T<HH:MM>:00"
+node <weekly-reporter>/scripts/wrp.mjs events create "<content>" --time "<D>T<HH:MM>:00$(date +%:z)"
 ```
+
+例如回忆 2026-11-06 的 09:30 写成 `--time "2026-11-06T09:30:00+08:00"`。
 
 - 一条草稿一次 `events create`，确认几条就创建几条，不多不少；记录每条返回的 `✓ event created: #<ID>`。
 - 内容用 `confirmed[i].content`，时间用 `confirmed[i].time`。

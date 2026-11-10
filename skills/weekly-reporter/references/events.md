@@ -108,13 +108,23 @@ wrp events list [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD>] [--week-end <Y
 - `--cursor` — continue a page: pass the token printed in the `next page:` hint
   of the previous page.
 
+Date flags stay date-only (`YYYY-MM-DD`): the client expands each one to
+midnight in the system time zone and sends that offset-carrying instant, so the
+server rounds the calendar day by the caller's calendar. Do not hand-assemble
+instants for these flags.
+
 No flags lists the latest 50 events. Output is one id-first line per event:
 
 ```
-#6991 [2026-11-09 14:02] [manual] ★ fixed login timeout #工作 #个人
+#6991 [2026-11-09T22:02:00+08:00] [manual] ★ fixed login timeout #工作 #个人
 — 1 event(s)
 next page: --cursor 6991@1794232920000
 ```
+
+Timestamps render in the **system time zone** as ISO 8601 with an explicit
+offset and seconds (`2026-11-09T22:02:00+08:00`); the zone comes from the OS
+setting or `TZ`, so `TZ=UTC wrp events list …` shows the same events in UTC.
+The cursor hint is unchanged.
 
 The id token comes first so it can be fed straight into `update`/`delete`, or
 quoted as `@id` in another event. The footer counts the page and, when more
@@ -130,22 +140,26 @@ you know it is referenced.
 ### `wrp events create`
 
 ```bash
-wrp events create "<content>" [--time <ISO8601>]
+wrp events create "<content>" [--time <ISO8601-with-offset>]
 ```
 
 Preview the content to the user and get approval before running. `--time`
-defaults to now; pass it when the user specifies when the work happened. On
-success: `✓ event created: #<id>`.
+defaults to now; pass it when the user specifies when the work happened. It must
+be an absolute ISO 8601 instant carrying `Z` or `±HH:MM` (e.g.
+`2026-11-10T14:30:00+08:00`). A naive timestamp is refused with the detected
+system time zone and a copy-pasteable fix, instead of being reinterpreted
+server-side. On success: `✓ event created: #<id>`.
 
 ### `wrp events update`
 
 ```bash
-wrp events update <id> [--content <text>] [--time <ISO8601>] [--important <true|false>]
+wrp events update <id> [--content <text>] [--time <ISO8601-with-offset>] [--important <true|false>]
 ```
 
 At least one flag is required. `--content` replaces the event text (carry
-`#tag`/`@id`/`%id` tokens over verbatim), `--time` changes the timestamp,
-`--important` sets or clears the ★ flag (`false` is a real update, not "leave
+`#tag`/`@id`/`%id` tokens over verbatim); `--time` changes the timestamp and
+follows the same offset requirement as `create`; `--important` sets or clears
+the ★ flag (`false` is a real update, not "leave
 unchanged"). On success: `✓ event updated: #<id>`. A missing id surfaces as
 `✗ event not found (HTTP 404)` with a pointer to `wrp events list`.
 

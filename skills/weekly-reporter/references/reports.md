@@ -67,6 +67,19 @@ is (an alias for the same part), including on the command line. Multi-line
 drafts and finals are only ever printed by `show` under one of these explicit
 modes; never reconstruct them from a list line.
 
+`show` renders the report header with its `updated` timestamp in the **system
+time zone** as ISO 8601 with an explicit offset and seconds; the covered week
+stays a date-only key and the snapshot count follows:
+
+```
+#12 [2026-02-09~2026-02-15] [leadership:current] [personal:none] 2026 Week 7 Work Report
+updated: 2026-02-15T18:00:00+08:00   snapshots: 42 event(s)
+```
+
+`TZ` overrides the display zone (e.g. `TZ=UTC wrp reports show 12`). Date-range
+flags (`--start`/`--end`) remain date-only `YYYY-MM-DD`; the client expands each
+to a system-zone midnight instant before it reaches the wire.
+
 Ids are **strict digits**: pass the numeric id exactly as printed after `#` by
 `wrp reports list` — the prefix is tolerated. The retired script's `parseInt`
 tolerated suffixes such as `12abc`; wrp does not, so
