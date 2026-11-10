@@ -134,31 +134,6 @@ func customIssue(path []string, message string) zodIssue {
 
 const dateFormatMessage = "Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"
 
-// parsedWeekInstant 是一个合法 wire 时刻的三种投影：
-//   - key：按请求自带偏移折算出的日历日（周期键，仍存 date-only 文本）；
-//   - location：请求偏移对应的固定时区，供事件窗口取整使用；
-//   - instant：绝对时刻，仅用于 weekStart <= weekEnd 的比较。
-type parsedWeekInstant struct {
-	key      string
-	location *time.Location
-	instant  time.Time
-}
-
-// parseWeekInstant 用共享的 wire 解析复用 HTTP 搜索与 AI 工具的同一条偏移折算
-// 语义（internal/wiretime）：date-only 与 naive datetime 都解析失败，日历日按
-// 请求偏移取整，不经过服务器时区。
-func parseWeekInstant(value string) (parsedWeekInstant, bool) {
-	parsed, ok := wiretime.ParseOffsetInstant(value)
-	if !ok {
-		return parsedWeekInstant{}, false
-	}
-	return parsedWeekInstant{
-		key:      parsed.Key,
-		location: parsed.Location,
-		instant:  parsed.Instant,
-	}, true
-}
-
 // reportWeekInput 是 reportWeekSchema.parse 之后的字段值。WeekStart/WeekEnd 是
 // 周期键（date-only），Location 是请求偏移，服务层据此取整日界。
 type reportWeekInput struct {
@@ -177,7 +152,7 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 
 	var issues []zodIssue
 	input := reportWeekInput{}
-	values := map[string]parsedWeekInstant{}
+	values := map[string]wiretime.OffsetInstant{}
 	for _, field := range []string{"weekStart", "weekEnd"} {
 		value, present := object[field]
 		if !present {
@@ -189,7 +164,7 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 			issues = append(issues, invalidTypeIssue([]string{field}, "string", value))
 			continue
 		}
-		parsed, ok := parseWeekInstant(text)
+		parsed, ok := wiretime.ParseOffsetInstant(text)
 		if !ok {
 			issues = append(issues, invalidFormatIssue([]string{field}, datePattern, dateFormatMessage))
 			continue
@@ -201,13 +176,13 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 	}
 
 	start, end := values["weekStart"], values["weekEnd"]
-	input.WeekStart = start.key
-	input.WeekEnd = end.key
-	input.StartLocation = start.location
-	input.EndLocation = end.location
+	input.WeekStart = start.Key
+	input.WeekEnd = end.Key
+	input.StartLocation = start.Location
+	input.EndLocation = end.Location
 	// zod 只在基础对象校验全部通过后才跑 refine。比较的是绝对时刻（旧 refine 的
 	// `new Date(a) <= new Date(b)` 语义），不是折算后的日期键。
-	if start.instant.After(end.instant) {
+	if start.Instant.After(end.Instant) {
 		return reportWeekInput{}, []zodIssue{customIssue([]string{"weekEnd"}, "Start date cannot be later than end date")}
 	}
 	return input, nil
@@ -236,7 +211,7 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 
 	var issues []zodIssue
 	input := createReportInput{}
-	weekValues := map[string]parsedWeekInstant{}
+	weekValues := map[string]wiretime.OffsetInstant{}
 	for _, field := range []string{"weekStart", "weekEnd"} {
 		value, present := object[field]
 		if !present {
@@ -248,7 +223,7 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 			issues = append(issues, invalidTypeIssue([]string{field}, "string", value))
 			continue
 		}
-		parsed, ok := parseWeekInstant(text)
+		parsed, ok := wiretime.ParseOffsetInstant(text)
 		if !ok {
 			issues = append(issues, invalidFormatIssue([]string{field}, datePattern, dateFormatMessage))
 			continue
@@ -276,11 +251,11 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 		return createReportInput{}, issues
 	}
 	start, end := weekValues["weekStart"], weekValues["weekEnd"]
-	input.WeekStart = start.key
-	input.WeekEnd = end.key
-	input.StartLocation = start.location
-	input.EndLocation = end.location
-	if start.instant.After(end.instant) {
+	input.WeekStart = start.Key
+	input.WeekEnd = end.Key
+	input.StartLocation = start.Location
+	input.EndLocation = end.Location
+	if start.Instant.After(end.Instant) {
 		return createReportInput{}, []zodIssue{customIssue([]string{"weekEnd"}, "Start date cannot be later than end date")}
 	}
 	return input, nil

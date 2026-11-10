@@ -552,13 +552,16 @@ func TestReportDateParamsRejectDateOnly(t *testing.T) {
 	if search.Code != http.StatusBadRequest {
 		t.Fatalf("search status = %d, want 400 (body %s)", search.Code, search.Body.String())
 	}
-	if !contains(search.Body.String(), "startDate must be an RFC3339 timestamp with an offset") ||
+	if !contains(search.Body.String(), `"code":"INVALID_START_DATE"`) ||
+		!contains(search.Body.String(), "Invalid startDate: expected an RFC3339 timestamp with an explicit offset") ||
 		!contains(search.Body.String(), "2026-11-03T00:00:00+08:00") {
 		t.Fatalf("search body = %s", search.Body.String())
 	}
 
 	badEnd := h.do(http.MethodGet, "/api/reports/search?endDate=not-a-date", "")
-	if badEnd.Code != http.StatusBadRequest || !contains(badEnd.Body.String(), "endDate must be an RFC3339 timestamp") {
+	if badEnd.Code != http.StatusBadRequest ||
+		!contains(badEnd.Body.String(), `"code":"INVALID_END_DATE"`) ||
+		!contains(badEnd.Body.String(), "Invalid endDate:") {
 		t.Fatalf("search endDate status = %d body = %s", badEnd.Code, badEnd.Body.String())
 	}
 }
