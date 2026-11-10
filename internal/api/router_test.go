@@ -505,7 +505,7 @@ func TestB6ReportRoutesAreMounted(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/reports", "", http.StatusOK, `"reports":[]`},
 		{http.MethodPost, "/api/reports", `{}`, http.StatusBadRequest, `"code":"VALIDATION_ERROR"`},
-		{http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`, http.StatusOK, `"variants":[`},
+		{http.MethodPost, "/api/reports/preview", `{"weekStart":"2024-01-08T00:00:00Z","weekEnd":"2024-01-14T00:00:00Z"}`, http.StatusOK, `"variants":[`},
 		{http.MethodGet, "/api/reports/search", "", http.StatusOK, `"reports":[]`},
 		{http.MethodGet, "/api/reports/999", "", http.StatusNotFound, `"code":"NOT_FOUND"`},
 		{http.MethodPut, "/api/reports/999", `{"title":"x"}`, http.StatusNotFound, `"code":"NOT_FOUND"`},

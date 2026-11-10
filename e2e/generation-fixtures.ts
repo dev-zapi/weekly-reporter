@@ -38,7 +38,13 @@ export const test = base.extend<Fixtures & { generousTimeout: void }>({
       const event = await request.post('/api/events', { data: { content: `${scenario}: completed deterministic work`, eventTime: `${weekStart}T12:00:00.000Z` } })
       expect(event.ok()).toBeTruthy()
       eventId = ((await event.json()) as { id: number }).id
-      const report = await request.post('/api/reports', { data: { title: `${scenario} report`, weekStart, weekEnd } })
+      const report = await request.post('/api/reports', {
+        data: {
+          title: `${scenario} report`,
+          weekStart: `${weekStart}T00:00:00.000Z`,
+          weekEnd: `${weekEnd}T00:00:00.000Z`,
+        },
+      })
       expect(report.ok()).toBeTruthy()
       reportId = ((await report.json()) as { report: { id: number } }).report.id
       await use(reportId)
