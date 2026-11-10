@@ -48,9 +48,10 @@ export default function NewReportPage() {
   const weekStart = formatDate(start)
   const weekEnd = formatDate(end)
   // The wire takes the browser-zone midnight with its offset; the stored period
-  // key stays date-only, so the display values above are unchanged.
-  const weekStartInstant = formatSystemInstant(start)
-  const weekEndInstant = formatSystemInstant(end)
+  // key stays date-only, so the display values above are unchanged. `end` from
+  // getWeekRange is the Sunday's 23:59:59.999, so rebuild midnight from the key.
+  const weekStartInstant = formatSystemInstant(new Date(`${weekStart}T00:00:00`))
+  const weekEndInstant = formatSystemInstant(new Date(`${weekEnd}T00:00:00`))
   const displayWeekStart = baseDate ? formatSystemDate(`${weekStart}T00:00:00`) : '—'
   const displayWeekEnd = baseDate ? formatSystemDate(`${weekEnd}T00:00:00`) : '—'
   const year = getYear(baseDate ?? new Date(0))
