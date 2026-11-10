@@ -3,8 +3,8 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { startOfDay } from 'date-fns'
 import { Activity } from 'lucide-react'
-import { getWeekPeriodRange, toOffsetInstant } from '@/lib/periods'
-import { formatSystemInstant } from '@/lib/time-format'
+import { getWeekPeriodRange } from '@/lib/periods'
+import { toBrowserOffsetInstant } from '@/lib/time-format'
 import styles from './timeline.module.css'
 
 type Audience = 'leadership' | 'personal'
@@ -88,13 +88,13 @@ export function TimelineReadiness({
     const controller = new AbortController()
     const now = new Date()
     // The plans date param is an RFC3339 instant in the browser's offset.
-    const planDate = toOffsetInstant(startOfDay(now))
+    const planDate = toBrowserOffsetInstant(startOfDay(now))
     const week = getWeekPeriodRange(now)
     // Reports search takes browser-zone midnights with an explicit offset; the
     // query string must be encoded so `+08:00` is not decoded as a space.
     const reportWindow = new URLSearchParams({
-      startDate: formatSystemInstant(new Date(`${week.start}T00:00:00`)),
-      endDate: formatSystemInstant(new Date(`${week.end}T00:00:00`)),
+      startDate: toBrowserOffsetInstant(new Date(`${week.start}T00:00:00`)),
+      endDate: toBrowserOffsetInstant(new Date(`${week.end}T00:00:00`)),
     }).toString()
 
     async function load() {

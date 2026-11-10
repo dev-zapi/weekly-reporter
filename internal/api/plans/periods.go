@@ -1,12 +1,11 @@
 package plans
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件移植 src/lib/periods.ts，但周期语义改为按请求自带偏移解释：
@@ -16,29 +15,15 @@ import (
 // 周期键（period_start/period_end/month_key）仍是 date-only 文本：入参时刻
 // 折算成键后才进查询与响应，存储形态不变。
 
-// instantExample 是 400 文案里给出的合法 wire 形态示例（保留客户端偏移）。
-const instantExample = "2026-11-03T00:00:00+08:00"
-
-// invalidInstantParam 写 400：date-only 等非法形态必须看到期望格式示例。
-// 与 events 家族的 invalidInstantParam 同构，保证同一条 wire 契约跨族一致。
-func invalidInstantParam(w http.ResponseWriter, name, code string) {
-	respond.Error(
-		w,
-		http.StatusBadRequest,
-		"Invalid "+name+": expected an RFC3339 timestamp with an explicit offset, e.g. "+instantExample,
-		code,
-	)
-}
-
-// parseOffsetInstant 解析 wire 上的日期/周界/月界参数：只接受 RFC3339 带偏移
-// 时刻（Z 或 ±HH:MM）。date-only 与裸 yyyy-MM 都不是 instant，time.Parse 直接
-// 拒绝；返回的 time.Time 保留入参偏移，后续日历读数都按该偏移进行。
+// parseOffsetInstant 是 wiretime.ParseOffsetInstant 的薄适配：RFC3339 的解析
+// 与拒绝清单只有 wiretime 一份实现；这里取出保留入参偏移的绝对时刻，后续日历
+// 读数（周/月）都按该偏移进行。
 func parseOffsetInstant(value string) (time.Time, bool) {
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
+	parsed, ok := wiretime.ParseOffsetInstant(value)
+	if !ok {
 		return time.Time{}, false
 	}
-	return parsed, true
+	return parsed.Instant, true
 }
 
 func formatDate(t time.Time) string { return t.Format("2006-01-02") }

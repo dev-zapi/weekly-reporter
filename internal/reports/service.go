@@ -83,8 +83,7 @@ func ParseWeekBounds(weekStart, weekEnd string, startLocation, endLocation *time
 
 // dayBoundary 把 `YYYY-MM-DD` 折成 location 当天首/末毫秒。
 //
-// 输入形状由冻结契约保证：validation.go 的 parseWeekInstant 只会产出 date-only
-// 周期键。日历合法性由 ParseISODate 负责（`2026-02-30` → Invalid Date）。
+// 输入形状由冻结契约保证：validation.go 只会产出 date-only 周期键。日历合法性由 ParseISODate 负责（`2026-02-30` → Invalid Date）。
 func dayBoundary(value string, endOfDay bool, location *time.Location) WeekBounds {
 	year, month, day, ok := ParseISODate(value)
 	if !ok {

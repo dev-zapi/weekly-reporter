@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
-import { formatSystemDate, formatSystemInstant } from '@/lib/time-format'
+import { formatSystemDate, toBrowserOffsetInstant } from '@/lib/time-format'
 import { formatDate, getWeekRange } from '@/lib/utils'
 import styles from './new-report.module.css'
 
@@ -50,8 +50,8 @@ export default function NewReportPage() {
   // The wire takes the browser-zone midnight with its offset; the stored period
   // key stays date-only, so the display values above are unchanged. `end` from
   // getWeekRange is the Sunday's 23:59:59.999, so rebuild midnight from the key.
-  const weekStartInstant = formatSystemInstant(new Date(`${weekStart}T00:00:00`))
-  const weekEndInstant = formatSystemInstant(new Date(`${weekEnd}T00:00:00`))
+  const weekStartInstant = toBrowserOffsetInstant(new Date(`${weekStart}T00:00:00`))
+  const weekEndInstant = toBrowserOffsetInstant(new Date(`${weekEnd}T00:00:00`))
   const displayWeekStart = baseDate ? formatSystemDate(`${weekStart}T00:00:00`) : '—'
   const displayWeekEnd = baseDate ? formatSystemDate(`${weekEnd}T00:00:00`) : '—'
   const year = getYear(baseDate ?? new Date(0))

@@ -21,6 +21,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	reportlib "github.com/dev-zapi/weekly-reporter/internal/reports"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件覆盖 /api/reports 的列表、新建、搜索、预览，以及 /api/reports/{id} 的
@@ -334,16 +335,16 @@ type searchResultItem struct {
 // searchDateKey 把一个搜索日期参数折算成 date-only 周期键。
 //
 // 空串表示未过滤（ok=true）。非空时必须能按请求偏移折出日历日——date-only 与
-// naive datetime 都会被 time.Parse(RFC3339) 拒绝，调用方据此回 400。
+// naive datetime 都会被 wiretime.ParseOffsetInstant 拒绝，调用方据此回 400。
 func searchDateKey(raw string) (key string, ok bool) {
 	if raw == "" {
 		return "", true
 	}
-	parsed, ok := parseWeekInstant(raw)
+	parsed, ok := wiretime.ParseOffsetInstant(raw)
 	if !ok {
 		return "", false
 	}
-	return parsed.key, true
+	return parsed.Key, true
 }
 
 func searchHandler(deps Deps) http.HandlerFunc {
@@ -352,16 +353,13 @@ func searchHandler(deps Deps) http.HandlerFunc {
 		searchQuery := lowerJS(trimJS(query.Get("q")))
 		startDate, startOK := searchDateKey(query.Get("startDate"))
 		if !startOK {
-			respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{
-				Error: "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00",
-			})
+			// 与 events/plans 同构：日期参数非法一律 {error, code} + 格式示例。
+			wiretime.InvalidInstantParam(w, "startDate", "INVALID_START_DATE")
 			return
 		}
 		endDate, endOK := searchDateKey(query.Get("endDate"))
 		if !endOK {
-			respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{
-				Error: "endDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-09T00:00:00+08:00",
-			})
+			wiretime.InvalidInstantParam(w, "endDate", "INVALID_END_DATE")
 			return
 		}
 

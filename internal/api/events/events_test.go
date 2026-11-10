@@ -196,8 +196,9 @@ func TestEventsGetCombinesDateAndSourceFilters(t *testing.T) {
 	}
 }
 
-// date-only 是非法 wire 形态：400 必须在错误信息里给出带偏移的期望示例。
-func TestEventsGetRejectsDateOnlyParameters(t *testing.T) {
+// date-only、naive datetime 与畸形偏移（+08 / +0800）都是非法 wire 形态：
+// 400 必须在错误信息里给出带偏移的期望示例。
+func TestEventsGetRejectsInvalidInstantParameters(t *testing.T) {
 	h := newHarness(t)
 	h.seedEvent("anything", "manual", 1_704_672_000, "")
 
@@ -208,6 +209,10 @@ func TestEventsGetRejectsDateOnlyParameters(t *testing.T) {
 		{"date=2024-01-10", "INVALID_DATE"},
 		{"weekStart=2024-01-08", "INVALID_WEEK_START"},
 		{"weekEnd=2024-01-14", "INVALID_WEEK_END"},
+		{"date=2024-01-10T00:00:00%2B08", "INVALID_DATE"},
+		{"date=2024-01-10T00:00:00%2B0800", "INVALID_DATE"},
+		{"weekStart=2024-01-08T00:00:00%2B08", "INVALID_WEEK_START"},
+		{"weekStart=2024-01-08T00:00:00%2B0800", "INVALID_WEEK_START"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.query, func(t *testing.T) {

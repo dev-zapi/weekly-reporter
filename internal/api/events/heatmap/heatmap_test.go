@@ -412,3 +412,43 @@ func TestHeatmapGroupsByRequestedTimeZone(t *testing.T) {
 		})
 	}
 }
+
+// DST fall-back day in America/New_York is 25 hours long. An event at 00:30
+// (EDT) and one at 23:30 (EST) on the same calendar day must share one bucket;
+// their UTC projections fall on two different dates, so this pins that grouping
+// follows the requested IANA zone (DST included), not UTC.
+func TestHeatmapGroupsAcrossDSTFallBack(t *testing.T) {
+	h := newHarness(t)
+	loc := mustLoadLocation(t, "America/New_York")
+	dstDay := mostRecentFirstSundayOfNovember(time.Now().In(loc), loc)
+
+	early := time.Date(dstDay.Year(), dstDay.Month(), dstDay.Day(), 0, 30, 0, 0, loc)
+	late := time.Date(dstDay.Year(), dstDay.Month(), dstDay.Day(), 23, 30, 0, 0, loc)
+	if early.UTC().Format("2006-01-02") == late.UTC().Format("2006-01-02") {
+		t.Fatalf("fixture must straddle UTC midnight: early=%s late=%s", early.UTC(), late.UTC())
+	}
+	h.seedEvent(early.Unix())
+	h.seedEvent(late.Unix())
+
+	rec := h.do("/api/events/heatmap?tz=America%2FNew_York")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+	}
+	resp := decodeHeatmap(t, rec.Body.Bytes())
+	want := dstDay.Format("2006-01-02")
+	if len(resp.Data) != 1 || resp.Data[0].Date != want || resp.Data[0].Count != 2 {
+		t.Fatalf("data = %+v, want one day {%s 2}", resp.Data, want)
+	}
+}
+
+// mostRecentFirstSundayOfNovember returns the most recent US DST fall-back day
+// at or before now (first Sunday of November).
+func mostRecentFirstSundayOfNovember(now time.Time, loc *time.Location) time.Time {
+	first := time.Date(now.Year(), time.November, 1, 0, 0, 0, 0, loc)
+	firstSunday := first.AddDate(0, 0, (7-int(first.Weekday()))%7)
+	if firstSunday.After(now) {
+		first = time.Date(now.Year()-1, time.November, 1, 0, 0, 0, 0, loc)
+		firstSunday = first.AddDate(0, 0, (7-int(first.Weekday()))%7)
+	}
+	return firstSunday
+}

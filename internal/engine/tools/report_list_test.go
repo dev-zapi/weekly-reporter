@@ -384,6 +384,10 @@ func TestQueryReportListInvalidInputs(t *testing.T) {
 		{"end date-only", `{"endDate":"2027-01-01"}`, "endDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
 		{"date invalid", `{"startDate":"2027-02-31T00:00:00Z"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
 		{"date order", `{"startDate":"2027-02-02T00:00:00Z","endDate":"2027-02-01T00:00:00Z"}`, "startDate must not be after endDate"},
+		// Folding is by request offset, not absolute time: +08 midnight is the
+		// 11-03 key while -05 23:59:59 the day before is the 11-02 key, so the
+		// key range is inverted even though the absolute end is later.
+		{"date key order across offsets", `{"startDate":"2026-11-03T00:00:00+08:00","endDate":"2026-11-02T23:59:59-05:00"}`, "startDate must not be after endDate"},
 		{"limit zero", `{"limit":0}`, "limit must be an integer from 1 to 20"},
 		{"limit fraction", `{"limit":1.5}`, "limit must be an integer from 1 to 20"},
 		{"limit high", `{"limit":21}`, "limit must be an integer from 1 to 20"},
