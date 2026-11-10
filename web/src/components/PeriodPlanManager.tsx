@@ -22,7 +22,7 @@ import {
   type PlanItemRowData,
 } from './PeriodPlanItemRow'
 import { PlanContextPanel } from './PlanContextPanel'
-import { getWeekPeriodRange, getMonthPeriodRange } from '@/lib/periods'
+import { getWeekPeriodRange, getMonthPeriodRange, dateOnlyToOffsetInstant, monthKeyToOffsetInstant } from '@/lib/periods'
 import {
   PLAN_ITEM_STATUS_LABELS,
   PLAN_ITEM_STATUS_ORDER,
@@ -132,18 +132,20 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
   const [selectedItemId, setSelectedItemId] = useState<number | null>(initialItemId)
 
   // Derive the period parameters used by both the read and write endpoints.
+  // The wire carries RFC3339 instants in the browser's offset; the server folds
+  // each back to a date-only period key in that same offset.
   const getPeriodParams = useCallback((): PeriodParams => {
     if (scope === 'week') {
       const range = getWeekPeriodRange(currentDate)
       return {
         scope: 'week',
-        weekStart: range.start,
-        weekEnd: range.end,
+        weekStart: dateOnlyToOffsetInstant(range.start),
+        weekEnd: dateOnlyToOffsetInstant(range.end),
       }
     }
     return {
       scope: 'month',
-      month: getMonthPeriodRange(currentDate).monthKey,
+      month: monthKeyToOffsetInstant(getMonthPeriodRange(currentDate).monthKey),
     }
   }, [scope, currentDate])
 
@@ -185,7 +187,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
     if (scope !== 'week') return
     const controller = new AbortController()
     const month = getWeekPeriodRange(currentDate).start.slice(0, 7)
-    void apiFetch(`/api/plans?scope=month&month=${month}`, { signal: controller.signal })
+    const query = new URLSearchParams({ scope: 'month', month: monthKeyToOffsetInstant(month) })
+    void apiFetch(`/api/plans?${query}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Failed to load parent options')
         const data: PlanResponse = await response.json()
@@ -226,8 +229,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scope: 'week',
-          weekStart: targetWeek.start,
-          weekEnd: targetWeek.end,
+          weekStart: dateOnlyToOffsetInstant(targetWeek.start),
+          weekEnd: dateOnlyToOffsetInstant(targetWeek.end),
           text,
           projectScope: 'work',
         }),

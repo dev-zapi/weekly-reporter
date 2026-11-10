@@ -5,7 +5,60 @@ import {
   getMonthPeriodRangeByKey,
   getNextWeekPeriodRange,
   getNextMonthPeriodRange,
+  toOffsetInstant,
+  dateOnlyToOffsetInstant,
+  monthKeyToOffsetInstant,
 } from './periods'
+
+describe('toOffsetInstant', () => {
+  // The wire form: an RFC3339 instant with an explicit ±HH:MM offset, never a
+  // UTC `Z` (which would shift an east-of-UTC zero point to the previous day).
+  const WIRE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/
+
+  function expectedOffset(date: Date): string {
+    const minutes = -date.getTimezoneOffset()
+    const sign = minutes >= 0 ? '+' : '-'
+    const absolute = Math.abs(minutes)
+    const hh = String(Math.floor(absolute / 60)).padStart(2, '0')
+    const mm = String(absolute % 60).padStart(2, '0')
+    return `${sign}${hh}:${mm}`
+  }
+
+  it('renders a local Date with its own offset, never a Z', () => {
+    const date = new Date(2026, 10, 3, 0, 0, 0)
+    const result = toOffsetInstant(date)
+
+    expect(result).toMatch(WIRE_RE)
+    expect(result).not.toMatch(/Z$/)
+    expect(result.endsWith(expectedOffset(date))).toBe(true)
+    // Round-trips to the same instant as the local input.
+    expect(new Date(result).getTime()).toBe(date.getTime())
+  })
+
+  it('expands a date-only key to local midnight with the browser offset', () => {
+    const result = dateOnlyToOffsetInstant('2026-11-03')
+
+    expect(result).toMatch(WIRE_RE)
+    const parsed = new Date(result)
+    expect(parsed.getFullYear()).toBe(2026)
+    expect(parsed.getMonth()).toBe(10)
+    expect(parsed.getDate()).toBe(3)
+    expect(parsed.getHours()).toBe(0)
+    expect(parsed.getMinutes()).toBe(0)
+    expect(parsed.getSeconds()).toBe(0)
+  })
+
+  it('expands a month key to the first day at local midnight', () => {
+    const result = monthKeyToOffsetInstant('2026-11')
+
+    expect(result).toMatch(WIRE_RE)
+    const parsed = new Date(result)
+    expect(parsed.getFullYear()).toBe(2026)
+    expect(parsed.getMonth()).toBe(10)
+    expect(parsed.getDate()).toBe(1)
+    expect(parsed.getHours()).toBe(0)
+  })
+})
 
 describe('getWeekPeriodRange', () => {
   it('should return Monday-start week range as yyyy-MM-dd strings', () => {
