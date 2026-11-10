@@ -59,7 +59,7 @@ func TestMonthReviewAttachesWeekItemsWithAttribution(t *testing.T) {
 	h.seedPlanReference(e4, orphan)
 	h.seedComment(childA, "context", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -126,7 +126,7 @@ func TestMonthReviewComposesChildCommentCountAcrossChain(t *testing.T) {
 	h.seedComment(original, "ancestor note", nil, fixtureTime)
 	h.seedComment(successor, "successor note", nil, fixtureTime)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -149,7 +149,7 @@ func TestMonthReviewSeparatesDirectFromIndirectEvidence(t *testing.T) {
 		h.seedPlanReference(eventID, itemID)
 	}
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -171,7 +171,7 @@ func TestMonthReviewCountsSharedEvidenceOnce(t *testing.T) {
 	h.seedPlanReference(eventID, goal)
 	h.seedPlanReference(eventID, child)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -198,7 +198,7 @@ func TestMonthReviewDeduplicatesEvidenceSharedByChainChildren(t *testing.T) {
 	eventID := h.seedEvent("Work", "manual", fixtureTime)
 	h.seedPlanReference(eventID, original)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -237,7 +237,7 @@ func TestMonthReviewMirrorsDeferralByAggregatingAncestorChildren(t *testing.T) {
 		h.seedPlanReference(eventID, itemID)
 	}
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -313,7 +313,7 @@ func TestMonthReviewAggregatesNestedAncestorChains(t *testing.T) {
 		h.seedPlanReference(eventID, itemID)
 	}
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -374,7 +374,7 @@ func TestMonthReviewKeepsDeferredItemAndChildrenInPlace(t *testing.T) {
 	h.seedPlanReference(event2, child)
 
 	septemberStatus, septemberBody := decode(t,
-		h.do(http.MethodGet, "/api/plans?scope=month&month=2026-09", "", testPassword))
+		h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-09")), "", testPassword))
 	if septemberStatus != http.StatusOK {
 		t.Fatalf("status = %d", septemberStatus)
 	}
@@ -391,7 +391,7 @@ func TestMonthReviewKeepsDeferredItemAndChildrenInPlace(t *testing.T) {
 	assertField(t, "original indirect", originalItem["indirectFulfillmentCount"], 2)
 
 	octoberStatus, octoberBody := decode(t,
-		h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+		h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if octoberStatus != http.StatusOK {
 		t.Fatalf("status = %d", octoberStatus)
 	}
@@ -442,7 +442,7 @@ func TestMonthReviewGroupsAttachCandidatesByWeek(t *testing.T) {
 	novemberWeek := h.seedPlan("week", "2026-11-02", "2026-11-08", nil)
 	h.seedItem(itemSeed{planID: novemberWeek, text: "November orphan"})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -493,7 +493,7 @@ func TestMonthReviewOrdersItemsAndChildrenByPriorityGroupThenPosition(t *testing
 	h.seedItem(itemSeed{planID: week5, text: "High c4", parentItemID: ptr(goal), priority: "high", position: 4})
 	h.seedItem(itemSeed{planID: week5, text: "High c2", parentItemID: ptr(goal), priority: "high", position: 2})
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
@@ -521,7 +521,7 @@ func TestMonthReviewOrdersItemsAndChildrenByPriorityGroupThenPosition(t *testing
 func TestMonthReviewEmptyWhenNoPlanOrWeeksExist(t *testing.T) {
 	h := newHarness(t)
 
-	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=2026-10", "", testPassword))
+	status, body := decode(t, h.do(http.MethodGet, "/api/plans?scope=month&month=" + q(wireMonth("2026-10")), "", testPassword))
 	if status != http.StatusOK {
 		t.Fatalf("status = %d", status)
 	}
