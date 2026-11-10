@@ -231,6 +231,20 @@ export function localDateToUtcMillis(dateString, timeZone = detectSystemTimeZone
 }
 
 /**
+ * `YYYY-MM-DD` → that calendar day's midnight in `timeZone`, rendered with the
+ * zone offset (`2026-11-09T00:00:00+08:00`), or null.
+ *
+ * The offset must stay on the wire: the server rounds the window by the offset
+ * the request carries (#135 决策 2), so dropping it to a `.000Z` instant would
+ * move a Shanghai day back to the previous UTC day.
+ */
+export function localDateToOffsetInstant(dateString, timeZone = detectSystemTimeZone()) {
+  const epochMillis = localDateToUtcMillis(dateString, timeZone)
+  if (epochMillis === null) return null
+  return `${dateString}T00:00:00${formatOffset(utcOffsetMinutes(epochMillis, timeZone))}`
+}
+
+/**
  * A naive `YYYY-MM-DDTHH:mm[:ss[.mmm]]` → the same wall clock with the zone
  * offset appended (`2026-11-10T09:00:00+08:00`), or null. Used to make a
  * missing-offset error show a copy-pasteable fix.

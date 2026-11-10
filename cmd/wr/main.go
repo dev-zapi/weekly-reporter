@@ -7,6 +7,9 @@ package main
 import (
 	"fmt"
 	"os"
+	// The heatmap endpoint accepts IANA zone names from the viewer (#135 决策 5);
+	// embedding the database keeps zone lookups working on hosts without tzdata.
+	_ "time/tzdata"
 )
 
 func main() {

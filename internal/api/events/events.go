@@ -16,7 +16,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsparse"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
@@ -138,30 +137,51 @@ func listHandler(deps Deps) http.HandlerFunc {
 		}
 		tagParams := db.EventsByTagsParams{Tags: filterTags}
 
-		// 日期 / 周过滤只在没有 tag 过滤时生效（route.ts 的全量语义）。
+		// 三个日期参数无论 tags 是否存在都要校验 wire 形态；只有过滤本身在
+		// 没有 tag 过滤时生效（route.ts 的全量语义）。
+		weekStartRaw := query.Get("weekStart")
+		weekEndRaw := query.Get("weekEnd")
+		dateRaw := query.Get("date")
+
+		// Wire 契约（#135 决策 1/2）：日期参数只接受 RFC3339 带偏移时刻。
+		// date-only 不再是「宽松解释」，而是 400——错误信息必须给出合法示例。
+		var weekStart, weekEnd, dateInstant time.Time
+		if weekStartRaw != "" {
+			var ok bool
+			weekStart, ok = parseWindowInstant(weekStartRaw)
+			if !ok {
+				invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+				return
+			}
+		}
+		if weekEndRaw != "" {
+			var ok bool
+			weekEnd, ok = parseWindowInstant(weekEndRaw)
+			if !ok {
+				invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
+				return
+			}
+		}
+		if dateRaw != "" {
+			var ok bool
+			dateInstant, ok = parseWindowInstant(dateRaw)
+			if !ok {
+				invalidInstantParam(w, "date", "INVALID_DATE")
+				return
+			}
+		}
+
 		if len(filterTags) == 0 {
-			weekStart := query.Get("weekStart")
-			weekEnd := query.Get("weekEnd")
-			if weekStart != "" && weekEnd != "" {
-				start := jsdate.ParseString(weekStart)
-				end := jsdate.ParseString(weekEnd)
-				if !start.Valid || !end.Valid {
-					// `between(NaN, …)` 在 SQLite 里恒为假。用 flag=2 表达，而不是
-					// 提前返回：route.ts 仍会跑完后续查询（含别名读取）与分页计算。
-					params.WeekFilter = filterAlwaysFalse
-				} else {
-					params.WeekFilter = int64(1)
-					params.WeekStart = floorDivSec(start.Millis)
-					params.WeekEnd = floorDivSec(endOfLocalDay(end.Millis))
-				}
+			if weekStartRaw != "" && weekEndRaw != "" {
+				// 边界 = 精确时刻：起始日的 00:00（含）到结束日 00:00 + 24h（不含）。
+				params.WeekFilter = int64(1)
+				params.WeekStart, _ = calendarDayWindow(weekStart)
+				_, params.WeekEnd = calendarDayWindow(weekEnd)
 			}
 
-			dateParam := query.Get("date")
-			dateObj := jsdate.ParseString(dateParam + "T00:00:00")
-			if dateObj.Valid {
+			if dateRaw != "" {
 				params.DateFilter = int64(1)
-				params.DateStart = floorDivSec(dateObj.Millis)
-				params.DateEnd = floorDivSec(endOfLocalDay(dateObj.Millis))
+				params.DateStart, params.DateEnd = calendarDayWindow(dateInstant)
 			}
 		}
 
@@ -493,12 +513,37 @@ func splitComma(s string) []string {
 	return append(parts, s[start:])
 }
 
-// endOfLocalDay 复刻 `d.setHours(23, 59, 59, 999)`：把毫秒时刻折成「本地时区当天
-// 的最后一毫秒」。
-func endOfLocalDay(ms int64) int64 {
-	lt := time.UnixMilli(ms).In(time.Local)
-	end := time.Date(lt.Year(), lt.Month(), lt.Day(), 23, 59, 59, 999*int(time.Millisecond), time.Local)
-	return end.UnixMilli()
+// instantExample 是错误信息里给出的合法 wire 形态示例（保留客户端偏移）。
+const instantExample = "2026-11-03T00:00:00+08:00"
+
+// parseWindowInstant 解析日期/窗口参数：只接受 RFC3339 带偏移时刻。
+// date-only（任何没有偏移的形态）都会被拒绝，不再回落到服务器本地时区。
+func parseWindowInstant(raw string) (time.Time, bool) {
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+// invalidInstantParam 写 400：date-only 等非法形态必须看到期望格式示例。
+func invalidInstantParam(w http.ResponseWriter, name, code string) {
+	respond.Error(
+		w,
+		http.StatusBadRequest,
+		"Invalid "+name+": expected an RFC3339 timestamp with an explicit offset, e.g. "+instantExample,
+		code,
+	)
+}
+
+// calendarDayWindow 把入参按它自带的偏移取整到日历日，返回该日 00:00（含）与
+// 次日 00:00（不含）折成的 Unix 秒。SQL 用 `<=`，所以结束边界取「不含」的前一秒。
+// 固定偏移窗口 = [00:00, +24h)，不受服务器或 DST 影响。
+func calendarDayWindow(instant time.Time) (int64, int64) {
+	year, month, day := instant.Date()
+	start := time.Date(year, month, day, 0, 0, 0, 0, instant.Location())
+	end := start.Add(24 * time.Hour)
+	return floorDivSec(start.UnixMilli()), floorDivSec(end.UnixMilli()) - 1
 }
 
 // floorDivSec 复刻 `Math.floor(ms / 1000)`（drizzle 的 timestamp 映射与游标换算都用它）：

@@ -63,6 +63,29 @@ function formatLocalDate(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/** `480` → `+08:00`, `-300` → `-05:00`. */
+function formatOffset(minutes: number): string {
+  const sign = minutes >= 0 ? '+' : '-'
+  const absolute = Math.abs(minutes)
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}
+
+/**
+ * A heatmap date key (`YYYY-MM-DD`) → the browser's midnight for that calendar
+ * day, with the browser offset kept on the wire (`2026-11-09T00:00:00+08:00`).
+ * The offset is required: the server rounds the window by the offset the
+ * request carries, so sending the UTC equivalent would shift the day.
+ */
+function formatLocalMidnightInstant(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const midnight = new Date(year, month - 1, day)
+  return `${dateStr}T00:00:00${formatOffset(-midnight.getTimezoneOffset())}`
+}
+
+function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
+}
+
 export default function TimelinePage() {
   const navigate = useNavigate()
   const [events, setEvents] = useState<TimelineEvent[]>([])
@@ -121,7 +144,7 @@ export default function TimelinePage() {
     if (tags.length > 0) {
       params.set('tags', tags.join(','))
     } else if (heatmapDate) {
-      params.set('date', heatmapDate)
+      params.set('date', formatLocalMidnightInstant(heatmapDate))
     }
     if (cursor) {
       params.set('cursorId', String(cursor.id))
@@ -215,7 +238,7 @@ export default function TimelinePage() {
     const loadHeatmap = async () => {
       try {
         setHeatmapError(null)
-        const res = await apiFetch('/api/events/heatmap')
+        const res = await apiFetch(`/api/events/heatmap?tz=${encodeURIComponent(browserTimeZone())}`)
         if (!res.ok) {
           throw new Error('Failed to load heatmap data' + traceSuffix(res))
         }
@@ -330,7 +353,9 @@ export default function TimelinePage() {
       return
     }
     const event = await res.json()
-    // Use local calendar date (not UTC) to match /api/events date param interpretation.
+    // The heatmap and the date filter both speak the browser's calendar: keep
+    // the local calendar date here; buildEventsPage expands it to local
+    // midnight with the browser offset when it hits the wire.
     const dateStr = formatLocalDate(new Date(event.eventTime))
 
     // Clear filters and set date to make event visible

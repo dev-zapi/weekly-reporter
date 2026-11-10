@@ -11,7 +11,7 @@
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
-import { detectSystemTimeZone, formatInstant, naiveInstantWithOffset, parseStrictInstant } from '../lib/time.mjs'
+import { detectSystemTimeZone, formatInstant, localDateToOffsetInstant, naiveInstantWithOffset, parseStrictInstant } from '../lib/time.mjs'
 
 const USAGE = {
   list:
@@ -71,12 +71,30 @@ function requireInstant(value, flag) {
   )
 }
 
+/**
+ * A `--date`/`--week-start`/`--week-end` the wire can carry. The CLI still
+ * accepts `YYYY-MM-DD`; it expands to midnight in the system zone and keeps
+ * that offset on the wire, so the server rounds the calendar day by the
+ * client's calendar (not UTC and not the server's zone).
+ */
+function requireLocalDate(value, flag) {
+  const instant = localDateToOffsetInstant(value)
+  if (instant === null) {
+    fail(
+      `invalid ${flag}: ${value}`,
+      '',
+      `pass a calendar date as YYYY-MM-DD, e.g. ${flag} 2026-11-09`,
+    )
+  }
+  return instant
+}
+
 /** `wrp events list` — filters first, id-first lines and the count footer after. */
 export async function list({ flags }) {
   const params = new URLSearchParams()
-  if (flags.date !== undefined) params.set('date', flags.date)
-  if (flags.weekStart !== undefined) params.set('weekStart', flags.weekStart)
-  if (flags.weekEnd !== undefined) params.set('weekEnd', flags.weekEnd)
+  if (flags.date !== undefined) params.set('date', requireLocalDate(flags.date, '--date'))
+  if (flags.weekStart !== undefined) params.set('weekStart', requireLocalDate(flags.weekStart, '--week-start'))
+  if (flags.weekEnd !== undefined) params.set('weekEnd', requireLocalDate(flags.weekEnd, '--week-end'))
   if (flags.tags !== undefined) params.set('tags', flags.tags)
   if (flags.source !== undefined) params.set('source', flags.source)
   if (flags.limit !== undefined) params.set('limit', flags.limit)
