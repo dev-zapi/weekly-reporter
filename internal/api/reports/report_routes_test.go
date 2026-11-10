@@ -3,6 +3,7 @@ package reports_test
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -363,7 +364,9 @@ func TestDeleteReportErrorShapes(t *testing.T) {
 // regenerate-source 版本号 +1，旧终版标 stale，报告 content 写回个人版原稿。
 func TestRegenerateSourceBumpsRevision(t *testing.T) {
 	h := newHarness(t)
-	weekStart := time.Date(2024, 1, 8, 0, 0, 0, 0, time.Local)
+	// regenerate-source has no client offset, so the window is folded in UTC;
+	// seed the event inside that deterministic window.
+	weekStart := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
 	reportID := h.seedReport("报告", "旧内容", weekStart.Format("2006-01-02"), "2024-01-14", 1705310800)
 	final := "旧终版"
 	h.seedVariant(reportID, "leadership", "- 旧原稿", &final, 1, nil)
@@ -581,6 +584,35 @@ func TestSearchFoldsDatesByRequestOffset(t *testing.T) {
 	rec = h.do(http.MethodGet, "/api/reports/search?startDate=2024-01-09T00:00:00%2B08:00", "")
 	if !contains(rec.Body.String(), `"reports":[]`) {
 		t.Fatalf("body = %s, want the report excluded", rec.Body.String())
+	}
+}
+
+// 折键取请求偏移的墙钟日，而不是 UTC 投影日：半时区与跨年边界都不能把键
+// 挪到相邻一天。报告键与该墙钟日相同，只有折键精确命中时才会保留。
+func TestSearchDateKeyFoldingMatrix(t *testing.T) {
+	h := newHarness(t)
+	cases := []struct {
+		name  string
+		input string
+		key   string
+	}{
+		{"half-hour offset keeps the wall-clock day", "2026-03-10T00:00:00+05:30", "2026-03-10"},
+		{"cross-year wall clock beats the UTC projection", "2026-01-01T00:00:00+05:30", "2026-01-01"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			title := "folded-" + tc.key
+			h.seedReport(title, "", tc.key, tc.key, 1700000000)
+			encoded := url.QueryEscape(tc.input)
+			rec := h.do(http.MethodGet,
+				"/api/reports/search?startDate="+encoded+"&endDate="+encoded, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", rec.Code, rec.Body.String())
+			}
+			if !contains(rec.Body.String(), title) {
+				t.Fatalf("body = %s, want %q included for key %s", rec.Body.String(), title, tc.key)
+			}
+		})
 	}
 }
 

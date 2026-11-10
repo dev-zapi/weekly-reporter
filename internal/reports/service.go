@@ -74,8 +74,7 @@ type WeekBounds struct {
 
 // ParseWeekBounds 复刻 parseWeekBoundary(weekStart, false) / (weekEnd, true)，
 // 日界落在请求偏移上。startLocation / endLocation 来自两个入参各自的偏移；
-// 缺失偏移的调用方（regenerate-source 只有存储的 date-only 周期键）传 nil，
-// 退回进程本地时区以保持迁移前的行为。
+// regenerate-source 没有创建偏移可依，显式传 UTC（见 RegenerateSourceDrafts）。
 func ParseWeekBounds(weekStart, weekEnd string, startLocation, endLocation *time.Location) (start, end WeekBounds) {
 	start = dayBoundary(weekStart, false, startLocation)
 	end = dayBoundary(weekEnd, true, endLocation)
@@ -411,9 +410,12 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 		return nil, err
 	}
 
-	// 存储里只有 date-only 周期键，regenerate 请求没有可用的客户端偏移；沿用
-	// 迁移前的进程本地日界，保持既有报告的重算结果不变。
-	events, scopes, err := collectSourceDraftInputs(ctx, queries, report.WeekStart, report.WeekEnd, time.Local, time.Local)
+	// 存储里只有 date-only 周期键，regenerate 请求没有可用的创建偏移。按 UTC
+	// 折算重算窗口：至少跨部署确定、可测——用进程本地时区只在「服务器时区恰好
+	// 等于用户时区」时才对，UTC 容器里本来就是漂的。这是 #135「服务器时区退出
+	// 用户语义」下的已知限制；完整修复需要持久化创建偏移（超出本套票的无迁移
+	// 约束），该限制由 ADR-0032（#141）记录。
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, report.WeekStart, report.WeekEnd, time.UTC, time.UTC)
 	if err != nil {
 		return nil, err
 	}
