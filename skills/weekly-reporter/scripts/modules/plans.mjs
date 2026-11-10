@@ -12,7 +12,7 @@
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
-import { formatInstant, localDateToUtcMillis } from '../lib/time.mjs'
+import { formatInstant, localDateToOffsetInstant } from '../lib/time.mjs'
 
 // ---------------------------------------------------------------------------
 // Shared validation (ported from the pre-merge plans client).
@@ -51,14 +51,14 @@ function requireScope(value) {
 }
 
 function requireDate(value, flag) {
-  if (!value || !DATE_RE.test(value) || localDateToUtcMillis(value) === null) {
+  if (!value || !DATE_RE.test(value) || localDateToOffsetInstant(value) === null) {
     fail(`invalid ${flag}`, `expected a YYYY-MM-DD date, got '${value ?? ''}'`)
   }
   return value
 }
 
 function requireMonth(value) {
-  if (!value || !MONTH_RE.test(value) || localDateToUtcMillis(`${value}-01`) === null) {
+  if (!value || !MONTH_RE.test(value) || localDateToOffsetInstant(`${value}-01`) === null) {
     fail('invalid --month', `expected a YYYY-MM value, got '${value ?? ''}'`)
   }
   return value
@@ -71,14 +71,12 @@ function requireMonth(value) {
  * request's own offset, so a Z form would shift the day for east-of-UTC users.
  */
 function dateInstant(dateString) {
-  const millis = localDateToUtcMillis(dateString)
-  return millis === null ? null : formatInstant(new Date(millis))
+  return localDateToOffsetInstant(dateString)
 }
 
 /** A validated `yyyy-MM` → the month-start midnight instant in the system zone. */
 function monthInstant(monthKey) {
-  const millis = localDateToUtcMillis(`${monthKey}-01`)
-  return millis === null ? null : formatInstant(new Date(millis))
+  return localDateToOffsetInstant(`${monthKey}-01`)
 }
 
 function requireProjectScope(value) {
