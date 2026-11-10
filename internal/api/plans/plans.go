@@ -16,6 +16,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // Deps 是本域路由的数据依赖。
@@ -208,18 +209,18 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 			case dateParam != "":
 				date, ok := parseOffsetInstant(dateParam)
 				if !ok {
-					invalidInstantParam(w, "date", "INVALID_DATE")
+					wiretime.InvalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				periodStart, periodEnd = weekPeriodRange(date)
 			case weekStart != "" && weekEnd != "":
 				startInstant, startOK := parseOffsetInstant(weekStart)
 				if !startOK {
-					invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					wiretime.InvalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
 					return
 				}
 				if _, endOK := parseOffsetInstant(weekEnd); !endOK {
-					invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
+					wiretime.InvalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 以 weekStart 归一到周一开头的规范周，不信任原始成对区间：
@@ -234,14 +235,14 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 			case month != "":
 				instant, ok := parseOffsetInstant(month)
 				if !ok {
-					invalidInstantParam(w, "month", "INVALID_MONTH")
+					wiretime.InvalidInstantParam(w, "month", "INVALID_MONTH")
 					return
 				}
 				_, periodStart, periodEnd = monthPeriodRange(instant)
 			case dateParam != "":
 				date, ok := parseOffsetInstant(dateParam)
 				if !ok {
-					invalidInstantParam(w, "date", "INVALID_DATE")
+					wiretime.InvalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				_, periodStart, periodEnd = monthPeriodRange(date)

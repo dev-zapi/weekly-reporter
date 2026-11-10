@@ -112,6 +112,52 @@ func TestPlansWeekRejectsDateOnly(t *testing.T) {
 	assertInvalidInstant(t, body, "date", "INVALID_DATE")
 }
 
+// +08 / +0800 are malformed RFC3339 offsets (±HH:MM is required). They must be
+// rejected by the shared wiretime parser rather than silently interpreted.
+func TestPlansRejectsMalformedOffsets(t *testing.T) {
+	h := newHarness(t)
+	cases := []struct {
+		name  string
+		query string
+		field string
+		code  string
+	}{
+		{
+			name:  "short offset on date",
+			query: "/api/plans?scope=week&date=" + q("2026-11-03T00:00:00+08"),
+			field: "date",
+			code:  "INVALID_DATE",
+		},
+		{
+			name:  "compact offset on date",
+			query: "/api/plans?scope=week&date=" + q("2026-11-03T00:00:00+0800"),
+			field: "date",
+			code:  "INVALID_DATE",
+		},
+		{
+			name:  "short offset on weekStart",
+			query: "/api/plans?scope=week&weekStart=" + q("2026-11-02T00:00:00+08") + "&weekEnd=" + q(wireDate("2026-11-08")),
+			field: "weekStart",
+			code:  "INVALID_WEEK_START",
+		},
+		{
+			name:  "compact offset on weekStart",
+			query: "/api/plans?scope=week&weekStart=" + q("2026-11-02T00:00:00+0800") + "&weekEnd=" + q(wireDate("2026-11-08")),
+			field: "weekStart",
+			code:  "INVALID_WEEK_START",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			status, body := decode(t, h.do(http.MethodGet, tc.query, "", testPassword))
+			if status != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %v", status, body)
+			}
+			assertInvalidInstant(t, body, tc.field, tc.code)
+		})
+	}
+}
+
 func TestPlansWeekRejectsTodayLiteral(t *testing.T) {
 	h := newHarness(t)
 

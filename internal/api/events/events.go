@@ -20,6 +20,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // Deps 是本域路由的数据依赖。
@@ -150,7 +151,7 @@ func listHandler(deps Deps) http.HandlerFunc {
 			var ok bool
 			weekStart, ok = parseWindowInstant(weekStartRaw)
 			if !ok {
-				invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+				wiretime.InvalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
 				return
 			}
 		}
@@ -158,7 +159,7 @@ func listHandler(deps Deps) http.HandlerFunc {
 			var ok bool
 			weekEnd, ok = parseWindowInstant(weekEndRaw)
 			if !ok {
-				invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
+				wiretime.InvalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 				return
 			}
 		}
@@ -166,7 +167,7 @@ func listHandler(deps Deps) http.HandlerFunc {
 			var ok bool
 			dateInstant, ok = parseWindowInstant(dateRaw)
 			if !ok {
-				invalidInstantParam(w, "date", "INVALID_DATE")
+				wiretime.InvalidInstantParam(w, "date", "INVALID_DATE")
 				return
 			}
 		}
@@ -513,27 +514,14 @@ func splitComma(s string) []string {
 	return append(parts, s[start:])
 }
 
-// instantExample 是错误信息里给出的合法 wire 形态示例（保留客户端偏移）。
-const instantExample = "2026-11-03T00:00:00+08:00"
-
-// parseWindowInstant 解析日期/窗口参数：只接受 RFC3339 带偏移时刻。
-// date-only（任何没有偏移的形态）都会被拒绝，不再回落到服务器本地时区。
+// parseWindowInstant 是 wiretime.ParseOffsetInstant 的薄适配：RFC3339 的解析
+// 与拒绝清单只有 wiretime 一份实现，这里只取出绝对时刻交给窗口取整。
 func parseWindowInstant(raw string) (time.Time, bool) {
-	parsed, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
+	parsed, ok := wiretime.ParseOffsetInstant(raw)
+	if !ok {
 		return time.Time{}, false
 	}
-	return parsed, true
-}
-
-// invalidInstantParam 写 400：date-only 等非法形态必须看到期望格式示例。
-func invalidInstantParam(w http.ResponseWriter, name, code string) {
-	respond.Error(
-		w,
-		http.StatusBadRequest,
-		"Invalid "+name+": expected an RFC3339 timestamp with an explicit offset, e.g. "+instantExample,
-		code,
-	)
+	return parsed.Instant, true
 }
 
 // calendarDayWindow 把入参按它自带的偏移取整到日历日，返回该日 00:00（含）与

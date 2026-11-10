@@ -81,20 +81,18 @@ func cleanTextFilter(value *string, field string) (*string, *ReportListToolResul
 	return &normalized, nil
 }
 
-// dateFilterFormatMessage 与 reports HTTP 搜索的 400 文案同源：日期参数是
-// RFC3339 带偏移时刻，date-only / naive datetime / 裸 yyyy-MM 都被拒绝。
-const dateFilterFormatMessage = "must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"
-
 // cleanDateFilter 复刻 ts 的 cleanDate(value, field)，但 wire 契约已切到
 // RFC3339 带偏移（issue #135/#140）：合法参数复用 HTTP 搜索同一条
 // wiretime.ParseOffsetInstant 折算成 date-only 周期键，后续过滤仍是字符串比较。
+// 非法形态的错误文案引用 wiretime.DateFilterFormatMessage——与 HTTP 家族的
+// 400 共用同一示例，不再是各写一份的字面量。
 func cleanDateFilter(value *string, field string) (*string, *ReportListToolResult) {
 	if value == nil {
 		return nil, nil
 	}
 	parsed, ok := wiretime.ParseOffsetInstant(*value)
 	if !ok {
-		result := invalid(field + " " + dateFilterFormatMessage)
+		result := invalid(field + " " + wiretime.DateFilterFormatMessage)
 		return nil, &result
 	}
 	key := parsed.Key

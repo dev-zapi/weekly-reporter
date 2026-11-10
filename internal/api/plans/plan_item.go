@@ -10,6 +10,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件是 POST/GET/PUT/DELETE /api/plan-items/{id} 与 POST /api/plan-items 的
@@ -108,12 +109,12 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 				weekEnd, weekEndIsString := asString(rawWeekEnd)
 				startInstant, startOK := parseOffsetInstant(weekStart)
 				if !weekStartIsString || !startOK {
-					invalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					wiretime.InvalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
 					return
 				}
 				endInstant, endOK := parseOffsetInstant(weekEnd)
 				if !weekEndIsString || !endOK {
-					invalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
+					wiretime.InvalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 与 plans 的 GET 不同：这里不归一化到周一，直接采信入参区间。
@@ -128,7 +129,7 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 				month, isString := asString(rawMonth)
 				instant, ok := parseOffsetInstant(month)
 				if !isString || !ok {
-					invalidInstantParam(w, "month", "INVALID_MONTH")
+					wiretime.InvalidInstantParam(w, "month", "INVALID_MONTH")
 					return
 				}
 				var key string
