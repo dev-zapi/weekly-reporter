@@ -69,15 +69,15 @@ describe('wrp plans comments list', () => {
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], {
       stub: server,
-      env: { WEEKLY_REPORTER_PAT: 'wrp_test_token' },
+      env: { WEEKLY_REPORTER_PAT: 'wrp_test_token', TZ: 'UTC' },
     })
 
     expect(result.code).toBe(0)
     expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13 09:00 UTC] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
+      '#7 [%9] [2026-10-13T09:00:00+00:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
     )
     expect(result.stdout).toContain(
-      '#8 [%12] [2026-10-20 09:00 UTC] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up',
+      '#8 [%12] [2026-10-20T09:00:00+00:00] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up',
     )
     expect(result.stdout).toContain('— 2 comment(s)')
     expect(server.requests).toHaveLength(1)
@@ -85,6 +85,24 @@ describe('wrp plans comments list', () => {
     expect(server.requests[0].url).toBe('/api/plan-items/12/comments')
     expect(server.requests[0].headers.authorization).toBe('Bearer wrp_test_token')
     expect(server.requests[0].headers['x-weekly-reporter-agent']).toMatch(/^weekly-reporter\//)
+  })
+
+  it('renders comment times in the system zone, without the old UTC suffix', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: { commentCount: 1, comments: [chainComment()] },
+    }))
+
+    const result = await runWrp(['plans', 'comments', 'list', '12'], {
+      stub: server,
+      env: { TZ: 'Asia/Shanghai' },
+    })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain(
+      '#7 [%9] [2026-10-13T17:00:00+08:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
+    )
+    expect(result.stdout).not.toContain(' UTC]')
   })
 
   it('prints an explicit empty state', async () => {

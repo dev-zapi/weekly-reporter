@@ -19,6 +19,7 @@ import { readFile } from 'node:fs/promises'
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { block, emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
+import { formatInstant } from '../lib/time.mjs'
 
 const NAME_MAX = 100
 const DESCRIPTION_MAX = 200
@@ -385,11 +386,10 @@ function printMeta(template) {
   }
 }
 
+/** ISO instant → `2026-10-01T16:00:00+08:00` in the system zone. */
 function formatDate(value) {
   if (value == null) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '')
+  return formatInstant(value) ?? String(value)
 }
 
 /** First line of a body, trimmed for one-line listings. */

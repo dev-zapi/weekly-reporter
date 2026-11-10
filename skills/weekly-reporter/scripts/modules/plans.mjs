@@ -12,6 +12,7 @@
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
+import { formatInstant } from '../lib/time.mjs'
 
 // ---------------------------------------------------------------------------
 // Shared validation (ported from the pre-merge plans client).
@@ -113,11 +114,9 @@ function authorLabel(author) {
   return author ?? 'user'
 }
 
-/** ISO timestamp → `YYYY-MM-DD HH:mm UTC`; unparseable values pass through. */
+/** ISO timestamp → `2026-10-13T17:00:00+08:00` in the system zone. */
 function formatCommentTime(createdAt) {
-  const date = new Date(createdAt)
-  if (Number.isNaN(date.getTime())) return String(createdAt ?? '')
-  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+  return formatInstant(createdAt) ?? String(createdAt ?? '')
 }
 
 // ---------------------------------------------------------------------------

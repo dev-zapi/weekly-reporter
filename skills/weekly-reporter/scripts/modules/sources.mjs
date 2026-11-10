@@ -14,6 +14,7 @@ import { api, json } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
+import { formatInstant } from '../lib/time.mjs'
 
 /** `sources lookup` found nothing: the flow branches on this without parsing text. */
 const LOOKUP_NOT_FOUND_EXIT = 3
@@ -36,12 +37,10 @@ function usageOf(command) {
   return `wrp sources ${command}`
 }
 
-/** `2026-11-07T10:00:00.000Z` → `2026-11-07 10:00:00` (UTC, as before). */
+/** ISO instant → `2026-11-07T18:00:00+08:00` in the system zone. */
 export function formatDate(value) {
   if (value == null) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '')
+  return formatInstant(value) ?? String(value)
 }
 
 /** Branch config entries are strings or `{ name, lastCommitTime }` objects. */
