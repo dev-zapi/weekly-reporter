@@ -203,18 +203,30 @@ describe('wrp templates list', () => {
 describe('wrp templates show', () => {
   it('defaults to both parts: meta plus the content block', async () => {
     const server = await stub()
-    const result = await runWrp(['templates', 'show', 'user-3'], { stub: server })
+    const result = await runWrp(['templates', 'show', 'user-3'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
     expect(result.stdout).toContain('user-3')
     expect(result.stdout).toContain('[user]')
     expect(result.stdout).toContain('style: concise')
+    expect(result.stdout).toContain('created: 2026-10-01T08:00:00+00:00   updated: 2026-10-02T09:30:00+00:00')
     expect(result.stdout).toContain('description: 个人用的极简模板')
     expect(result.stdout).toContain('tags: 个人,极简')
     expect(result.stdout).toContain('cloned from official-minimal')
     expect(result.stdout).toContain('content:')
     expect(result.stdout).toContain('你是极简写作助手。')
     expect(result.stdout).toContain('只写结论，不写背景。')
+  })
+
+  it('renders created/updated in the system zone with an offset', async () => {
+    const server = await stub()
+    const result = await runWrp(['templates', 'show', 'user-3', '--part', 'meta'], {
+      stub: server,
+      env: { TZ: 'Asia/Shanghai' },
+    })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('created: 2026-10-01T16:00:00+08:00   updated: 2026-10-02T17:30:00+08:00')
   })
 
   it('--part meta is cheap and prints no content', async () => {

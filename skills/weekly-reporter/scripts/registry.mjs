@@ -102,12 +102,12 @@ export const MODULES = [
         flag('--limit', 'value', 'page size'),
         flag('--cursor', 'value', 'continue a page: <id>@<epoch-millis>'),
       ], null, events.list),
-      command('create', 'events', 'Create an event', 'wrp events create <content> [--time <iso>]', [
-        flag('--time', 'value', 'event time (ISO 8601)'),
+      command('create', 'events', 'Create an event', 'wrp events create <content> [--time <iso-with-offset>]', [
+        flag('--time', 'value', 'event time (ISO 8601, with Z or ±HH:MM)'),
       ], null, events.create),
       command('update', 'events', 'Update an event', 'wrp events update <id> [--content] [--time] [--important]', [
         flag('--content', 'value', 'new single-line content'),
-        flag('--time', 'value', 'new event time (ISO 8601)'),
+        flag('--time', 'value', 'new event time (ISO 8601, with Z or ±HH:MM)'),
         flag('--important', 'value', 'true | false'),
       ], null, events.update),
       command('delete', 'events', 'Delete a manual event (auto-collected ones are refused)', 'wrp events delete <id>', [], null, events.deleteEvent),

@@ -20,6 +20,7 @@ import { api } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { block, emptyState, feedback, listFooter, listLine, preview as previewPlan } from '../lib/output.mjs'
+import { formatInstant } from '../lib/time.mjs'
 
 const VARIANTS = ['leadership', 'personal']
 
@@ -64,11 +65,10 @@ function requireVariant(raw) {
   return raw
 }
 
+/** ISO instant → `2026-02-15T18:00:00+08:00` in the system zone. */
 function formatDate(value) {
   if (value == null) return '?'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return date.toISOString().replace('T', ' ').replace(/\.\d+Z$/, '')
+  return formatInstant(value) ?? String(value)
 }
 
 /** `[leadership:current] [personal:none]` metadata, one entry per variant. */

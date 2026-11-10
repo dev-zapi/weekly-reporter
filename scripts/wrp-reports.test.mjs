@@ -176,12 +176,13 @@ describe('wrp reports show', () => {
   it('prints metadata and per-variant sizes only, by default', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
-    const result = await runWrp(['reports', 'show', '12'], { stub: server })
+    const result = await runWrp(['reports', 'show', '12'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/reports/12')
     const lines = result.stdout.split('\n')
     expect(lines[0]).toBe('#12 [2026-02-09~2026-02-15] 第 7 周周报')
+    expect(result.stdout).toContain('updated: 2026-02-15T10:00:00+00:00')
     expect(result.stdout).toContain('snapshots: 3 event(s)')
     expect(result.stdout).toContain('final: current')
     expect(result.stdout).toContain('template: 周报模板   style: concise   sourceRevision: 4')
@@ -189,6 +190,17 @@ describe('wrp reports show', () => {
     // Law 5: no multi-line payload escapes without an explicit --part.
     expect(result.stdout).not.toContain('Nexus 上线')
     expect(result.stdout).not.toContain('交付 Nexus')
+  })
+
+  it('renders the updated timestamp in the system zone with an offset', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '12'], { stub: server, env: { TZ: 'Asia/Shanghai' } })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('updated: 2026-02-15T18:00:00+08:00')
+    // The period key stays date-only; only the instant carries an offset.
+    expect(result.stdout).toContain('#12 [2026-02-09~2026-02-15]')
   })
 
   it('prints one variant draft under --variant --part draft', async () => {

@@ -25,7 +25,8 @@ afterEach(async () => {
 const PAT = 'wrp_test_token'
 
 function run(args, server, env = {}) {
-  return runWrp(args, { stub: server, env: { WEEKLY_REPORTER_PAT: PAT, ...env } })
+  // Pin the zone so output assertions never depend on the host machine's TZ.
+  return runWrp(args, { stub: server, env: { WEEKLY_REPORTER_PAT: PAT, TZ: 'UTC', ...env } })
 }
 
 /** Query parameters of one received request, as a plain object. */
@@ -109,10 +110,26 @@ describe('wrp events list', () => {
 
     expect(result.code).toBe(0)
     expect(result.stdout.split('\n').filter(Boolean)).toEqual([
-      '#6991 [2026-11-09 14:02] [manual] fixed login timeout and added regression tests #工作 #个人',
-      '#6992 [2026-11-09 15:30] [auto] ★ chore: cutover to the Go single binary',
+      '#6991 [2026-11-09T14:02:00+00:00] [manual] fixed login timeout and added regression tests #工作 #个人',
+      '#6992 [2026-11-09T15:30:00+00:00] [auto] ★ chore: cutover to the Go single binary',
       '— 2 event(s)',
     ])
+  })
+
+  it('renders event times in the system zone with an explicit offset', async () => {
+    const server = await stub(() => ({
+      status: 200,
+      body: { events: [event()], hasMore: false },
+    }))
+
+    const result = await run(['events', 'list', '--date', '2026-11-09'], server, {
+      TZ: 'Asia/Shanghai',
+    })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain(
+      '#6991 [2026-11-09T22:02:00+08:00] [manual] fixed login timeout and added regression tests #工作 #个人',
+    )
   })
 
   it('appends the cursor hint when more pages exist', async () => {
@@ -192,7 +209,7 @@ describe('wrp events create', () => {
     expect(JSON.parse(server.requests[0].body)).toEqual({ content: 'fix login timeout #工作' })
   })
 
-  it('honours --time by sending eventTime', async () => {
+  it('normalizes --time to a UTC instant on the wire', async () => {
     const server = await stub(() => ({ status: 200, body: event({ id: 7002 }) }))
 
     const result = await run(
@@ -204,8 +221,55 @@ describe('wrp events create', () => {
     expect(result.stdout).toBe('✓ event created: #7002\n')
     expect(JSON.parse(server.requests[0].body)).toEqual({
       content: 'wrote the ADR',
-      eventTime: '2026-11-08T09:30:00+08:00',
+      eventTime: '2026-11-08T01:30:00.000Z',
     })
+  })
+
+  it('normalizes a Z timestamp to the canonical UTC instant', async () => {
+    const server = await stub(() => ({ status: 200, body: event({ id: 7003 }) }))
+
+    const result = await run(
+      ['events', 'create', 'wrote the ADR', '--time', '2026-11-08T01:30:00Z'],
+      server,
+    )
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(server.requests[0].body)).toEqual({
+      content: 'wrote the ADR',
+      eventTime: '2026-11-08T01:30:00.000Z',
+    })
+  })
+
+  it('rejects a naive --time with the system zone and a fix example', async () => {
+    const server = await stub()
+
+    const result = await run(
+      ['events', 'create', 'wrote the ADR', '--time', '2026-11-10T09:00'],
+      server,
+      { TZ: 'Asia/Shanghai' },
+    )
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ invalid --time: 2026-11-10T09:00')
+    expect(result.stderr).toContain('Asia/Shanghai')
+    expect(result.stderr).toContain('2026-11-10T09:00:00+08:00')
+    expect(result.stderr).toContain('2026-11-10T09:00:00Z')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('rejects an impossible calendar date instead of rolling it over', async () => {
+    const server = await stub()
+
+    const result = await run(
+      ['events', 'create', 'wrote the ADR', '--time', '2026-11-31T09:00:00Z'],
+      server,
+    )
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ invalid --time: 2026-11-31T09:00:00Z')
+    expect(server.requests).toHaveLength(0)
   })
 
   it('requires content and never calls the API without it', async () => {
@@ -262,6 +326,20 @@ describe('wrp events update', () => {
     })
   })
 
+  it('normalizes an offset --time to UTC on update too', async () => {
+    const server = await stub(() => ({ status: 200, body: event() }))
+
+    const result = await run(
+      ['events', 'update', '6991', '--time', '2026-11-08T09:30:00+08:00'],
+      server,
+    )
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(server.requests[0].body)).toEqual({
+      eventTime: '2026-11-08T01:30:00.000Z',
+    })
+  })
+
   it('sends isImportant false as a real update', async () => {
     const server = await stub(() => ({ status: 200, body: event() }))
 
@@ -291,6 +369,22 @@ describe('wrp events update', () => {
     expect(errorLines(result.stderr)).toHaveLength(1)
     expect(result.stderr).toContain("✗ invalid --important: yes")
     expect(result.stderr).toContain('true|false')
+    expect(server.requests).toHaveLength(0)
+  })
+
+  it('rejects a naive --time before calling the API', async () => {
+    const server = await stub()
+
+    const result = await run(
+      ['events', 'update', '6991', '--time', '2026-11-10T09:00'],
+      server,
+      { TZ: 'Asia/Shanghai' },
+    )
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ invalid --time: 2026-11-10T09:00')
+    expect(result.stderr).toContain('Asia/Shanghai')
     expect(server.requests).toHaveLength(0)
   })
 

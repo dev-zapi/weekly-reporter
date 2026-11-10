@@ -76,7 +76,7 @@ describe('wrp sources list', () => {
 
     const result = await runWrp(
       ['sources', 'list', '--name', 'acme', '--type', 'git-local', '--status', 'enabled', '--scope', 'work', '--sync', 'success'],
-      { stub: server },
+      { stub: server, env: { TZ: 'UTC' } },
     )
 
     expect(result.code).toBe(0)
@@ -92,7 +92,7 @@ describe('wrp sources list', () => {
       page: '1',
     })
     expect(result.stdout).toContain(
-      '#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00',
+      '#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00',
     )
     expect(result.stdout).toContain('— 1 source(s) (work 1 / personal 0)')
   })
@@ -153,15 +153,15 @@ describe('wrp sources list', () => {
         total: 2,
       },
     }))
-    const result = await runWrp(['sources', 'list'], { stub: server })
+    const result = await runWrp(['sources', 'list'], { stub: server, env: { TZ: 'UTC' } })
 
     // The Go server writes `failed`; the retired TS server wrote `failure`.
     // Either spelling must render the failure marker, not look healthy.
     expect(result.stdout).toContain(
-      '#4 [git-local] [work] [enabled] legacy (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00 (failed)',
+      '#4 [git-local] [work] [enabled] legacy (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00 (failed)',
     )
     expect(result.stdout).toContain(
-      '#5 [git-local] [work] [enabled] go (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00 (failed)',
+      '#5 [git-local] [work] [enabled] go (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00 (failed)',
     )
   })
 
@@ -183,19 +183,28 @@ describe('wrp sources show', () => {
         ? { status: 200, body: source() }
         : { status: 200, body: { sources: [source()], total: 1 } },
     )
-    const result = await runWrp(['sources', 'show', '7'], { stub: server })
+    const result = await runWrp(['sources', 'show', '7'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/collect/sources/7')
     expect(result.stdout).toContain('#7 acme')
     expect(result.stdout).toContain('type: git-local   scope: work   status: enabled')
-    expect(result.stdout).toContain('last sync: 2026-11-07 10:00:00 (success)')
+    expect(result.stdout).toContain('last sync: 2026-11-07T10:00:00+00:00 (success)')
     expect(result.stdout).toContain('owner: /repos/acme')
     expect(result.stdout).toContain('authorEmails (2): a@example.com, b@example.com')
     expect(result.stdout).toContain('aliases: acme-local')
-    expect(result.stdout).toContain('branch main @ cursor 2026-10-01 10:00:00')
-    expect(result.stdout).toContain('cursor main @ 2026-10-01 10:00:00')
-    expect(result.stdout).toContain('created: 2026-01-01 00:00:00   updated: 2026-11-01 00:00:00')
+    expect(result.stdout).toContain('branch main @ cursor 2026-10-01T10:00:00+00:00')
+    expect(result.stdout).toContain('cursor main @ 2026-10-01T10:00:00+00:00')
+    expect(result.stdout).toContain('created: 2026-01-01T00:00:00+00:00   updated: 2026-11-01T00:00:00+00:00')
+  })
+
+  it('renders timestamps in the system zone with an explicit offset', async () => {
+    const server = await stub(() => ({ status: 200, body: source() }))
+    const result = await runWrp(['sources', 'show', '7'], { stub: server, env: { TZ: 'Asia/Shanghai' } })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('last sync: 2026-11-07T18:00:00+08:00 (success)')
+    expect(result.stdout).toContain('created: 2026-01-01T08:00:00+08:00   updated: 2026-11-01T08:00:00+08:00')
   })
 
   it('resolves a name or alias exactly before falling back to a substring', async () => {
