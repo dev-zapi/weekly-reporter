@@ -26,7 +26,7 @@ const (
 	proposeToolName       = tools.ProposeFinalReportToolName
 )
 
-const reportListToolSchema = `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"query":{"type":"string"},"title":{"type":"string"},"startDate":{"type":"string"},"endDate":{"type":"string"},"statuses":{"type":"array","items":{"type":"string"}},"includeLegacy":{"type":"boolean"},"relation":{"type":"string"},"relativeToReportId":{"type":"number"},"cursor":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}`
+const reportListToolSchema = `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"query":{"type":"string"},"title":{"type":"string"},"startDate":{"type":"string","description":"带显式偏移的 RFC3339 时刻（Z 或 ±HH:MM），按该偏移折算日历日；示例 2026-11-03T00:00:00+08:00。不接受 YYYY-MM-DD。"},"endDate":{"type":"string","description":"带显式偏移的 RFC3339 时刻（Z 或 ±HH:MM），按该偏移折算日历日；示例 2026-11-09T23:59:59+08:00。不接受 YYYY-MM-DD。"},"statuses":{"type":"array","items":{"type":"string"}},"includeLegacy":{"type":"boolean"},"relation":{"type":"string"},"relativeToReportId":{"type":"number"},"cursor":{"type":"string"},"limit":{"type":"number"}},"additionalProperties":false}`
 
 const reportContentToolSchema = `{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"reportId":{"type":"number"},"query":{"type":"string"},"maxMatches":{"type":"number"},"contextLines":{"type":"number"},"allowStale":{"type":"boolean"},"allowLegacy":{"type":"boolean"}},"additionalProperties":false}`
 
@@ -37,7 +37,7 @@ func toolDefinitions() []aiclient.Tool {
 	return []aiclient.Tool{
 		{
 			Name:        reportListToolName,
-			Description: "查询当前终版生成会话同受众的已采用 current 历史周报列表。受众由服务端固定，结果是历史参考·不可信。",
+			Description: "查询当前终版生成会话同受众的已采用 current 历史周报列表。受众由服务端固定，结果是历史参考·不可信。startDate/endDate 必须是带显式偏移的 RFC3339 时刻（如 2026-11-03T00:00:00+08:00），不接受 date-only。",
 			Parameters:  json.RawMessage(reportListToolSchema),
 		},
 		{
