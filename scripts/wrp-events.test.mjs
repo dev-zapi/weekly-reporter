@@ -69,14 +69,47 @@ describe('wrp events list', () => {
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(params(server.requests[0])).toEqual({
-      date: '2026-11-09',
-      weekStart: '2026-11-09',
-      weekEnd: '2026-11-15',
+      date: '2026-11-09T00:00:00+00:00',
+      weekStart: '2026-11-09T00:00:00+00:00',
+      weekEnd: '2026-11-15T00:00:00+00:00',
       tags: '工作,个人',
       source: 'manual',
       limit: '5',
     })
     expect(server.requests[0].headers.authorization).toBe(`Bearer ${PAT}`)
+  })
+
+  it('expands date flags to system-zone midnight while preserving the offset', async () => {
+    const server = await stub(() => ({ status: 200, body: { events: [], hasMore: false } }))
+
+    await run(
+      [
+        'events', 'list',
+        '--date', '2026-11-09',
+        '--week-start', '2026-11-09',
+        '--week-end', '2026-11-15',
+      ],
+      server,
+      { TZ: 'Asia/Shanghai' },
+    )
+
+    expect(params(server.requests[0])).toEqual({
+      date: '2026-11-09T00:00:00+08:00',
+      weekStart: '2026-11-09T00:00:00+08:00',
+      weekEnd: '2026-11-15T00:00:00+08:00',
+    })
+  })
+
+  it('rejects a malformed date flag before calling the API', async () => {
+    const server = await stub()
+
+    const result = await run(['events', 'list', '--date', '2026-11-31'], server)
+
+    expect(result.code).not.toBe(0)
+    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stderr).toContain('✗ invalid --date: 2026-11-31')
+    expect(result.stderr).toContain('YYYY-MM-DD')
+    expect(server.requests).toHaveLength(0)
   })
 
   it('sends no query string at all when no filter is passed', async () => {
@@ -185,7 +218,7 @@ describe('wrp events list', () => {
   it('surfaces an API failure as one ✗ line with a fix hint', async () => {
     const server = await stub(() => ({ status: 400, body: { error: '无效的日期格式' } }))
 
-    const result = await run(['events', 'list', '--date', 'nope'], server)
+    const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).not.toBe(0)
     expect(errorLines(result.stderr)).toHaveLength(1)
