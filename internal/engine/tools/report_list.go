@@ -17,6 +17,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsdate"
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件移植 src/lib/generation/report-list-tool.ts（query_report_list）。
@@ -80,20 +81,22 @@ func cleanTextFilter(value *string, field string) (*string, *ReportListToolResul
 	return &normalized, nil
 }
 
-// cleanDateFilter 复刻 ts 的 cleanDate(value, field)。
+// cleanDateFilter 复刻 ts 的 cleanDate(value, field)，但 wire 契约已切到
+// RFC3339 带偏移（issue #135/#140）：合法参数复用 HTTP 搜索同一条
+// wiretime.ParseOffsetInstant 折算成 date-only 周期键，后续过滤仍是字符串比较。
+// 非法形态的错误文案引用 wiretime.DateFilterFormatMessage——与 HTTP 家族的
+// 400 共用同一示例，不再是各写一份的字面量。
 func cleanDateFilter(value *string, field string) (*string, *ReportListToolResult) {
 	if value == nil {
 		return nil, nil
 	}
-	if !isoDatePattern.MatchString(*value) {
-		result := invalid(fmt.Sprintf("%s must use YYYY-MM-DD", field))
+	parsed, ok := wiretime.ParseOffsetInstant(*value)
+	if !ok {
+		result := invalid(field + " " + wiretime.DateFilterFormatMessage)
 		return nil, &result
 	}
-	if !cleanDate(*value) {
-		result := invalid(fmt.Sprintf("%s must be a valid date", field))
-		return nil, &result
-	}
-	return value, nil
+	key := parsed.Key
+	return &key, nil
 }
 
 // cursorValue 是分页游标的 JSON 形状。字段顺序必须与

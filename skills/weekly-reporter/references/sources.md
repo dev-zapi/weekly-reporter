@@ -75,9 +75,14 @@ A numeric ID (`7` or `#7`), a display name, or an alias:
 `--sync` server-side and prints one line per source:
 
 ```
-#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07 10:00:00
+#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T18:00:00+08:00
 — 1 source(s) (work 1 / personal 0)
 ```
+
+Timestamps render in the **system time zone** as ISO 8601 with an explicit
+offset and seconds (`2026-11-07T18:00:00+08:00`); the zone comes from the OS
+setting or `TZ`, so `TZ=UTC wrp sources list …` shows the same instant as
+`2026-11-07T10:00:00+00:00`.
 
 The body carries the name (+ aliases), email count, branch mode
 (`all-branches` for a local source with no branch list, `default-branch` for a
@@ -87,7 +92,9 @@ work/personal scope breakdown after the count. Empty results print
 
 `wrp sources show <ref>` is the only place the full config, per-branch cursors
 and timestamps are printed. Multi-line output is deliberately confined to
-`show`.
+`show`. Every timestamp it prints (`last sync`, branch cursors,
+`created`/`updated`) uses the same system-zone ISO 8601 format with an explicit
+offset.
 
 ## Create
 

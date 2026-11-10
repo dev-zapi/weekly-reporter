@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
-import { formatSystemDate } from '@/lib/time-format'
+import { formatSystemDate, toBrowserOffsetInstant } from '@/lib/time-format'
 import { formatDate, getWeekRange } from '@/lib/utils'
 import styles from './new-report.module.css'
 
@@ -47,6 +47,11 @@ export default function NewReportPage() {
   const { start, end } = getWeekRange(baseDate ?? new Date(0))
   const weekStart = formatDate(start)
   const weekEnd = formatDate(end)
+  // The wire takes the browser-zone midnight with its offset; the stored period
+  // key stays date-only, so the display values above are unchanged. `end` from
+  // getWeekRange is the Sunday's 23:59:59.999, so rebuild midnight from the key.
+  const weekStartInstant = toBrowserOffsetInstant(new Date(`${weekStart}T00:00:00`))
+  const weekEndInstant = toBrowserOffsetInstant(new Date(`${weekEnd}T00:00:00`))
   const displayWeekStart = baseDate ? formatSystemDate(`${weekStart}T00:00:00`) : '—'
   const displayWeekEnd = baseDate ? formatSystemDate(`${weekEnd}T00:00:00`) : '—'
   const year = getYear(baseDate ?? new Date(0))
@@ -74,7 +79,7 @@ export default function NewReportPage() {
         const response = await apiFetch('/api/reports/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ weekStart, weekEnd }),
+          body: JSON.stringify({ weekStart: weekStartInstant, weekEnd: weekEndInstant }),
           signal: controller.signal,
         })
         const data = await response.json()
@@ -94,7 +99,7 @@ export default function NewReportPage() {
 
     void loadPreview()
     return () => controller.abort()
-  }, [baseDate, weekStart, weekEnd, previewRequestVersion])
+  }, [baseDate, weekStart, weekEnd, weekStartInstant, weekEndInstant, previewRequestVersion])
 
   function refreshPreview() {
     setPreview(null)
@@ -118,7 +123,7 @@ export default function NewReportPage() {
       const response = await apiFetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), weekStart, weekEnd }),
+        body: JSON.stringify({ title: title.trim(), weekStart: weekStartInstant, weekEnd: weekEndInstant }),
       })
       const data = await response.json()
       if (!response.ok) {

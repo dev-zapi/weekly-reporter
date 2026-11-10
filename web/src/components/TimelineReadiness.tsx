@@ -1,9 +1,10 @@
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { format } from 'date-fns'
+import { startOfDay } from 'date-fns'
 import { Activity } from 'lucide-react'
 import { getWeekPeriodRange } from '@/lib/periods'
+import { toBrowserOffsetInstant } from '@/lib/time-format'
 import styles from './timeline.module.css'
 
 type Audience = 'leadership' | 'personal'
@@ -85,8 +86,16 @@ export function TimelineReadiness({
 
   useEffect(() => {
     const controller = new AbortController()
-    const today = format(new Date(), 'yyyy-MM-dd')
-    const week = getWeekPeriodRange(new Date())
+    const now = new Date()
+    // The plans date param is an RFC3339 instant in the browser's offset.
+    const planDate = toBrowserOffsetInstant(startOfDay(now))
+    const week = getWeekPeriodRange(now)
+    // Reports search takes browser-zone midnights with an explicit offset; the
+    // query string must be encoded so `+08:00` is not decoded as a space.
+    const reportWindow = new URLSearchParams({
+      startDate: toBrowserOffsetInstant(new Date(`${week.start}T00:00:00`)),
+      endDate: toBrowserOffsetInstant(new Date(`${week.end}T00:00:00`)),
+    }).toString()
 
     async function load() {
       setLoading(true)
@@ -100,8 +109,8 @@ export function TimelineReadiness({
         Promise.resolve().then(() => apiFetch(path, { signal: controller.signal }))
 
       const [planResult, reportResult] = await Promise.allSettled([
-        request(`/api/plans?scope=week&date=${today}`),
-        request(`/api/reports/search?startDate=${week.start}&endDate=${week.end}`),
+        request(`/api/plans?scope=week&date=${encodeURIComponent(planDate)}`),
+        request(`/api/reports/search?${reportWindow}`),
       ])
 
       if (controller.signal.aborted) return

@@ -48,17 +48,33 @@ type day struct {
 }
 
 // getHandler 复刻 route.ts：
+//   - tz 是必填的 IANA 时区名（#135 决策 5）：服务器本地时区不参与分组；缺参或
+//     非法名 → 400 并附示例。tzdata 由二进制 embed（cmd/wr）；
 //   - days 来自 parseInt，假值（NaN / 0 / 空串）回退 365，上限 clamp 到 730，
 //     负数照抄（cutoff 被推到未来）；
-//   - cutoff 走本地日历减天数（setDate 语义），按 floor(ms/1000) 折成 Unix 秒；
-//   - 聚合键是本地时区的 YYYY-MM-DD，只输出有事件的日子（不补零）；
+//   - cutoff 走请求时区的日历减天数（setDate 语义），按 floor(ms/1000) 折成 Unix 秒；
+//   - 聚合键是请求时区的 YYYY-MM-DD，只输出有事件的日子（不补零）；
 //   - 按 date 字符串降序；空结果是 [] 而不是 null；
 //   - 500 走 {error, code:'FETCH_ERROR'}。
 func getHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		timeZone := r.URL.Query().Get("tz")
+		// "Local" is Go's alias for the process zone, not an IANA name; accepting
+		// it would put the server's own time zone back into user-visible semantics.
+		loc, err := time.LoadLocation(timeZone)
+		if timeZone == "" || timeZone == "Local" || err != nil {
+			respond.Error(
+				w,
+				http.StatusBadRequest,
+				"Invalid tz: expected an IANA time zone name, e.g. Asia/Shanghai",
+				"INVALID_TZ",
+			)
+			return
+		}
+
 		days := parseDays(r.URL.Query().Get("days"))
 
-		cutoff, ok := cutoffSeconds(time.Now(), days)
+		cutoff, ok := cutoffSeconds(time.Now(), days, loc)
 		var times []int64
 		if ok {
 			var err error
@@ -72,7 +88,7 @@ func getHandler(deps Deps) http.HandlerFunc {
 
 		counts := make(map[string]int64, len(times))
 		for _, sec := range times {
-			counts[dayKey(sec)]++
+			counts[dayKey(sec, loc)]++
 		}
 
 		// 空结果必须是 [] 而不是 null（客户端直接对 data 做数组操作）。
@@ -115,21 +131,22 @@ func parseDays(raw string) int64 {
 //	const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - days)
 //	where(gte(rawEvents.eventTime, cutoff))
 //
-// setDate 保留时分秒、只移动日历日（本地时区、DST 正确），折成绑定值时 drizzle 的
-// timestamp 映射是 Math.floor(ms / 1e3)。ok=false 表示 JS 侧是 Invalid Date
-// （超出 ±8.64e15 ms）：NaN 绑进 SQLite 后 `event_time >= NaN` 恒不成立，即零行。
-func cutoffSeconds(now time.Time, days int64) (int64, bool) {
+// setDate 保留时分秒、只移动日历日（在请求时区里，DST 正确），折成绑定值时
+// drizzle 的 timestamp 映射是 Math.floor(ms / 1e3)。ok=false 表示 JS 侧是
+// Invalid Date（超出 ±8.64e15 ms）：NaN 绑进 SQLite 后 `event_time >= NaN`
+// 恒不成立，即零行。
+func cutoffSeconds(now time.Time, days int64, loc *time.Location) (int64, bool) {
 	// 先挡掉会把日历运算撑爆的量级：JS Date 只表示 ±1e8 天，越界即 Invalid Date。
 	if days > jsMaxDays || days < -jsMaxDays {
 		return 0, false
 	}
 
-	local := now.Local()
+	local := now.In(loc)
 	year, month, dayOfMonth := local.Date()
 	cutoff := time.Date(
 		year, month, dayOfMonth-int(days),
 		local.Hour(), local.Minute(), local.Second(), local.Nanosecond(),
-		time.Local,
+		loc,
 	)
 
 	// 落回 wall clock 之后仍可能越界（now 本身靠近期边界），按同一 Invalid Date 处理。
@@ -148,12 +165,12 @@ func cutoffSeconds(now time.Time, days int64) (int64, bool) {
 }
 
 // dayKey 复刻聚合键 `${getFullYear()}-${pad(getMonth()+1)}-${pad(getDate())}`：
-// 事件时刻按进程本地时区落到日历日（与 Node 进程的本地时区同源）。
+// 事件时刻按请求时区（tz 参数）落到日历日，服务器本地时区不参与。
 //
 // 年月日分别手写而不是用 Go 的 "2006-01-02"：JS 的 getFullYear() 不补零（公元
 // 1000 年以前是 "999"，不是 "0999"），只有月和日走 padStart(2,'0')。
-func dayKey(unixSeconds int64) string {
-	t := time.Unix(unixSeconds, 0).Local()
+func dayKey(unixSeconds int64, loc *time.Location) string {
+	t := time.Unix(unixSeconds, 0).In(loc)
 	year, month, dayOfMonth := t.Date()
 	return strconv.Itoa(year) + "-" + pad2(int(month)) + "-" + pad2(dayOfMonth)
 }

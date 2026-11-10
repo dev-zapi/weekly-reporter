@@ -188,14 +188,18 @@ wrp plans comments list <item-id>
 
 List the item's own comments **plus its deferral-chain ancestors' comments**,
 oldest-first (the API aggregates them; `createdAt`, then id). Each line carries
-the comment id, the item it is pinned to, UTC time, author, source-period label
-and the content:
+the comment id, the item it is pinned to, a system-zone time with an explicit
+offset, author, source-period label and the content:
 
 ```
-#7 [%9] [2026-10-13 09:00 UTC] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker
-#8 [%12] [2026-10-20 09:00 UTC] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up
+#7 [%9] [2026-10-13T17:00:00+08:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker
+#8 [%12] [2026-10-20T17:00:00+08:00] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up
 — 2 comment(s)
 ```
+
+Times render in the **system time zone** as ISO 8601 with an explicit offset and
+seconds; `TZ` overrides the zone. The old ` UTC` suffix is gone. The period
+labels stay date-only (`Week 2026-10-12 - 2026-10-18`).
 
 The `%<itemId>` on a line is the item the comment is **pinned to**, which is not
 necessarily the item you queried — that pair is what `comments delete` needs.

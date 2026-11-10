@@ -11,13 +11,14 @@
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
+import { detectSystemTimeZone, formatInstant, localDateToOffsetInstant, naiveInstantWithOffset, parseStrictInstant } from '../lib/time.mjs'
 
 const USAGE = {
   list:
     'wrp events list [--date <YYYY-MM-DD>] [--week-start <YYYY-MM-DD>] [--week-end <YYYY-MM-DD>] ' +
     '[--tags <tag1,tag2>] [--source <manual|auto>] [--limit <n>] [--cursor <id>@<millis>]',
-  create: 'wrp events create "<content>" [--time <ISO8601>]',
-  update: 'wrp events update <id> [--content <text>] [--time <ISO8601>] [--important <true|false>]',
+  create: 'wrp events create "<content>" [--time <ISO8601-with-offset>]',
+  update: 'wrp events update <id> [--content <text>] [--time <ISO8601-with-offset>] [--important <true|false>]',
   delete: 'wrp events delete <id>',
 }
 
@@ -36,20 +37,64 @@ function parseEventId(value, usage) {
   return Number(value)
 }
 
-/** `2026-11-09T14:02:00.000Z` → `2026-11-09 14:02` (UTC, like the old scripts). */
+/** ISO instant → `2026-11-09T22:02:00+08:00` in the system zone. */
 function formatEventTime(value) {
-  if (!value) return '?'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '?'
-  return date.toISOString().slice(0, 16).replace('T', ' ')
+  return formatInstant(value) ?? '?'
+}
+
+/**
+ * A `--time` the wire can carry: an absolute instant, so `Z` or `±HH:MM` is
+ * mandatory. A naive timestamp is refused with the detected zone and a
+ * copy-pasteable fix instead of being reinterpreted server-side. A valid input
+ * is normalized to UTC, the one shape the client ever sends.
+ */
+function requireInstant(value, flag) {
+  const parsed = parseStrictInstant(value)
+  if (parsed.ok) return new Date(parsed.epochMillis).toISOString()
+
+  const timeZone = detectSystemTimeZone()
+  if (parsed.reason === 'missing-offset') {
+    const localExample = naiveInstantWithOffset(value, timeZone)
+    const zuluExample = localExample ? `${localExample.slice(0, 19)}Z` : `${value}Z`
+    fail(
+      `invalid ${flag}: ${value}`,
+      `no UTC offset — the system time zone is ${timeZone}`,
+      `add an offset, e.g. ${localExample ?? '2026-11-10T09:00:00+08:00'} or ${zuluExample}`,
+    )
+  }
+  const localExample =
+    naiveInstantWithOffset('2026-11-10T09:00:00', timeZone) ?? '2026-11-10T09:00:00+00:00'
+  fail(
+    `invalid ${flag}: ${value}`,
+    `not a valid ISO 8601 instant (system time zone: ${timeZone})`,
+    `pass e.g. ${localExample} or ${localExample.slice(0, 19)}Z`,
+  )
+}
+
+/**
+ * A `--date`/`--week-start`/`--week-end` the wire can carry. The CLI still
+ * accepts `YYYY-MM-DD`; it expands to midnight in the system zone and keeps
+ * that offset on the wire, so the server rounds the calendar day by the
+ * client's calendar (not UTC and not the server's zone).
+ */
+function requireLocalDate(value, flag) {
+  const instant = localDateToOffsetInstant(value)
+  if (instant === null) {
+    fail(
+      `invalid ${flag}: ${value}`,
+      '',
+      `pass a calendar date as YYYY-MM-DD, e.g. ${flag} 2026-11-09`,
+    )
+  }
+  return instant
 }
 
 /** `wrp events list` — filters first, id-first lines and the count footer after. */
 export async function list({ flags }) {
   const params = new URLSearchParams()
-  if (flags.date !== undefined) params.set('date', flags.date)
-  if (flags.weekStart !== undefined) params.set('weekStart', flags.weekStart)
-  if (flags.weekEnd !== undefined) params.set('weekEnd', flags.weekEnd)
+  if (flags.date !== undefined) params.set('date', requireLocalDate(flags.date, '--date'))
+  if (flags.weekStart !== undefined) params.set('weekStart', requireLocalDate(flags.weekStart, '--week-start'))
+  if (flags.weekEnd !== undefined) params.set('weekEnd', requireLocalDate(flags.weekEnd, '--week-end'))
   if (flags.tags !== undefined) params.set('tags', flags.tags)
   if (flags.source !== undefined) params.set('source', flags.source)
   if (flags.limit !== undefined) params.set('limit', flags.limit)
@@ -113,7 +158,8 @@ export async function create({ positional, flags }) {
   }
 
   // Verbatim port: only eventTime is conditional; content is the source of truth.
-  const payload = flags.time ? { content, eventTime: flags.time } : { content }
+  const eventTime = flags.time === undefined ? undefined : requireInstant(flags.time, '--time')
+  const payload = eventTime === undefined ? { content } : { content, eventTime }
   const { status, body } = await api('/api/events', json('POST', payload))
 
   if (status === 200 || status === 201) {
@@ -138,7 +184,7 @@ export async function update({ positional, flags }) {
   // would only earn the API's 400 after a pointless round-trip.
   if (flags.time !== undefined) {
     if (flags.time.trim() === '') fail('missing value for --time', '', `usage: ${USAGE.update}`)
-    payload.eventTime = flags.time
+    payload.eventTime = requireInstant(flags.time, '--time')
   }
   if (flags.important !== undefined) {
     if (flags.important !== 'true' && flags.important !== 'false') {

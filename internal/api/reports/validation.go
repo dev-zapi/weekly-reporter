@@ -5,9 +5,8 @@ import (
 	"strings"
 	"time"
 
-	reportlib "github.com/dev-zapi/weekly-reporter/internal/reports"
-
 	"github.com/dev-zapi/weekly-reporter/internal/api/jsstr"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件复刻 src/lib/validations.ts 里两个报告 schema（zod v4）在 HTTP 层可观测
@@ -18,7 +17,9 @@ import (
 // issues 是不可枚举属性，message 是 JSON.stringify(issues, null, 2)）。这里逐字段
 // 复刻同一形状，issue 的键序也与 zod 一致。
 
-const datePattern = `/^\d{4}-\d{2}-\d{2}$/`
+// datePattern 是 wire 上日期/周界参数的形状（RFC3339 带偏移）。date-only 不再
+// 合法——服务器按请求自带偏移折算日历日，丢掉偏移就无法还原调用方的「那一天」。
+const datePattern = `/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/`
 
 // zodIssue 是 zod v4 issue 的 JSON 形状。字段顺序即序列化顺序：zod 对不同 code
 // 输出的键集不同，omitempty 让同一个结构体覆盖全部形态。
@@ -131,55 +132,15 @@ func customIssue(path []string, message string) zodIssue {
 	return zodIssue{Code: "custom", Path: path, Message: message}
 }
 
-const dateFormatMessage = "Date must use YYYY-MM-DD format"
+const dateFormatMessage = "Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"
 
-// isDateString 复刻 DATE_REGEX：`^\d{4}-\d{2}-\d{2}$`（JS 的 \d 是 ASCII 数字）。
-func isDateString(value string) bool {
-	if len(value) != 10 {
-		return false
-	}
-	for index := 0; index < len(value); index++ {
-		switch index {
-		case 4, 7:
-			if value[index] != '-' {
-				return false
-			}
-		default:
-			if value[index] < '0' || value[index] > '9' {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// compareWeekDates 复刻 `new Date(a) <= new Date(b)` 对 `YYYY-MM-DD` 的判定。
-//
-// ECMAScript 的 date-only 串按 UTC 解释；日历合法性规则由 jsdate 的严格解析器
-// 给出（`2026-02-30` → Invalid Date，比较恒 false）。两个串在冻结契约里都已通过
-// DATE_REGEX，因此不会出现其它形态。
-func compareWeekDates(weekStart, weekEnd string) bool {
-	start, startOK := dateOnlyMillis(weekStart)
-	end, endOK := dateOnlyMillis(weekEnd)
-	if !startOK || !endOK {
-		return false
-	}
-	return start <= end
-}
-
-// dateOnlyMillis 把合法的 `YYYY-MM-DD` 折成 UTC 毫秒；非日历日期返回 ok=false。
-func dateOnlyMillis(value string) (int64, bool) {
-	year, month, day, ok := reportlib.ParseISODate(value)
-	if !ok {
-		return 0, false
-	}
-	return time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC).UnixMilli(), true
-}
-
-// reportWeekInput 是 reportWeekSchema.parse 之后的字段值。
+// reportWeekInput 是 reportWeekSchema.parse 之后的字段值。WeekStart/WeekEnd 是
+// 周期键（date-only），Location 是请求偏移，服务层据此取整日界。
 type reportWeekInput struct {
-	WeekStart string
-	WeekEnd   string
+	WeekStart     string
+	WeekEnd       string
+	StartLocation *time.Location
+	EndLocation   *time.Location
 }
 
 // parseReportWeekBody 复刻 reportWeekSchema.parse 的成功/失败判定与 issue 列表。
@@ -191,7 +152,7 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 
 	var issues []zodIssue
 	input := reportWeekInput{}
-	values := map[string]*string{}
+	values := map[string]wiretime.OffsetInstant{}
 	for _, field := range []string{"weekStart", "weekEnd"} {
 		value, present := object[field]
 		if !present {
@@ -203,21 +164,25 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 			issues = append(issues, invalidTypeIssue([]string{field}, "string", value))
 			continue
 		}
-		if !isDateString(text) {
+		parsed, ok := wiretime.ParseOffsetInstant(text)
+		if !ok {
 			issues = append(issues, invalidFormatIssue([]string{field}, datePattern, dateFormatMessage))
 			continue
 		}
-		copied := text
-		values[field] = &copied
+		values[field] = parsed
 	}
 	if len(issues) > 0 {
 		return reportWeekInput{}, issues
 	}
 
-	input.WeekStart = *values["weekStart"]
-	input.WeekEnd = *values["weekEnd"]
-	// zod 只在基础对象校验全部通过后才跑 refine。
-	if !compareWeekDates(input.WeekStart, input.WeekEnd) {
+	start, end := values["weekStart"], values["weekEnd"]
+	input.WeekStart = start.Key
+	input.WeekEnd = end.Key
+	input.StartLocation = start.Location
+	input.EndLocation = end.Location
+	// zod 只在基础对象校验全部通过后才跑 refine。比较的是绝对时刻（旧 refine 的
+	// `new Date(a) <= new Date(b)` 语义），不是折算后的日期键。
+	if start.Instant.After(end.Instant) {
 		return reportWeekInput{}, []zodIssue{customIssue([]string{"weekEnd"}, "Start date cannot be later than end date")}
 	}
 	return input, nil
@@ -225,9 +190,11 @@ func parseReportWeekBody(body any) (reportWeekInput, []zodIssue) {
 
 // createReportInput 是 createReportSchema.parse 之后的字段值。
 type createReportInput struct {
-	Title     string
-	WeekStart string
-	WeekEnd   string
+	Title         string
+	WeekStart     string
+	WeekEnd       string
+	StartLocation *time.Location
+	EndLocation   *time.Location
 }
 
 // parseCreateReportBody 复刻 createReportSchema.parse：
@@ -244,7 +211,7 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 
 	var issues []zodIssue
 	input := createReportInput{}
-	weekValues := map[string]string{}
+	weekValues := map[string]wiretime.OffsetInstant{}
 	for _, field := range []string{"weekStart", "weekEnd"} {
 		value, present := object[field]
 		if !present {
@@ -256,11 +223,12 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 			issues = append(issues, invalidTypeIssue([]string{field}, "string", value))
 			continue
 		}
-		if !isDateString(text) {
+		parsed, ok := wiretime.ParseOffsetInstant(text)
+		if !ok {
 			issues = append(issues, invalidFormatIssue([]string{field}, datePattern, dateFormatMessage))
 			continue
 		}
-		weekValues[field] = text
+		weekValues[field] = parsed
 	}
 
 	titleValue, titlePresent := object["title"]
@@ -282,9 +250,12 @@ func parseCreateReportBody(body any) (createReportInput, []zodIssue) {
 	if len(issues) > 0 {
 		return createReportInput{}, issues
 	}
-	input.WeekStart = weekValues["weekStart"]
-	input.WeekEnd = weekValues["weekEnd"]
-	if !compareWeekDates(input.WeekStart, input.WeekEnd) {
+	start, end := weekValues["weekStart"], weekValues["weekEnd"]
+	input.WeekStart = start.Key
+	input.WeekEnd = end.Key
+	input.StartLocation = start.Location
+	input.EndLocation = end.Location
+	if start.Instant.After(end.Instant) {
 		return createReportInput{}, []zodIssue{customIssue([]string{"weekEnd"}, "Start date cannot be later than end date")}
 	}
 	return input, nil

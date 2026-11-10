@@ -18,6 +18,7 @@ import { ReferencePreviewDialog } from '@/components/ReferencePreviewDialog'
 import { PlanItemPreviewDialog } from '@/components/PlanItemPreviewDialog'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 import { buildPlansDeepLink } from '@/lib/plan-links'
+import { dateOnlyToOffsetInstant } from '@/lib/periods'
 import styles from '@/components/timeline.module.css'
 
 const EVENTS_PAGE_LIMIT = 30
@@ -61,6 +62,10 @@ function formatLocalDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
+}
+
+function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
 }
 
 export default function TimelinePage() {
@@ -121,7 +126,10 @@ export default function TimelinePage() {
     if (tags.length > 0) {
       params.set('tags', tags.join(','))
     } else if (heatmapDate) {
-      params.set('date', heatmapDate)
+      // Date key → browser midnight with the browser offset on the wire; the
+      // server rounds the window by the request's offset, so a UTC equivalent
+      // would shift the day.
+      params.set('date', dateOnlyToOffsetInstant(heatmapDate))
     }
     if (cursor) {
       params.set('cursorId', String(cursor.id))
@@ -215,7 +223,7 @@ export default function TimelinePage() {
     const loadHeatmap = async () => {
       try {
         setHeatmapError(null)
-        const res = await apiFetch('/api/events/heatmap')
+        const res = await apiFetch(`/api/events/heatmap?tz=${encodeURIComponent(browserTimeZone())}`)
         if (!res.ok) {
           throw new Error('Failed to load heatmap data' + traceSuffix(res))
         }
@@ -330,7 +338,9 @@ export default function TimelinePage() {
       return
     }
     const event = await res.json()
-    // Use local calendar date (not UTC) to match /api/events date param interpretation.
+    // The heatmap and the date filter both speak the browser's calendar: keep
+    // the local calendar date here; buildEventsPage expands it to local
+    // midnight with the browser offset when it hits the wire.
     const dateStr = formatLocalDate(new Date(event.eventTime))
 
     // Clear filters and set date to make event visible

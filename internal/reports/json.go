@@ -238,10 +238,10 @@ func parseUserTemplateID(value string) (int64, bool) {
 	return jsparse.ParseInt10(value)
 }
 
-// localDateInstant 在服务进程的本地时区上组装一个时刻。
+// dateInstantIn 在给定偏移（或时区）上组装一个时刻。
 //
-// date-fns 的 startOfDay / endOfDay 走的是运行环境的本地日历，与 Go 的 time.Local
-// 同源；周报的周边界因此与时区一致（迁移前是 Next 进程的 TZ，迁移后是 wr 的 TZ）。
-func localDateInstant(year, month, day int, hour, minute, second int, nanosecond int64) time.Time {
-	return time.Date(year, time.Month(month), day, hour, minute, second, int(nanosecond), time.Local)
+// 周报的日界不再固定走进程本地时区：preview/create 传请求自带的偏移，
+// regenerate-source 没有客户端偏移可依，显式使用 UTC（见 RegenerateSourceDrafts）。
+func dateInstantIn(year, month, day int, hour, minute, second int, location *time.Location) time.Time {
+	return time.Date(year, time.Month(month), day, hour, minute, second, 0, location)
 }

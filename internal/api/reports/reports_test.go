@@ -152,7 +152,7 @@ func TestCreateReportWritesBothVariantsAndSnapshots(t *testing.T) {
 		`{"sourceId":`+itoa(sourceID)+`,"repo":"work-repo"}`)
 
 	rec := h.do(http.MethodPost, "/api/reports",
-		`{"title":"第2周周报","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+		`{"title":"第2周周报","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -217,7 +217,7 @@ func TestCreateReportValidationShape(t *testing.T) {
 	}{
 		{
 			name: "missing title",
-			body: `{"weekStart":"2024-01-08","weekEnd":"2024-01-14"}`,
+			body: `{"weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`,
 			contains: []string{
 				`"error":"Validation failed"`,
 				`"code":"VALIDATION_ERROR"`,
@@ -228,28 +228,28 @@ func TestCreateReportValidationShape(t *testing.T) {
 		},
 		{
 			name: "bad date format",
-			body: `{"title":"x","weekStart":"2024-1-8","weekEnd":"2024-01-14"}`,
+			body: `{"title":"x","weekStart":"2024-1-8","weekEnd":"2024-01-14T00:00:00+00:00"}`,
 			contains: []string{
 				`"error":"Validation failed"`,
 				`\"origin\": \"string\"`,
 				`\"code\": \"invalid_format\"`,
 				`\"format\": \"regex\"`,
-				`Date must use YYYY-MM-DD format`,
+				`Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00`,
 			},
 		},
 		{
 			name:     "weekStart after weekEnd",
-			body:     `{"title":"x","weekStart":"2024-01-20","weekEnd":"2024-01-14"}`,
+			body:     `{"title":"x","weekStart":"2024-01-20T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`,
 			contains: []string{`\"code\": \"custom\"`, `Start date cannot be later than end date`},
 		},
 		{
 			name:     "title too long",
-			body:     `{"title":"` + repeat("a", 201) + `","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`,
+			body:     `{"title":"` + repeat("a", 201) + `","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`,
 			contains: []string{`\"code\": \"too_big\"`, `Title must be 200 characters or fewer`},
 		},
 		{
 			name:     "empty title",
-			body:     `{"title":"","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`,
+			body:     `{"title":"","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`,
 			contains: []string{`\"code\": \"too_small\"`, `Title is required`},
 		},
 		{
@@ -277,7 +277,7 @@ func TestCreateReportValidationShape(t *testing.T) {
 func TestCreateReportRejectsTrailingGarbage(t *testing.T) {
 	h := newHarness(t)
 	rec := h.do(http.MethodPost, "/api/reports",
-		`{"title":"x","weekStart":"2024-01-08","weekEnd":"2024-01-14"} trailing`)
+		`{"title":"x","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"} trailing`)
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500 (body %s)", rec.Code, rec.Body.String())
 	}
@@ -354,14 +354,14 @@ func TestCreateReportCountsTitleInUTF16Units(t *testing.T) {
 	// 100 个增补平面字符 = 200 个 UTF-16 码元，恰好合法。
 	title := repeat("😀", 100)
 	rec := h.do(http.MethodPost, "/api/reports",
-		`{"title":"`+title+`","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+		`{"title":"`+title+`","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201 (body %s)", rec.Code, rec.Body.String())
 	}
 
 	// 101 个 = 202 个码元 → 超限。
 	rec = h.do(http.MethodPost, "/api/reports",
-		`{"title":"`+repeat("😀", 101)+`","weekStart":"2024-01-08","weekEnd":"2024-01-14"}`)
+		`{"title":"`+repeat("😀", 101)+`","weekStart":"2024-01-08T00:00:00+00:00","weekEnd":"2024-01-14T00:00:00+00:00"}`)
 	if rec.Code != http.StatusBadRequest || !contains(rec.Body.String(), `\"code\": \"too_big\"`) {
 		t.Fatalf("status = %d, want 400 too_big (body %s)", rec.Code, rec.Body.String())
 	}
@@ -383,14 +383,14 @@ func TestCreateReportZodDetailsMatchTypeScript(t *testing.T) {
 		},
 		{
 			body:     `{"weekStart":1,"weekEnd":"x"}`,
-			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}$/\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Date must use YYYY-MM-DD format\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Invalid input: expected string, received number\"\n  },\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}(?:\\\\.\\\\d+)?(?:Z|[+-]\\\\d{2}:\\\\d{2})$/\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
 		},
 		{
-			body:     `{"weekStart":"2026-8-1","weekEnd":"2026-08-02"}`,
-			expected: `{"name":"ZodError","message":"[\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}$/\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Date must use YYYY-MM-DD format\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
+			body:     `{"weekStart":"2026-8-1","weekEnd":"2026-08-02T00:00:00+00:00"}`,
+			expected: `{"name":"ZodError","message":"[\n  {\n    \"origin\": \"string\",\n    \"code\": \"invalid_format\",\n    \"format\": \"regex\",\n    \"pattern\": \"/^\\\\d{4}-\\\\d{2}-\\\\d{2}T\\\\d{2}:\\\\d{2}:\\\\d{2}(?:\\\\.\\\\d+)?(?:Z|[+-]\\\\d{2}:\\\\d{2})$/\",\n    \"path\": [\n      \"weekStart\"\n    ],\n    \"message\": \"Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00\"\n  },\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"title\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}`,
 		},
 		{
-			body:     `{"weekStart":"2026-08-17","weekEnd":"2026-08-10","title":"t"}`,
+			body:     `{"weekStart":"2026-08-17T00:00:00+00:00","weekEnd":"2026-08-10T00:00:00+00:00","title":"t"}`,
 			expected: `{"name":"ZodError","message":"[\n  {\n    \"code\": \"custom\",\n    \"path\": [\n      \"weekEnd\"\n    ],\n    \"message\": \"Start date cannot be later than end date\"\n  }\n]"}`,
 		},
 		{

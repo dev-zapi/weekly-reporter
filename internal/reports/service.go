@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	"github.com/dev-zapi/weekly-reporter/internal/officialtemplates"
@@ -56,12 +57,13 @@ func GetTemplateSelection(ctx context.Context, queries *db.Queries, templateID s
 	return &TemplateSelection{ID: templateID, Name: row.Name, Content: row.Content, AiStyle: row.AiStyle}, nil
 }
 
-// WeekBounds 是 parseWeekBoundary 的产物：本地时区的当天首毫秒 / 末毫秒（Unix 秒）。
+// WeekBounds 是 parseWeekBoundary 的产物：请求偏移所代表日历日的当天首毫秒 /
+// 末毫秒（Unix 秒）。
 //
-// date-fns 的 parseISO 对纯日期按**本地时间**解释（不是 ECMAScript 的 UTC 规则），
-// startOfDay / endOfDay 也作用在本地日历日上。Weekly reporter 的周报始终以
-// 本地日历周为单位，所以这里刻意不复用 jsdate（它的 `new Date('2026-08-10')`
-// 是 UTC 语义），只在解析阶段借用它的过期检查。
+// 迁移前 date-fns 的 parseISO 对纯日期按**进程本地时间**解释，startOfDay /
+// endOfDay 也作用在本地日历日上——那正是「服务器时区决定用户日历」的问题。
+// 现在周界由请求自带的偏移（time.FixedZone）决定：同一个请求在任何服务器时区
+// 上都框定同一批事件。
 type WeekBounds struct {
 	// Valid=false 对应 TS 里 parseISO 得到的 Invalid Date：BETWEEN 变成恒假，
 	// 查询照常执行并返回空集。
@@ -70,33 +72,31 @@ type WeekBounds struct {
 	End   int64
 }
 
-// ParseWeekBounds 复刻 parseWeekBoundary(weekStart, false) / (weekEnd, true)。
-func ParseWeekBounds(weekStart, weekEnd string) (start, end WeekBounds) {
-	start = dayBoundary(weekStart, false)
-	end = dayBoundary(weekEnd, true)
+// ParseWeekBounds 复刻 parseWeekBoundary(weekStart, false) / (weekEnd, true)，
+// 日界落在请求偏移上。startLocation / endLocation 来自两个入参各自的偏移；
+// regenerate-source 没有创建偏移可依，显式传 UTC（见 RegenerateSourceDrafts）。
+func ParseWeekBounds(weekStart, weekEnd string, startLocation, endLocation *time.Location) (start, end WeekBounds) {
+	start = dayBoundary(weekStart, false, startLocation)
+	end = dayBoundary(weekEnd, true, endLocation)
 	return start, end
 }
 
-// dayBoundary 把 `YYYY-MM-DD` 折成本地时区当天首/末毫秒。
+// dayBoundary 把 `YYYY-MM-DD` 折成 location 当天首/末毫秒。
 //
-// 输入形状由冻结契约保证：validations.ts 的 DATE_REGEX 只放行 `YYYY-MM-DD`，
-// week_start / week_end 的全部写入路径（创建报告、预览）都经过它。date-fns 的
-// parseISO 比这更宽（`2026`、`2026-08`、带时间的 ISO 串也接受，且按本地时区
-// 解释纯日期），这里只复刻冻结契约里可达的形态——与 jsdate 包对 V8 宽松解析器
-// 的有意收窄同一思路。
-//
-// 日历合法性与 parseISO 一致：`2026-02-30` 是 Invalid Date（V8 的 date-only
-// 解析同样拒绝），于是 TS 里 BETWEEN(NaN, …) 恒假、返回空集。
-func dayBoundary(value string, endOfDay bool) WeekBounds {
+// 输入形状由冻结契约保证：validation.go 只会产出 date-only 周期键。日历合法性由 ParseISODate 负责（`2026-02-30` → Invalid Date）。
+func dayBoundary(value string, endOfDay bool, location *time.Location) WeekBounds {
 	year, month, day, ok := ParseISODate(value)
 	if !ok {
 		return WeekBounds{}
 	}
+	if location == nil {
+		location = time.Local
+	}
 	if !endOfDay {
-		instant := localDateInstant(year, month, day, 0, 0, 0, 0)
+		instant := dateInstantIn(year, month, day, 0, 0, 0, location)
 		return WeekBounds{Valid: true, Start: instant.Unix()}
 	}
-	instant := localDateInstant(year, month, day, 23, 59, 59, 999*int64(1e6))
+	instant := dateInstantIn(year, month, day, 23, 59, 59, location)
 	return WeekBounds{Valid: true, End: instant.Unix()}
 }
 
@@ -146,12 +146,12 @@ func SourceScopes(ctx context.Context, queries *db.Queries) (map[int64]template.
 	return scopes, nil
 }
 
-// findEventsForWeek 复刻 findEventsForWeek：BETWEEN 两个本地日边界。
+// findEventsForWeek 复刻 findEventsForWeek：BETWEEN 请求偏移上的两天边界。
 //
 // 任一边界无效时 drizzle 仍然发出 `event_time BETWEEN ? AND ?`，只是绑定了
 // NaN/null，条件恒假——这里用一个不可能成立的区间表达同一结果（返回空集）。
-func findEventsForWeek(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]db.ListRawEventsBetweenForReportRoutesRow, error) {
-	start, end := ParseWeekBounds(weekStart, weekEnd)
+func findEventsForWeek(ctx context.Context, queries *db.Queries, weekStart, weekEnd string, startLocation, endLocation *time.Location) ([]db.ListRawEventsBetweenForReportRoutesRow, error) {
+	start, end := ParseWeekBounds(weekStart, weekEnd, startLocation, endLocation)
 	if !start.Valid || !end.Valid {
 		return nil, nil
 	}
@@ -208,8 +208,8 @@ type PreviewVariant struct {
 }
 
 // PreviewReportSourceDrafts 复刻 previewReportSourceDrafts。
-func PreviewReportSourceDrafts(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]PreviewVariant, error) {
-	events, scopes, err := collectSourceDraftInputs(ctx, queries, weekStart, weekEnd)
+func PreviewReportSourceDrafts(ctx context.Context, queries *db.Queries, weekStart, weekEnd string, startLocation, endLocation *time.Location) ([]PreviewVariant, error) {
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, weekStart, weekEnd, startLocation, endLocation)
 	if err != nil {
 		return nil, err
 	}
@@ -224,8 +224,8 @@ func PreviewReportSourceDrafts(ctx context.Context, queries *db.Queries, weekSta
 	}, nil
 }
 
-func collectSourceDraftInputs(ctx context.Context, queries *db.Queries, weekStart, weekEnd string) ([]db.ListRawEventsBetweenForReportRoutesRow, map[int64]template.ProjectScope, error) {
-	events, err := findEventsForWeek(ctx, queries, weekStart, weekEnd)
+func collectSourceDraftInputs(ctx context.Context, queries *db.Queries, weekStart, weekEnd string, startLocation, endLocation *time.Location) ([]db.ListRawEventsBetweenForReportRoutesRow, map[int64]template.ProjectScope, error) {
+	events, err := findEventsForWeek(ctx, queries, weekStart, weekEnd, startLocation, endLocation)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -244,16 +244,22 @@ type CreatedReport struct {
 	Snapshots []SnapshotJSON
 }
 
+// CreateReportInput 是创建报告的输入：周期键是 date-only，Location 是请求偏移
+// （创建时用于框定事件窗口；落库的仍只有周期键）。
+type CreateReportInput struct {
+	Title         string
+	WeekStart     string
+	WeekEnd       string
+	StartLocation *time.Location
+	EndLocation   *time.Location
+}
+
 // CreateReportWithSourceDrafts 复刻 createReportWithSourceDrafts：一个事务里写
 // report + 快照 + 两个变体，返回时再按 (reportId, sourceRevision=1) 读回快照。
 //
 // now 由调用方给出，便于测试固定时间戳。
-func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, input struct {
-	Title     string
-	WeekStart string
-	WeekEnd   string
-}, now int64) (CreatedReport, error) {
-	events, scopes, err := collectSourceDraftInputs(ctx, queries, input.WeekStart, input.WeekEnd)
+func CreateReportWithSourceDrafts(ctx context.Context, queries *db.Queries, input CreateReportInput, now int64) (CreatedReport, error) {
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, input.WeekStart, input.WeekEnd, input.StartLocation, input.EndLocation)
 	if err != nil {
 		return CreatedReport{}, err
 	}
@@ -403,7 +409,12 @@ func RegenerateSourceDrafts(ctx context.Context, queries *db.Queries, reportID i
 		return nil, err
 	}
 
-	events, scopes, err := collectSourceDraftInputs(ctx, queries, report.WeekStart, report.WeekEnd)
+	// 存储里只有 date-only 周期键，regenerate 请求没有可用的创建偏移。按 UTC
+	// 折算重算窗口：至少跨部署确定、可测——用进程本地时区只在「服务器时区恰好
+	// 等于用户时区」时才对，UTC 容器里本来就是漂的。这是 #135「服务器时区退出
+	// 用户语义」下的已知限制；完整修复需要持久化创建偏移（超出本套票的无迁移
+	// 约束），该限制由 ADR-0032（#141）记录。
+	events, scopes, err := collectSourceDraftInputs(ctx, queries, report.WeekStart, report.WeekEnd, time.UTC, time.UTC)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
 	reportlib "github.com/dev-zapi/weekly-reporter/internal/reports"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件覆盖 /api/reports 的列表、新建、搜索、预览，以及 /api/reports/{id} 的
@@ -274,11 +275,13 @@ func createReportHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		created, err := reportlib.CreateReportWithSourceDrafts(r.Context(), deps.Queries, struct {
-			Title     string
-			WeekStart string
-			WeekEnd   string
-		}{Title: input.Title, WeekStart: input.WeekStart, WeekEnd: input.WeekEnd}, nowUnix())
+		created, err := reportlib.CreateReportWithSourceDrafts(r.Context(), deps.Queries, reportlib.CreateReportInput{
+			Title:         input.Title,
+			WeekStart:     input.WeekStart,
+			WeekEnd:       input.WeekEnd,
+			StartLocation: input.StartLocation,
+			EndLocation:   input.EndLocation,
+		}, nowUnix())
 		if err != nil {
 			log.Printf("POST /api/reports error: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "Failed to create report", "CREATE_ERROR")
@@ -310,7 +313,7 @@ func previewHandler(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		variants, err := reportlib.PreviewReportSourceDrafts(r.Context(), deps.Queries, input.WeekStart, input.WeekEnd)
+		variants, err := reportlib.PreviewReportSourceDrafts(r.Context(), deps.Queries, input.WeekStart, input.WeekEnd, input.StartLocation, input.EndLocation)
 		if err != nil {
 			log.Printf("POST /api/reports/preview error: %v", err)
 			respond.Error(w, http.StatusInternalServerError, "Failed to preview source draft", "PREVIEW_ERROR")
@@ -329,12 +332,36 @@ type searchResultItem struct {
 	Variants []reportlib.VariantJSON `json:"variants"`
 }
 
+// searchDateKey 把一个搜索日期参数折算成 date-only 周期键。
+//
+// 空串表示未过滤（ok=true）。非空时必须能按请求偏移折出日历日——date-only 与
+// naive datetime 都会被 wiretime.ParseOffsetInstant 拒绝，调用方据此回 400。
+func searchDateKey(raw string) (key string, ok bool) {
+	if raw == "" {
+		return "", true
+	}
+	parsed, ok := wiretime.ParseOffsetInstant(raw)
+	if !ok {
+		return "", false
+	}
+	return parsed.Key, true
+}
+
 func searchHandler(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		searchQuery := lowerJS(trimJS(query.Get("q")))
-		startDate := query.Get("startDate")
-		endDate := query.Get("endDate")
+		startDate, startOK := searchDateKey(query.Get("startDate"))
+		if !startOK {
+			// 与 events/plans 同构：日期参数非法一律 {error, code} + 格式示例。
+			wiretime.InvalidInstantParam(w, "startDate", "INVALID_START_DATE")
+			return
+		}
+		endDate, endOK := searchDateKey(query.Get("endDate"))
+		if !endOK {
+			wiretime.InvalidInstantParam(w, "endDate", "INVALID_END_DATE")
+			return
+		}
 
 		reportRows, err := deps.Queries.ListReportsForReportRoutes(r.Context(), db.ListReportsForReportRoutesParams{
 			Limit:  -1,

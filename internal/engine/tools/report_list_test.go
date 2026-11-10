@@ -166,7 +166,7 @@ func TestQueryReportListPreviousAdjacentIsExactAndNotPaged(t *testing.T) {
 
 	// e2e 同时送 query/startDate/endDate/cursor/limit，全部应被忽略并规范化。
 	input := mustParseListInput(t, `{"relation":"previous_adjacent","relativeToReportId":`+
-		itoa(f.targetReportID)+`,"query":"ignored query","startDate":"1900-01-01","endDate":"1900-01-02","cursor":"ignored cursor","limit":20}`)
+		itoa(f.targetReportID)+`,"query":"ignored query","startDate":"1900-01-01T00:00:00Z","endDate":"1900-01-02T00:00:00Z","cursor":"ignored cursor","limit":20}`)
 	result := QueryReportListForSession(t.Context(), f.q, f.sessionID, input)
 	if !result.OK {
 		t.Fatalf("expected ok, got %#v", result.Error)
@@ -220,7 +220,7 @@ func TestQueryReportListQueryAndTitleMatchWithNormalizedFilters(t *testing.T) {
 	f := newFixture(t, "personal")
 
 	result := QueryReportListForSession(t.Context(), f.q, f.sessionID, mustParseListInput(t,
-		`{"query":"searchable","title":"personal history","startDate":"2026-12-01","endDate":"2027-01-31","statuses":["current"],"includeLegacy":false,"relation":"overlap","limit":20}`))
+		`{"query":"searchable","title":"personal history","startDate":"2026-12-01T00:00:00+08:00","endDate":"2027-01-31T23:59:59-05:00","statuses":["current"],"includeLegacy":false,"relation":"overlap","limit":20}`))
 	if !result.OK {
 		t.Fatalf("expected ok, got %#v", result.Error)
 	}
@@ -250,6 +250,91 @@ func TestQueryReportListQueryAndTitleMatchWithNormalizedFilters(t *testing.T) {
 	// 没有 query 时不出 matchesTruncated；有 query 时必须出现（e2e 依赖该键）。
 	if decoded["matchesTruncated"] != false {
 		t.Fatalf("matchesTruncated = %v", decoded["matchesTruncated"])
+	}
+}
+
+func TestQueryReportListFoldsDateFiltersByRequestOffset(t *testing.T) {
+	f := newFixture(t, "personal")
+
+	// 合法形态覆盖三种偏移：+08:00 / Z / -05:00。appliedFilters 暴露的是折算后
+	// 的 date-only 周期键（与 HTTP 搜索一致），不是原始 wire 字符串。
+	cases := []struct {
+		name      string
+		startDate string
+		endDate   string
+		wantStart string
+		wantEnd   string
+	}{
+		{
+			name:      "east eight",
+			startDate: "2026-12-01T00:00:00+08:00",
+			endDate:   "2026-12-27T23:59:59+08:00",
+			wantStart: "2026-12-01",
+			wantEnd:   "2026-12-27",
+		},
+		{
+			name:      "utc z",
+			startDate: "2026-11-30T16:00:00Z",
+			endDate:   "2026-12-27T15:59:59Z",
+			wantStart: "2026-11-30",
+			wantEnd:   "2026-12-27",
+		},
+		{
+			name: "west five",
+			// 与上面的 +08 零点同一绝对时刻，但请求偏移决定日历日：这里是 -05 的
+			// 11-30 19:00，折键必须仍是 11-30，而不是 UTC 的 12-01。
+			startDate: "2026-11-30T19:00:00-05:00",
+			endDate:   "2026-12-27T18:59:59-05:00",
+			wantStart: "2026-11-30",
+			wantEnd:   "2026-12-27",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := QueryReportListForSession(t.Context(), f.q, f.sessionID, mustParseListInput(t,
+				`{"startDate":"`+tc.startDate+`","endDate":"`+tc.endDate+`"}`))
+			if !result.OK {
+				t.Fatalf("expected ok, got %#v", result.Error)
+			}
+			filters := decodeJSON(t, result)["appliedFilters"].(map[string]any)
+			if filters["startDate"] != tc.wantStart || filters["endDate"] != tc.wantEnd {
+				t.Fatalf("appliedFilters dates = %v..%v, want %v..%v",
+					filters["startDate"], filters["endDate"], tc.wantStart, tc.wantEnd)
+			}
+		})
+	}
+}
+
+func TestQueryReportListDateFilterUsesLocalCalendarDay(t *testing.T) {
+	f := newFixture(t, "personal")
+
+	// 同一绝对时刻 2026-12-21T01:00:00Z 在 -05 下是 12-20：endDate 折键为
+	// 12-20，同受众周报（weekStart 12-21）必须被排除。若按 UTC 日历日折算，
+	// 12-21 会被包含——这正是本测试要守住的请求偏移语义。
+	result := QueryReportListForSession(t.Context(), f.q, f.sessionID, mustParseListInput(t,
+		`{"startDate":"2026-12-01T00:00:00-05:00","endDate":"2026-12-20T20:00:00-05:00"}`))
+	if !result.OK {
+		t.Fatalf("expected ok, got %#v", result.Error)
+	}
+	decoded := decodeJSON(t, result)
+	filters := decoded["appliedFilters"].(map[string]any)
+	if filters["endDate"] != "2026-12-20" {
+		t.Fatalf("endDate key = %v, want 2026-12-20", filters["endDate"])
+	}
+	if items := decoded["items"].([]any); len(items) != 0 {
+		t.Fatalf("items = %#v, want empty (12-21 week starts after the folded end date)", items)
+	}
+
+	// 把同一 endDate 的本地时刻后移一天到 12-21，周报重新落入范围。
+	result = QueryReportListForSession(t.Context(), f.q, f.sessionID, mustParseListInput(t,
+		`{"startDate":"2026-12-01T00:00:00-05:00","endDate":"2026-12-21T00:00:00-05:00"}`))
+	if !result.OK {
+		t.Fatalf("expected ok, got %#v", result.Error)
+	}
+	decoded = decodeJSON(t, result)
+	if items := decoded["items"].([]any); len(items) != 1 ||
+		int64(items[0].(map[string]any)["reportId"].(float64)) != f.sameAudienceReportID {
+		t.Fatalf("items = %#v, want same-audience report %d", items, f.sameAudienceReportID)
 	}
 }
 
@@ -291,9 +376,18 @@ func TestQueryReportListInvalidInputs(t *testing.T) {
 		{"relation", `{"relation":"siblings"}`, "relation must be overlap or previous_adjacent"},
 		{"empty statuses", `{"statuses":[]}`, "statuses must contain current or stale"},
 		{"bad status", `{"statuses":["current","archived"]}`, "statuses must contain current or stale"},
-		{"date shape", `{"startDate":"2027/01/01"}`, "startDate must use YYYY-MM-DD"},
-		{"date invalid", `{"startDate":"2027-02-31"}`, "startDate must be a valid date"},
-		{"date order", `{"startDate":"2027-02-02","endDate":"2027-02-01"}`, "startDate must not be after endDate"},
+		{"date-only", `{"startDate":"2027-01-01"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"naive datetime", `{"startDate":"2027-01-01T00:00:00"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"bare month", `{"startDate":"2027-01"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"short offset", `{"startDate":"2027-01-01T00:00:00+08"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"date slash", `{"startDate":"2027/01/01T00:00:00Z"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"end date-only", `{"endDate":"2027-01-01"}`, "endDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"date invalid", `{"startDate":"2027-02-31T00:00:00Z"}`, "startDate must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00"},
+		{"date order", `{"startDate":"2027-02-02T00:00:00Z","endDate":"2027-02-01T00:00:00Z"}`, "startDate must not be after endDate"},
+		// Folding is by request offset, not absolute time: +08 midnight is the
+		// 11-03 key while -05 23:59:59 the day before is the 11-02 key, so the
+		// key range is inverted even though the absolute end is later.
+		{"date key order across offsets", `{"startDate":"2026-11-03T00:00:00+08:00","endDate":"2026-11-02T23:59:59-05:00"}`, "startDate must not be after endDate"},
 		{"limit zero", `{"limit":0}`, "limit must be an integer from 1 to 20"},
 		{"limit fraction", `{"limit":1.5}`, "limit must be an integer from 1 to 20"},
 		{"limit high", `{"limit":21}`, "limit must be an integer from 1 to 20"},

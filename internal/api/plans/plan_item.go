@@ -10,6 +10,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // 本文件是 POST/GET/PUT/DELETE /api/plan-items/{id} 与 POST /api/plan-items 的
@@ -106,12 +107,19 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 				}
 				weekStart, weekStartIsString := asString(rawWeekStart)
 				weekEnd, weekEndIsString := asString(rawWeekEnd)
-				if !weekStartIsString || !weekEndIsString || !isDateString(weekStart) || !isDateString(weekEnd) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid weekStart or weekEnd format. Use YYYY-MM-DD"})
+				startInstant, startOK := parseOffsetInstant(weekStart)
+				if !weekStartIsString || !startOK {
+					wiretime.InvalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					return
+				}
+				endInstant, endOK := parseOffsetInstant(weekEnd)
+				if !weekEndIsString || !endOK {
+					wiretime.InvalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 与 plans 的 GET 不同：这里不归一化到周一，直接采信入参区间。
-				periodStart, periodEnd = weekStart, weekEnd
+				// 每个时刻折算成其自带偏移下的 date-only 周期键。
+				periodStart, periodEnd = formatDate(startInstant), formatDate(endInstant)
 			} else {
 				rawMonth, hasMonth := body["month"]
 				if !hasMonth || !truthyJSON(rawMonth) {
@@ -119,12 +127,13 @@ func createPlanItemHandler(deps Deps) http.HandlerFunc {
 					return
 				}
 				month, isString := asString(rawMonth)
-				if !isString || !isMonthString(month) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid month format. Use YYYY-MM"})
+				instant, ok := parseOffsetInstant(month)
+				if !isString || !ok {
+					wiretime.InvalidInstantParam(w, "month", "INVALID_MONTH")
 					return
 				}
-				periodStart, periodEnd = monthPeriodRangeByKey(month)
-				key := month
+				var key string
+				key, periodStart, periodEnd = monthPeriodRange(instant)
 				monthKey = &key
 			}
 

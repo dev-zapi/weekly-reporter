@@ -4,10 +4,14 @@ import { TAG_CHARSET_REGEX } from '@/lib/tags'
 
 export const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
 export const MONTH_REGEX = /^\d{4}-\d{2}$/
+// Wire timestamps carry the caller's offset so the server can fold the calendar
+// day in that zone; date-only input is rejected with a format example.
+export const RFC3339_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+const OFFSET_DATE_MESSAGE = 'Date must be an RFC3339 timestamp with an offset, e.g. 2026-11-03T00:00:00+08:00'
 
 export const reportWeekSchema = z.object({
-  weekStart: z.string().regex(DATE_REGEX, 'Date must use YYYY-MM-DD format'),
-  weekEnd: z.string().regex(DATE_REGEX, 'Date must use YYYY-MM-DD format'),
+  weekStart: z.string().regex(RFC3339_REGEX, OFFSET_DATE_MESSAGE),
+  weekEnd: z.string().regex(RFC3339_REGEX, OFFSET_DATE_MESSAGE),
 }).refine(
   (data) => new Date(data.weekStart) <= new Date(data.weekEnd),
   {

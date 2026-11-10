@@ -16,6 +16,7 @@ import (
 
 	"github.com/dev-zapi/weekly-reporter/internal/api/respond"
 	"github.com/dev-zapi/weekly-reporter/internal/db"
+	"github.com/dev-zapi/weekly-reporter/internal/wiretime"
 )
 
 // Deps 是本域路由的数据依赖。
@@ -206,32 +207,25 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 		if scope == "week" {
 			switch {
 			case dateParam != "":
-				if !isDateString(dateParam) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid date format. Use YYYY-MM-DD"})
-					return
-				}
-				date, ok := parseLocalDate(dateParam)
+				date, ok := parseOffsetInstant(dateParam)
 				if !ok {
-					// date-fns 的 format(Invalid Date) 抛 RangeError → route 的 catch。
-					log.Printf("Error fetching plans: invalid date %q", dateParam)
-					respond.Error(w, http.StatusInternalServerError, "Failed to fetch plans", "FETCH_ERROR")
+					wiretime.InvalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				periodStart, periodEnd = weekPeriodRange(date)
 			case weekStart != "" && weekEnd != "":
-				if !isDateString(weekStart) || !isDateString(weekEnd) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid weekStart or weekEnd format. Use YYYY-MM-DD"})
+				startInstant, startOK := parseOffsetInstant(weekStart)
+				if !startOK {
+					wiretime.InvalidInstantParam(w, "weekStart", "INVALID_WEEK_START")
+					return
+				}
+				if _, endOK := parseOffsetInstant(weekEnd); !endOK {
+					wiretime.InvalidInstantParam(w, "weekEnd", "INVALID_WEEK_END")
 					return
 				}
 				// 以 weekStart 归一到周一开头的规范周，不信任原始成对区间：
-				// 周内任意日期都解析到同一条计划行。
-				date, ok := parseLocalDate(weekStart)
-				if !ok {
-					log.Printf("Error fetching plans: invalid weekStart %q", weekStart)
-					respond.Error(w, http.StatusInternalServerError, "Failed to fetch plans", "FETCH_ERROR")
-					return
-				}
-				periodStart, periodEnd = weekPeriodRange(date)
+				// 周内任意日期都解析到同一条计划行。日历按 weekStart 自带偏移读。
+				periodStart, periodEnd = weekPeriodRange(startInstant)
 			default:
 				respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "For week scope, provide either date or weekStart+weekEnd"})
 				return
@@ -239,20 +233,16 @@ func listPlansHandler(deps Deps) http.HandlerFunc {
 		} else {
 			switch {
 			case month != "":
-				if !isMonthString(month) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid month format. Use YYYY-MM"})
-					return
-				}
-				periodStart, periodEnd = monthPeriodRangeByKey(month)
-			case dateParam != "":
-				if !isDateString(dateParam) {
-					respond.JSON(w, http.StatusBadRequest, respond.ErrorBody{Error: "Invalid date format. Use YYYY-MM-DD"})
-					return
-				}
-				date, ok := parseLocalDate(dateParam)
+				instant, ok := parseOffsetInstant(month)
 				if !ok {
-					log.Printf("Error fetching plans: invalid date %q", dateParam)
-					respond.Error(w, http.StatusInternalServerError, "Failed to fetch plans", "FETCH_ERROR")
+					wiretime.InvalidInstantParam(w, "month", "INVALID_MONTH")
+					return
+				}
+				_, periodStart, periodEnd = monthPeriodRange(instant)
+			case dateParam != "":
+				date, ok := parseOffsetInstant(dateParam)
+				if !ok {
+					wiretime.InvalidInstantParam(w, "date", "INVALID_DATE")
 					return
 				}
 				_, periodStart, periodEnd = monthPeriodRange(date)

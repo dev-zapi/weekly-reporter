@@ -91,28 +91,26 @@ func TestEventsGetReturnsEventsOrderedByEventTimeDesc(t *testing.T) {
 	}
 }
 
-// date 过滤是本地日历日语义：`new Date(dateParam + 'T00:00:00')`（无 Z → 本地），
-// 再把 dayEnd setHours(23,59,59,999)。用 time.Local 计算期望值以保持 TZ 无关。
-func TestEventsGetFiltersByDateRange(t *testing.T) {
+// 周界按请求自带的偏移取整到日历日：weekStart 是起始日零点（含），weekEnd 是
+// 结束日零点 + 24h（不含）。期望值用 RFC3339 字面量独立算出，不重复实现取整。
+func TestEventsGetFiltersByWeekRangeAtRequestOffset(t *testing.T) {
 	h := newHarness(t)
-	start := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)    // new Date('2024-01-08') → UTC
-	weekEnd := time.Date(2024, 1, 14, 0, 0, 0, 0, time.UTC) // date-only → UTC
-	end := expectedEndOfLocalDay(weekEnd)
-
-	inRange := h.seedEvent("Event in range", "github", jsSeconds(start)+3600, "")
-	tooEarly := h.seedEvent("Too early", "github", jsSeconds(start)-1, "")
-	tooLate := h.seedEvent("Too late", "github", jsSeconds(end)+1, "")
+	inRange := h.seedEvent("Event in range", "github", mustUnix(t, "2024-01-08T00:00:00+08:00"), "")
+	lastSecond := h.seedEvent("Last second", "github", mustUnix(t, "2024-01-14T23:59:59+08:00"), "")
+	tooEarly := h.seedEvent("Too early", "github", mustUnix(t, "2024-01-07T23:59:59+08:00"), "")
+	tooLate := h.seedEvent("Too late", "github", mustUnix(t, "2024-01-15T00:00:00+08:00"), "")
 
 	q := url.Values{}
-	q.Set("weekStart", "2024-01-08")
-	q.Set("weekEnd", "2024-01-14")
+	q.Set("weekStart", "2024-01-08T00:00:00+08:00")
+	q.Set("weekEnd", "2024-01-14T00:00:00+08:00")
 	rec := h.do(http.MethodGet, "/api/events?"+q.Encode(), "", testPassword)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
 	resp := decodeEvents(t, rec.Body.Bytes())
-	if len(resp.Events) != 1 || resp.Events[0].ID != inRange {
-		t.Fatalf("events = %+v, want only %d (early %d, late %d)", resp.Events, inRange, tooEarly, tooLate)
+	if len(resp.Events) != 2 || resp.Events[0].ID != lastSecond || resp.Events[1].ID != inRange {
+		t.Fatalf("events = %+v, want only %d and %d (early %d, late %d)",
+			resp.Events, lastSecond, inRange, tooEarly, tooLate)
 	}
 }
 
@@ -122,7 +120,7 @@ func TestEventsGetIgnoresUnknownStatusParam(t *testing.T) {
 	h.seedEvent("pending event", "github", 1_704_672_000, "")
 	h.seedEvent("processed event", "github", 1_704_758_400, "")
 
-	rec := h.do(http.MethodGet, "/api/events?weekStart=2024-01-08&weekEnd=2024-01-14&status=processed", "", testPassword)
+	rec := h.do(http.MethodGet, "/api/events?weekStart=2024-01-08T00:00:00Z&weekEnd=2024-01-14T00:00:00Z&status=processed", "", testPassword)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -131,31 +129,64 @@ func TestEventsGetIgnoresUnknownStatusParam(t *testing.T) {
 	}
 }
 
-func TestEventsGetFiltersByDateParam(t *testing.T) {
+// date 参数的日历日由请求自带偏移决定：即使入参是当天 15:30，也取整到该偏移的
+// 00:00，窗口是 [零点, +24h)。Jan 10 的 +08:00 零点 = Jan 9 16:00Z。
+func TestEventsGetFiltersByDateParamAtRequestOffset(t *testing.T) {
 	h := newHarness(t)
-	day := time.Date(2024, 1, 10, 0, 0, 0, 0, time.Local) // dateParam + 'T00:00:00' → 本地
-	dayStart := jsSeconds(day)
-	dayEnd := jsSeconds(expectedEndOfLocalDay(day))
-	onDay := h.seedEvent("On day", "manual", dayStart+3600, "")
-	h.seedEvent("Next day", "manual", dayEnd+1, "")
+	onDay := h.seedEvent("On day", "manual", mustUnix(t, "2024-01-10T00:00:00+08:00"), "")
+	lastSecond := h.seedEvent("Last second", "manual", mustUnix(t, "2024-01-10T23:59:59+08:00"), "")
+	h.seedEvent("Previous day", "manual", mustUnix(t, "2024-01-09T23:59:59+08:00"), "")
+	h.seedEvent("Next day", "manual", mustUnix(t, "2024-01-11T00:00:00+08:00"), "")
 
-	rec := h.do(http.MethodGet, "/api/events?date=2024-01-10", "", testPassword)
+	rec := h.do(http.MethodGet, "/api/events?date=2024-01-10T15:30:00%2B08:00", "", testPassword)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d", rec.Code)
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
 	resp := decodeEvents(t, rec.Body.Bytes())
-	if len(resp.Events) != 1 || resp.Events[0].ID != onDay {
-		t.Fatalf("events = %+v, want only %d", resp.Events, onDay)
+	if len(resp.Events) != 2 || resp.Events[0].ID != lastSecond || resp.Events[1].ID != onDay {
+		t.Fatalf("events = %+v, want only %d and %d", resp.Events, lastSecond, onDay)
+	}
+}
+
+// 同一个绝对时刻在不同请求偏移下落到不同日历日：证明分组跟随请求，而不是服务器
+// 本地时区。2024-01-09T17:00Z == 2024-01-10T01:00+08:00 == 2024-01-09T12:00-05:00。
+func TestEventsGetDateWindowFollowsRequestOffset(t *testing.T) {
+	h := newHarness(t)
+	event := h.seedEvent("Around midnight", "manual", mustUnix(t, "2024-01-09T17:00:00Z"), "")
+
+	cases := []struct {
+		date   string
+		want   bool
+		reason string
+	}{
+		{"2024-01-10T00:00:00+08:00", true, "Shanghai sees Jan 10"},
+		{"2024-01-09T00:00:00Z", true, "UTC sees Jan 9"},
+		{"2024-01-09T00:00:00-05:00", true, "New York sees Jan 9"},
+		{"2024-01-11T00:00:00+08:00", false, "Shanghai Jan 11 is the next day"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.date, func(t *testing.T) {
+			q := url.Values{}
+			q.Set("date", tc.date)
+			rec := h.do(http.MethodGet, "/api/events?"+q.Encode(), "", testPassword)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+			}
+			resp := decodeEvents(t, rec.Body.Bytes())
+			if got := len(resp.Events) == 1 && resp.Events[0].ID == event; got != tc.want {
+				t.Fatalf("included = %t, want %t (%s; events %+v)", got, tc.want, tc.reason, resp.Events)
+			}
+		})
 	}
 }
 
 func TestEventsGetCombinesDateAndSourceFilters(t *testing.T) {
 	h := newHarness(t)
-	day := time.Date(2024, 1, 10, 12, 0, 0, 0, time.Local)
-	h.seedEvent("manual on day", "manual", jsSeconds(day), "")
-	h.seedEvent("github on day", "github", jsSeconds(day)+60, "")
+	day := mustUnix(t, "2024-01-10T12:00:00+08:00")
+	h.seedEvent("manual on day", "manual", day, "")
+	h.seedEvent("github on day", "github", day+60, "")
 
-	rec := h.do(http.MethodGet, "/api/events?date=2024-01-10&source=manual", "", testPassword)
+	rec := h.do(http.MethodGet, "/api/events?date=2024-01-10T00:00:00%2B08:00&source=manual", "", testPassword)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -165,16 +196,38 @@ func TestEventsGetCombinesDateAndSourceFilters(t *testing.T) {
 	}
 }
 
-func TestEventsGetIgnoresInvalidDateParam(t *testing.T) {
+// date-only、naive datetime 与畸形偏移（+08 / +0800）都是非法 wire 形态：
+// 400 必须在错误信息里给出带偏移的期望示例。
+func TestEventsGetRejectsInvalidInstantParameters(t *testing.T) {
 	h := newHarness(t)
 	h.seedEvent("anything", "manual", 1_704_672_000, "")
 
-	rec := h.do(http.MethodGet, "/api/events?date=invalid-date", "", testPassword)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
+	cases := []struct {
+		query string
+		code  string
+	}{
+		{"date=2024-01-10", "INVALID_DATE"},
+		{"weekStart=2024-01-08", "INVALID_WEEK_START"},
+		{"weekEnd=2024-01-14", "INVALID_WEEK_END"},
+		{"date=2024-01-10T00:00:00%2B08", "INVALID_DATE"},
+		{"date=2024-01-10T00:00:00%2B0800", "INVALID_DATE"},
+		{"weekStart=2024-01-08T00:00:00%2B08", "INVALID_WEEK_START"},
+		{"weekStart=2024-01-08T00:00:00%2B0800", "INVALID_WEEK_START"},
 	}
-	if resp := decodeEvents(t, rec.Body.Bytes()); len(resp.Events) != 1 {
-		t.Fatalf("events = %d, want the filter to be ignored", len(resp.Events))
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			rec := h.do(http.MethodGet, "/api/events?"+tc.query, "", testPassword)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
+			}
+			msg, code := decodeError(t, rec.Body.Bytes())
+			if code != tc.code {
+				t.Fatalf("code = %q, want %q", code, tc.code)
+			}
+			if !strings.Contains(msg, "RFC3339") || !strings.Contains(msg, "2026-11-03T00:00:00+08:00") {
+				t.Fatalf("message %q must name RFC3339 and show an offset example", msg)
+			}
+		})
 	}
 }
 
@@ -344,18 +397,14 @@ func TestEventsGetNonNumericCursorMirrorsRouteTS(t *testing.T) {
 	})
 }
 
-// 周过滤用了 Invalid Date：`between(NaN, …)` 恒假 → 200 + 空页（不是 400）。
-func TestEventsGetInvalidWeekRangeYieldsEmptyPage(t *testing.T) {
+// 非 RFC3339 的周界同样是 400，而不是静默空页。
+func TestEventsGetRejectsGarbageWeekRange(t *testing.T) {
 	h := newHarness(t)
 	h.seedEvent("anything", "manual", 1_704_672_000, "")
 
 	rec := h.do(http.MethodGet, "/api/events?weekStart=garbage&weekEnd=also-garbage", "", testPassword)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	resp := decodeEvents(t, rec.Body.Bytes())
-	if resp.Events == nil || len(resp.Events) != 0 || resp.HasMore || resp.NextCursor != nil {
-		t.Fatalf("resp = %+v, want empty page", resp)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", rec.Code, rec.Body.String())
 	}
 }
 
@@ -367,7 +416,7 @@ func TestEventsGetTagsSkipDateFilters(t *testing.T) {
 	h.seedEvent("另一条 #个人", "manual", 1_600_000_100, "")
 
 	rec := h.do(http.MethodGet,
-		"/api/events?date=2024-01-10&tags="+url.QueryEscape("工作"), "", testPassword)
+		"/api/events?date=2024-01-10T00:00:00Z&tags="+url.QueryEscape("工作"), "", testPassword)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}

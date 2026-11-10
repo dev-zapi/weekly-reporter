@@ -1,4 +1,15 @@
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addWeeks, addMonths } from 'date-fns'
+import { toBrowserOffsetInstant } from './time-format'
+
+/** A yyyy-MM-dd period key → that day's local midnight, as an offset instant. */
+export function dateOnlyToOffsetInstant(dateString: string): string {
+  return toBrowserOffsetInstant(new Date(`${dateString}T00:00:00`))
+}
+
+/** A yyyy-MM month key → that month's local midnight start, as an offset instant. */
+export function monthKeyToOffsetInstant(monthKey: string): string {
+  return toBrowserOffsetInstant(new Date(`${monthKey}-01T00:00:00`))
+}
 
 /**
  * Returns the Monday-start week range for a given date as yyyy-MM-dd strings.

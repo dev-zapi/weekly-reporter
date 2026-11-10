@@ -12,6 +12,7 @@
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
 import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
+import { formatInstant, localDateToOffsetInstant } from '../lib/time.mjs'
 
 // ---------------------------------------------------------------------------
 // Shared validation (ported from the pre-merge plans client).
@@ -50,17 +51,32 @@ function requireScope(value) {
 }
 
 function requireDate(value, flag) {
-  if (!value || !DATE_RE.test(value)) {
+  if (!value || !DATE_RE.test(value) || localDateToOffsetInstant(value) === null) {
     fail(`invalid ${flag}`, `expected a YYYY-MM-DD date, got '${value ?? ''}'`)
   }
   return value
 }
 
 function requireMonth(value) {
-  if (!value || !MONTH_RE.test(value)) {
+  if (!value || !MONTH_RE.test(value) || localDateToOffsetInstant(`${value}-01`) === null) {
     fail('invalid --month', `expected a YYYY-MM value, got '${value ?? ''}'`)
   }
   return value
+}
+
+/**
+ * A validated `YYYY-MM-DD` → the wire form: that day's midnight in the system
+ * zone, carrying the system offset (`2026-11-03T00:00:00+08:00`). The offset
+ * is preserved, never folded to UTC Z: the server reads the calendar in the
+ * request's own offset, so a Z form would shift the day for east-of-UTC users.
+ */
+function dateInstant(dateString) {
+  return localDateToOffsetInstant(dateString)
+}
+
+/** A validated `yyyy-MM` → the month-start midnight instant in the system zone. */
+function monthInstant(monthKey) {
+  return localDateToOffsetInstant(`${monthKey}-01`)
 }
 
 function requireProjectScope(value) {
@@ -113,11 +129,9 @@ function authorLabel(author) {
   return author ?? 'user'
 }
 
-/** ISO timestamp → `YYYY-MM-DD HH:mm UTC`; unparseable values pass through. */
+/** ISO timestamp → `2026-10-13T17:00:00+08:00` in the system zone. */
 function formatCommentTime(createdAt) {
-  const date = new Date(createdAt)
-  if (Number.isNaN(date.getTime())) return String(createdAt ?? '')
-  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+  return formatInstant(createdAt) ?? String(createdAt ?? '')
 }
 
 // ---------------------------------------------------------------------------
@@ -145,14 +159,14 @@ function requirePeriod(flags, scope) {
       fail('missing --week-end', 'week scope needs both --week-start and --week-end', usage(ADD_USAGE))
     }
     return {
-      weekStart: requireDate(flags.weekStart, '--week-start'),
-      weekEnd: requireDate(flags.weekEnd, '--week-end'),
+      weekStart: dateInstant(requireDate(flags.weekStart, '--week-start')),
+      weekEnd: dateInstant(requireDate(flags.weekEnd, '--week-end')),
     }
   }
   if (!flags.month) {
     fail('missing --month', 'month scope needs a YYYY-MM key', usage(ADD_USAGE))
   }
-  return { month: requireMonth(flags.month) }
+  return { month: monthInstant(requireMonth(flags.month)) }
 }
 
 /** `wrp plans list --scope week|month …` — the plan header plus its items. */
@@ -165,17 +179,17 @@ export async function list({ flags }) {
   const params = new URLSearchParams({ scope })
   if (scope === 'week') {
     if (flags.date) {
-      params.set('date', requireDate(flags.date, '--date'))
+      params.set('date', dateInstant(requireDate(flags.date, '--date')))
     } else if (flags.weekStart && flags.weekEnd) {
-      params.set('weekStart', requireDate(flags.weekStart, '--week-start'))
-      params.set('weekEnd', requireDate(flags.weekEnd, '--week-end'))
+      params.set('weekStart', dateInstant(requireDate(flags.weekStart, '--week-start')))
+      params.set('weekEnd', dateInstant(requireDate(flags.weekEnd, '--week-end')))
     } else {
       fail('missing week period', 'for week scope pass --date, or both --week-start and --week-end', usage(LIST_USAGE))
     }
   } else if (flags.date) {
-    params.set('date', requireDate(flags.date, '--date'))
+    params.set('date', dateInstant(requireDate(flags.date, '--date')))
   } else if (flags.month) {
-    params.set('month', requireMonth(flags.month))
+    params.set('month', monthInstant(requireMonth(flags.month)))
   } else {
     fail('missing month period', 'for month scope pass --date or --month', usage(LIST_USAGE))
   }

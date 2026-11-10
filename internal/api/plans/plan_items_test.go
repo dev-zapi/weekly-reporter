@@ -206,7 +206,7 @@ func TestCreatePlanItemEnsuresWeekPlan(t *testing.T) {
 	h := newHarness(t)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, testPassword))
+		`{"scope":"week","weekStart":"2026-10-12T00:00:00+08:00","weekEnd":"2026-10-18T00:00:00+08:00","text":"Task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d, body = %v", status, body)
 	}
@@ -231,7 +231,7 @@ func TestCreatePlanItemEnsuresMonthPlan(t *testing.T) {
 	h := newHarness(t)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"month","month":"2026-10","text":"Monthly task"}`, testPassword))
+		`{"scope":"month","month":"2026-10-01T00:00:00+08:00","text":"Monthly task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}
@@ -254,7 +254,7 @@ func TestCreatePlanItemReusesExistingPlan(t *testing.T) {
 	planID := h.seedPlan("week", "2026-10-12", "2026-10-18", nil)
 
 	status, body := decode(t, h.do(http.MethodPost, "/api/plan-items",
-		`{"scope":"week","weekStart":"2026-10-12","weekEnd":"2026-10-18","text":"Task"}`, testPassword))
+		`{"scope":"week","weekStart":"2026-10-12T00:00:00+08:00","weekEnd":"2026-10-18T00:00:00+08:00","text":"Task"}`, testPassword))
 	if status != http.StatusCreated {
 		t.Fatalf("status = %d", status)
 	}

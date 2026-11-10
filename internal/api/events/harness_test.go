@@ -2,7 +2,6 @@ package events_test
 
 import (
 	"database/sql"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -224,16 +223,14 @@ func (h *harness) countRows(t *testing.T, query string, args ...any) int64 {
 	return n
 }
 
-// expectedEndOfLocalDay 复刻 route.ts 的 `d.setHours(23, 59, 59, 999)`：取该时刻在
-// 本地时区里的日历日，再设为当天最后一毫秒。周/日过滤依赖这条本地语义。
-func expectedEndOfLocalDay(instant time.Time) time.Time {
-	lt := instant.In(time.Local)
-	return time.Date(lt.Year(), lt.Month(), lt.Day(), 23, 59, 59, 999*int(time.Millisecond), time.Local)
-}
-
-// jsSeconds 复刻 drizzle 的 timestamp 映射：Math.floor(ms/1000)。
-func jsSeconds(t time.Time) int64 {
-	return int64(math.Floor(float64(t.UnixMilli()) / 1000))
+// mustUnix 把 RFC3339 字面量折成 Unix 秒；测试用它独立于实现表达边界时刻。
+func mustUnix(t *testing.T, value string) int64 {
+	t.Helper()
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("parse %q: %v", value, err)
+	}
+	return parsed.Unix()
 }
 
 func itoa(n int64) string {
