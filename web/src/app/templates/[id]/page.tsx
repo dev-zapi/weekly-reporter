@@ -5,6 +5,7 @@ import { ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
 import { StyleSelector } from '@/components/StyleSelector'
 import { TemplateForm } from '@/components/TemplateForm'
+import { WorkbenchLayout } from '@/components/WorkbenchLayout'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 import type { AIStyle, Template } from '@/lib/db/schema'
 import styles from '@/components/library-configuration.module.css'
@@ -147,20 +148,24 @@ export default function EditTemplatePage() {
           <p>Return to the template index and choose an available personal template.</p>
         </div>
       ) : (
-        <div className={styles.editLayout}>
-          <div className={styles.editMain}>
+        <WorkbenchLayout className={styles.editLayout}>
+          <WorkbenchLayout.Primary className={styles.editMain} aria-label="Template editor">
             <TemplateForm
               template={template}
               onSave={handleSave}
               onCancel={() => navigate('/templates')}
             />
-          </div>
-          <aside className={styles.contextRail} aria-labelledby="template-style-title">
+          </WorkbenchLayout.Primary>
+          <WorkbenchLayout.Rail
+            className={styles.contextRail}
+            label="Generation style"
+            aria-labelledby="template-style-title"
+          >
             <h2 id="template-style-title">Generation style</h2>
             <p>Select the AI style applied when this template is used for final generation.</p>
             <StyleSelector value={aiStyle} onChange={handleStyleChange} />
-          </aside>
-        </div>
+          </WorkbenchLayout.Rail>
+        </WorkbenchLayout>
       )}
     </section>
   )

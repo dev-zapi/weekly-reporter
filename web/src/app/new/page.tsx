@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
 import { formatSystemDate, toBrowserOffsetInstant } from '@/lib/time-format'
 import { formatDate, getWeekRange } from '@/lib/utils'
+import { WorkbenchLayout } from '@/components/WorkbenchLayout'
 import styles from './new-report.module.css'
 
 type AudienceVariant = 'leadership' | 'personal'
@@ -146,8 +147,8 @@ export default function NewReportPage() {
   const previewStatus = saving ? 'Creating report' : previewing ? 'Loading draft' : previewError ? 'Preview unavailable' : 'Ready to create'
 
   return (
-    <div className={styles.surface}>
-      <section className={styles.primary} aria-labelledby="new-report-title">
+    <WorkbenchLayout className={styles.surface}>
+      <WorkbenchLayout.Primary className={styles.primary} aria-labelledby="new-report-title">
         <header className={styles.pageHeader}>
           <div className={styles.titleGroup}>
             <h1 id="new-report-title">New Report</h1>
@@ -234,9 +235,9 @@ export default function NewReportPage() {
             </Tabs>
           ) : null}
         </section>
-      </section>
+      </WorkbenchLayout.Primary>
 
-      <aside className={styles.context} aria-label="Report creation settings">
+      <WorkbenchLayout.Rail className={styles.context} label="Report creation settings">
         <form
           className={styles.settingsPanel}
           aria-busy={saving}
@@ -319,7 +320,7 @@ export default function NewReportPage() {
             <p>Create opens the report with the {variantLabels[previewVariant]} audience selected.</p>
           </div>
         </form>
-      </aside>
-    </div>
+      </WorkbenchLayout.Rail>
+    </WorkbenchLayout>
   )
 }
