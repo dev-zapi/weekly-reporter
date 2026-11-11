@@ -482,3 +482,9 @@ useEffect(() => {
   return () => document.removeEventListener('keydown', handleEscape)
 }, [open, showSuggestions, onClose])
 ```
+
+## 界面布局
+
+### 封顶主体+弹性栏 (Body-Cap Rail)
+面向桌面宽屏的两栏工作台布局：主体内容宽度封顶以维持可读的行长，页面余出的宽度交给辅助栏或留白；辅助栏随可用宽度弹性伸缩，窗口收窄时两栏折叠为单栏。
+_Avoid_: C 方案、封顶布局、限宽两栏
