@@ -2,6 +2,16 @@
   "detector": {
     "ignoreRules": [],
     "ignoreFiles": [],
-    "ignoreValues": []
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/src/components/report/report-workspace.module.css"
+        ],
+        "createdAt": "2026-11-11T07:20:16.500Z",
+        "reason": "Stock markdown blockquote rule (border-left: 3px solid var(--line)) predating body-cap-rail session; conventional quote styling in a document body, not a card accent. Out of layout-task scope. Value stays \"*\" because side-tab findings carry no value field (`impeccable detect --json`), so value-specific ignores cannot match; the exemption is already scoped to this one file."
+      }
+    ]
   }
 }
