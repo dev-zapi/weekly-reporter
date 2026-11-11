@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { WorkbenchLayout } from '@/components/WorkbenchLayout'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { DEFAULT_GENERATION_INSTRUCTION } from '@/lib/generation/context'
@@ -767,8 +768,8 @@ export function GenerationWorkspace({
       ) : !detail ? (
         <div className={styles.workspace}><div className={styles.transcriptLoading}>Loading chat...</div></div>
       ) : (
-        <div className={styles.sessionGrid}>
-          <section className={styles.chatPanel}>
+        <WorkbenchLayout className={styles.sessionGrid}>
+          <WorkbenchLayout.Primary className={styles.chatPanel} aria-label="Generation session">
             <div className={styles.chatHeader}>
               <div className={styles.chatTitleWrap}>
                 <div className={styles.chatTitleRow}>
@@ -903,14 +904,19 @@ export function GenerationWorkspace({
                 </div>
               </div>
             )}
-          </section>
-          <ProposalReviewPanel
-            proposal={proposal}
-            editable={editable && detail.sourceIsCurrent}
-            accepting={accepting}
-            onAccept={() => proposal && void acceptProposal(proposal)}
-          />
-        </div>
+          </WorkbenchLayout.Primary>
+          <WorkbenchLayout.Rail
+            label="Read-only proposal review"
+            className={proposal ? styles.proposalSticky : undefined}
+          >
+            <ProposalReviewPanel
+              proposal={proposal}
+              editable={editable && detail.sourceIsCurrent}
+              accepting={accepting}
+              onAccept={() => proposal && void acceptProposal(proposal)}
+            />
+          </WorkbenchLayout.Rail>
+        </WorkbenchLayout>
       )}
     </div>
   )
