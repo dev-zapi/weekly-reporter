@@ -517,11 +517,9 @@
   cursor: pointer;
 }
 
+/* The two-column grid itself is owned by WorkbenchLayout; this module keeps the
+   edit surface frame only. */
 .editLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 0;
-  align-items: start;
   min-width: 0;
   background: var(--lc-frame);
   border: 1px solid var(--lc-line);
@@ -991,10 +989,6 @@
     padding: 24px 20px 56px;
   }
 
-  .editLayout {
-    grid-template-columns: minmax(0, 1fr) 300px;
-  }
-
   .recordRow {
     grid-template-columns: 110px minmax(0, 1fr);
   }
@@ -1005,11 +999,7 @@
   }
 }
 
-@media (max-width: 900px) {
-  .editLayout {
-    display: block;
-  }
-
+@media (max-width: 960px) {
   .contextRail {
     min-height: 0;
     border-top: 1px solid var(--lc-line);

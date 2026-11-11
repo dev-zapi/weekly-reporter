@@ -22,6 +22,7 @@ import {
   type PlanItemRowData,
 } from './PeriodPlanItemRow'
 import { PlanContextPanel } from './PlanContextPanel'
+import { WorkbenchLayout } from './WorkbenchLayout'
 import { getWeekPeriodRange, getMonthPeriodRange, dateOnlyToOffsetInstant, monthKeyToOffsetInstant } from '@/lib/periods'
 import {
   PLAN_ITEM_STATUS_LABELS,
@@ -452,8 +453,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
 
   return (
     <div className={styles.surface}>
-      <div className={styles.split}>
-        <section className={styles.primary} aria-label="Plan workspace">
+      <WorkbenchLayout className={styles.split}>
+        <WorkbenchLayout.Primary className={styles.primary} aria-label="Plan workspace">
           <header className={styles.pageHeading}>
             <div>
               <h1>Plan items</h1>
@@ -650,9 +651,9 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               </div>
             </section>
           )}
-        </section>
+        </WorkbenchLayout.Primary>
 
-        <aside className={styles.context} aria-label="Plan inspector">
+        <WorkbenchLayout.Rail className={styles.context} label="Plan inspector">
           <PlanContextPanel
             item={selectedItem}
             periodLabel={periodDisplay}
@@ -720,8 +721,8 @@ export function PeriodPlanManager({ initialScope = 'week', initialStart = null, 
               <span>Personal {personalCount}</span>
             </div>
           </section>
-        </aside>
-      </div>
+        </WorkbenchLayout.Rail>
+      </WorkbenchLayout>
     </div>
   )
 }
