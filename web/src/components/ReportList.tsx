@@ -6,6 +6,7 @@ import { apiFetch, traceSuffix } from '@/lib/api-client'
 import type { AudienceVariant } from '@/lib/db/schema'
 import { ReportCard, type ReportSummary } from './ReportCard'
 import { ReportPreviewPanel, type ReportDetail } from './ReportPreviewPanel'
+import { WorkbenchLayout } from './WorkbenchLayout'
 import styles from './ReportsLibrary.module.css'
 
 type ListState = 'loading' | 'ready' | 'error'
@@ -211,8 +212,8 @@ export function ReportList() {
   }
 
   return (
-    <div className={styles.split}>
-      <section className={styles.primary} aria-labelledby="report-library-title">
+    <WorkbenchLayout className={styles.split}>
+      <WorkbenchLayout.Primary className={styles.primary} aria-labelledby="report-library-title">
         <header className={styles.pageHeading}>
           <div>
             <h1 id="report-library-title">Report library</h1>
@@ -324,9 +325,9 @@ export function ReportList() {
             </div>
           </>
         )}
-      </section>
+      </WorkbenchLayout.Primary>
 
-      <aside className={styles.context} aria-label="Selected report preview">
+      <WorkbenchLayout.Rail className={styles.context} label="Selected report preview">
         <ReportPreviewPanel
           report={preview}
           audience={audience}
@@ -335,7 +336,7 @@ export function ReportList() {
           error={previewError}
           onRetry={retryPreview}
         />
-      </aside>
-    </div>
+      </WorkbenchLayout.Rail>
+    </WorkbenchLayout>
   )
 }
