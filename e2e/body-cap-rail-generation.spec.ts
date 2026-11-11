@@ -1,5 +1,14 @@
-import { test, expect, type Page } from './generation-fixtures'
+import { test, expect } from './generation-fixtures'
+import type { Page } from '@playwright/test'
 import { SCRIPTED_AI_URL, scriptedInstruction } from './scripted-ai'
+import {
+  BODY_MAX,
+  RAIL_MIN,
+  primary,
+  rail,
+  readLayoutDisplay,
+  readTracks,
+} from './body-cap-rail-helpers'
 
 /**
  * body-cap rail 宽度契约 — AI 会话（ticket #150）。
@@ -9,30 +18,8 @@ import { SCRIPTED_AI_URL, scriptedInstruction } from './scripted-ai'
  * ≤960 折叠单栏。断言只读计算样式与包围盒，不碰组件内部结构。
  */
 
-const BODY_MAX = 1000
-const RAIL_MIN = 380
 const RAIL_LABEL = 'Read-only proposal review'
 const PRIMARY_LABEL = 'Generation session'
-
-function rail(page: Page) {
-  return page.getByRole('complementary', { name: RAIL_LABEL })
-}
-
-function primary(page: Page) {
-  return page.getByRole('region', { name: PRIMARY_LABEL })
-}
-
-async function readTracks(page: Page): Promise<{ primary: number; rail: number }> {
-  const columns = await rail(page).evaluate(
-    (el) => getComputedStyle(el.parentElement!).gridTemplateColumns,
-  )
-  const parts = columns.split(/\s+/).filter(Boolean).map((value) => Number.parseFloat(value))
-  return { primary: parts[0], rail: parts[1] }
-}
-
-async function readLayoutDisplay(page: Page): Promise<string> {
-  return rail(page).evaluate((el) => getComputedStyle(el.parentElement!).display)
-}
 
 /** Document measure vs. an independent 72ch box rendered in its own font. */
 async function readDocumentMeasure(page: Page) {
@@ -91,9 +78,9 @@ async function seedProposalSession(
 async function openAiSession(page: Page, reportId: number) {
   await page.goto(`/edit/${reportId}`)
   await page.getByRole('button', { name: 'AI chat', exact: true }).click()
-  await expect(primary(page)).toBeVisible()
-  await expect(rail(page)).toBeVisible()
-  await expect(rail(page).getByText('Pending review')).toBeVisible({ timeout: 30_000 })
+  await expect(primary(page, PRIMARY_LABEL)).toBeVisible()
+  await expect(rail(page, RAIL_LABEL)).toBeVisible()
+  await expect(rail(page, RAIL_LABEL).getByText('Pending review')).toBeVisible({ timeout: 30_000 })
 }
 
 test.describe('body-cap rail — AI generation session', () => {
@@ -106,19 +93,19 @@ test.describe('body-cap rail — AI generation session', () => {
     await page.setViewportSize({ width: 1750, height: 1000 })
     await openAiSession(page, reportId)
 
-    const wide = await readTracks(page)
+    const wide = await readTracks(page, RAIL_LABEL)
     expect(wide.primary).toBeLessThanOrEqual(BODY_MAX + 1)
     expect(wide.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
 
-    const wideRail = await rail(page).boundingBox()
+    const wideRail = await rail(page, RAIL_LABEL).boundingBox()
     expect(wideRail).not.toBeNull()
     expect(wideRail!.width).toBeGreaterThanOrEqual(RAIL_MIN - 1)
 
     await page.setViewportSize({ width: 1450, height: 1000 })
     await expect
-      .poll(async () => (await readTracks(page)).rail)
+      .poll(async () => (await readTracks(page, RAIL_LABEL)).rail)
       .toBeGreaterThanOrEqual(RAIL_MIN - 1)
-    const narrowRail = await rail(page).boundingBox()
+    const narrowRail = await rail(page, RAIL_LABEL).boundingBox()
     expect(narrowRail).not.toBeNull()
 
     // Above the cap, widening the window hands the extra width to the rail.
@@ -137,20 +124,20 @@ test.describe('body-cap rail — AI generation session', () => {
     for (const width of [1100, 1000, 961]) {
       await page.setViewportSize({ width, height: 900 })
       await expect
-        .poll(async () => (await readTracks(page)).rail)
+        .poll(async () => (await readTracks(page, RAIL_LABEL)).rail)
         .toBeGreaterThanOrEqual(RAIL_MIN - 1)
-      const tracks = await readTracks(page)
+      const tracks = await readTracks(page, RAIL_LABEL)
       // Two tracks survive the whole 961–1100 band (the old 1100px fold is gone).
       expect(tracks.primary).toBeGreaterThan(0)
       expect(tracks.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
-      expect(await readLayoutDisplay(page)).toBe('grid')
+      expect(await readLayoutDisplay(page, RAIL_LABEL)).toBe('grid')
     }
 
     await page.setViewportSize({ width: 960, height: 900 })
-    await expect.poll(() => readLayoutDisplay(page)).toBe('block')
+    await expect.poll(() => readLayoutDisplay(page, RAIL_LABEL)).toBe('block')
 
-    const primaryBox = await primary(page).boundingBox()
-    const railBox = await rail(page).boundingBox()
+    const primaryBox = await primary(page, PRIMARY_LABEL).boundingBox()
+    const railBox = await rail(page, RAIL_LABEL).boundingBox()
     expect(primaryBox).not.toBeNull()
     expect(railBox).not.toBeNull()
 
@@ -174,7 +161,7 @@ test.describe('body-cap rail — AI generation session', () => {
     expect(narrow.width).toBeLessThanOrEqual(narrow.maxWidth + 1)
 
     await page.setViewportSize({ width: 1750, height: 1000 })
-    await expect.poll(async () => (await readTracks(page)).rail).toBeGreaterThan(RAIL_MIN + 20)
+    await expect.poll(async () => (await readTracks(page, RAIL_LABEL)).rail).toBeGreaterThan(RAIL_MIN + 20)
     const wide = await readDocumentMeasure(page)
     // The measure is unchanged while the surrounding rail grew.
     expect(Math.abs(wide.maxWidth - narrow.maxWidth)).toBeLessThanOrEqual(1)

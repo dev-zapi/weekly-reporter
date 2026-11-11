@@ -1,4 +1,13 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import {
+  BODY_MAX,
+  RAIL_MIN,
+  primary as primaryRegion,
+  rail,
+  readLayoutDisplay,
+  readSurfaceWidths,
+  readTracks,
+} from './body-cap-rail-helpers'
 
 /**
  * body-cap rail 宽度契约 — 周报详情（ticket #149）。
@@ -14,19 +23,13 @@ import { test, expect, type APIRequestContext, type Page } from '@playwright/tes
  *     但 generation 内部的行宽控制（createPanel 760 居中）保持不变。
  */
 
-const BODY_MAX = 1000
-const RAIL_MIN = 380
 const RAIL_LABEL = 'Report review gate'
 const WEEK_START = '2027-03-01T00:00:00.000Z'
 const WEEK_END = '2027-03-07T00:00:00.000Z'
 const FINAL_CONTENT = '# Body cap rail final\n\nFinal body content for the layout contract.'
 
-function rail(page: Page) {
-  return page.getByRole('complementary', { name: RAIL_LABEL })
-}
-
 function primary(page: Page, audience = 'Personal') {
-  return page.getByRole('region', { name: `${audience} report review` })
+  return primaryRegion(page, `${audience} report review`)
 }
 
 async function seedReport(request: APIRequestContext): Promise<number> {
@@ -53,31 +56,7 @@ async function openContent(page: Page, reportId: number, editable = false) {
     await page.getByRole('button', { name: 'Report content' }).click()
   }
   await expect(primary(page)).toBeVisible()
-  await expect(rail(page)).toBeVisible()
-}
-
-async function readTracks(page: Page): Promise<{ primary: number; rail: number }> {
-  const columns = await rail(page).evaluate(
-    (el) => getComputedStyle(el.parentElement!).gridTemplateColumns,
-  )
-  const parts = columns.split(/\s+/).filter(Boolean).map((value) => Number.parseFloat(value))
-  return { primary: parts[0], rail: parts[1] }
-}
-
-async function readLayoutDisplay(page: Page): Promise<string> {
-  return rail(page).evaluate((el) => getComputedStyle(el.parentElement!).display)
-}
-
-/** Width of the page surface (AppShell renders it as <main>'s first child). */
-async function readSurfaceWidths(page: Page): Promise<{ main: number; surface: number }> {
-  return page.evaluate(() => {
-    const main = document.querySelector('main')
-    if (!main || !main.firstElementChild) throw new Error('surface not found')
-    return {
-      main: main.clientWidth,
-      surface: main.firstElementChild.getBoundingClientRect().width,
-    }
-  })
+  await expect(rail(page, RAIL_LABEL)).toBeVisible()
 }
 
 test.describe('body-cap rail — report detail', () => {
@@ -90,16 +69,16 @@ test.describe('body-cap rail — report detail', () => {
       await page.setViewportSize({ width: 1920, height: 1000 })
       await openContent(page, reportId)
 
-      const wide = await readTracks(page)
+      const wide = await readTracks(page, RAIL_LABEL)
       expect(wide.primary).toBeLessThanOrEqual(BODY_MAX + 1)
       expect(wide.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
 
-      const wideRailBox = await rail(page).boundingBox()
+      const wideRailBox = await rail(page, RAIL_LABEL).boundingBox()
       expect(wideRailBox).not.toBeNull()
 
       // Two-column gate card: the steps list and provenance list share a row.
-      const steps = rail(page).locator('ol')
-      const provenance = rail(page).locator('dl')
+      const steps = rail(page, RAIL_LABEL).locator('ol')
+      const provenance = rail(page, RAIL_LABEL).locator('dl')
       const stepsBox = await steps.boundingBox()
       const provenanceBox = await provenance.boundingBox()
       expect(stepsBox).not.toBeNull()
@@ -112,15 +91,15 @@ test.describe('body-cap rail — report detail', () => {
       // difference to the primary column (the wide rail was larger).
       await page.setViewportSize({ width: 1450, height: 1000 })
       await expect
-        .poll(async () => (await readTracks(page)).rail)
+        .poll(async () => (await readTracks(page, RAIL_LABEL)).rail)
         .toBeGreaterThanOrEqual(RAIL_MIN - 1)
 
-      const pinned = await readTracks(page)
+      const pinned = await readTracks(page, RAIL_LABEL)
       expect(pinned.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
       expect(pinned.rail).toBeLessThanOrEqual(RAIL_MIN + 1)
       expect(pinned.primary).toBeLessThan(wide.primary)
 
-      const pinnedRailBox = await rail(page).boundingBox()
+      const pinnedRailBox = await rail(page, RAIL_LABEL).boundingBox()
       expect(pinnedRailBox).not.toBeNull()
       expect(wideRailBox!.width).toBeGreaterThan(pinnedRailBox!.width + 100)
     } finally {
@@ -152,7 +131,7 @@ test.describe('body-cap rail — report detail', () => {
 
       // Content mode shares the uncapped surface.
       await page.getByRole('button', { name: 'Report content' }).click()
-      await expect(rail(page)).toBeVisible()
+      await expect(rail(page, RAIL_LABEL)).toBeVisible()
       const contentWidths = await readSurfaceWidths(page)
       expect(contentWidths.main).toBeGreaterThan(1500)
       expect(contentWidths.surface).toBeGreaterThan(1500)
@@ -167,13 +146,13 @@ test.describe('body-cap rail — report detail', () => {
     try {
       await page.setViewportSize({ width: 1200, height: 900 })
       await openContent(page, reportId)
-      await expect.poll(() => readLayoutDisplay(page)).toBe('grid')
+      await expect.poll(() => readLayoutDisplay(page, RAIL_LABEL)).toBe('grid')
 
       await page.setViewportSize({ width: 960, height: 900 })
-      await expect.poll(() => readLayoutDisplay(page)).toBe('block')
+      await expect.poll(() => readLayoutDisplay(page, RAIL_LABEL)).toBe('block')
 
       const primaryBox = await primary(page).boundingBox()
-      const railBox = await rail(page).boundingBox()
+      const railBox = await rail(page, RAIL_LABEL).boundingBox()
       expect(primaryBox).not.toBeNull()
       expect(railBox).not.toBeNull()
       expect(Math.abs(primaryBox!.width - railBox!.width)).toBeLessThanOrEqual(1)
@@ -204,7 +183,7 @@ test.describe('body-cap rail — report detail', () => {
       // Switching audience re-renders the primary region and keeps the rail.
       await page.getByRole('button', { name: /Leadership/ }).click()
       await expect(primary(page, 'Leadership')).toBeVisible()
-      await expect(rail(page)).toBeVisible()
+      await expect(rail(page, RAIL_LABEL)).toBeVisible()
 
       await page.getByRole('button', { name: /Personal/ }).click()
       await expect(primary(page, 'Personal')).toBeVisible()

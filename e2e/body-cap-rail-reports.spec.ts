@@ -1,4 +1,12 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import {
+  BODY_MAX,
+  RAIL_MIN,
+  primary,
+  rail,
+  readLayoutDisplay,
+  readTracks,
+} from './body-cap-rail-helpers'
 
 /**
  * body-cap rail 宽度契约（ticket #148，周报列表页）。
@@ -16,8 +24,6 @@ import { test, expect, type Page, type APIRequestContext } from '@playwright/tes
  *   - Leadership/Personal 预览与 Open full review 链路不受影响。
  */
 
-const BODY_MAX = 1000
-const RAIL_MIN = 380
 const RAIL_LABEL = 'Selected report preview'
 const PRIMARY_LABEL = 'Report library'
 
@@ -26,26 +32,6 @@ const LEADERSHIP_HEADING = 'Leadership final heading'
 const LEADERSHIP_BODY = 'Leadership body paragraph for the rail contract preview.'
 const PERSONAL_HEADING = 'Personal final heading'
 const PERSONAL_BODY = 'Personal body paragraph for the rail contract preview.'
-
-function rail(page: Page) {
-  return page.getByRole('complementary', { name: RAIL_LABEL })
-}
-
-function primary(page: Page) {
-  return page.getByRole('region', { name: PRIMARY_LABEL })
-}
-
-async function readTracks(page: Page): Promise<{ primary: number; rail: number }> {
-  const columns = await rail(page).evaluate(
-    (el) => getComputedStyle(el.parentElement!).gridTemplateColumns,
-  )
-  const parts = columns.split(/\s+/).filter(Boolean).map((value) => Number.parseFloat(value))
-  return { primary: parts[0], rail: parts[1] }
-}
-
-async function readLayoutDisplay(page: Page): Promise<string> {
-  return rail(page).evaluate((el) => getComputedStyle(el.parentElement!).display)
-}
 
 /** Seeds one report and gives both audience variants a final so the preview renders. */
 async function seedReport(request: APIRequestContext): Promise<number> {
@@ -71,15 +57,15 @@ async function seedReport(request: APIRequestContext): Promise<number> {
 
 async function openReports(page: Page, reportId: number) {
   await page.goto('/reports')
-  await expect(primary(page)).toBeVisible()
-  await expect(rail(page)).toBeVisible()
+  await expect(primary(page, PRIMARY_LABEL)).toBeVisible()
+  await expect(rail(page, RAIL_LABEL)).toBeVisible()
   await page
     .getByRole('listitem')
     .filter({ hasText: REPORT_TITLE })
     .getByRole('button')
     .first()
     .click()
-  await expect(rail(page).getByRole('heading', { name: LEADERSHIP_HEADING })).toBeVisible()
+  await expect(rail(page, RAIL_LABEL).getByRole('heading', { name: LEADERSHIP_HEADING })).toBeVisible()
   return reportId
 }
 
@@ -98,11 +84,11 @@ test.describe('body-cap rail — report library', () => {
     await page.setViewportSize({ width: 1920, height: 1000 })
     await openReports(page, reportId)
 
-    const wide = await readTracks(page)
+    const wide = await readTracks(page, RAIL_LABEL)
     expect(wide.primary).toBeLessThanOrEqual(BODY_MAX + 1)
     expect(wide.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
 
-    const wideRail = await rail(page).boundingBox()
+    const wideRail = await rail(page, RAIL_LABEL).boundingBox()
     const widePanel = await page.getByRole('tabpanel').boundingBox()
     expect(wideRail).not.toBeNull()
     expect(widePanel).not.toBeNull()
@@ -114,8 +100,8 @@ test.describe('body-cap rail — report library', () => {
 
     // Growing the window hands the extra width to the rail.
     await page.setViewportSize({ width: 1600, height: 1000 })
-    await expect.poll(async () => (await readTracks(page)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
-    const midRail = await rail(page).boundingBox()
+    await expect.poll(async () => (await readTracks(page, RAIL_LABEL)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
+    const midRail = await rail(page, RAIL_LABEL).boundingBox()
     const midPanel = await page.getByRole('tabpanel').boundingBox()
     expect(midRail).not.toBeNull()
     expect(midPanel).not.toBeNull()
@@ -145,7 +131,7 @@ test.describe('body-cap rail — report library', () => {
 
     // A wider rail must not lengthen the line.
     await page.setViewportSize({ width: 2600, height: 1000 })
-    await expect.poll(async () => (await readTracks(page)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
+    await expect.poll(async () => (await readTracks(page, RAIL_LABEL)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
     const at2600 = await measure()
     expect(at2600.panelContent).toBeGreaterThan(at2400.panelContent + 100)
     expect(Math.abs(at2600.body - at2400.body)).toBeLessThanOrEqual(1)
@@ -153,7 +139,7 @@ test.describe('body-cap rail — report library', () => {
     // When the rail sits at its 380px floor the line fills the narrower panel
     // instead of overflowing it.
     await page.setViewportSize({ width: 1600, height: 1000 })
-    await expect.poll(async () => (await readTracks(page)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
+    await expect.poll(async () => (await readTracks(page, RAIL_LABEL)).rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
     const at1600 = await measure()
     expect(at1600.body).toBeLessThan(at2400.body - 50)
     expect(Math.abs(at1600.body - at1600.panelContent)).toBeLessThanOrEqual(1)
@@ -167,10 +153,10 @@ test.describe('body-cap rail — report library', () => {
     for (const width of [1100, 1000, 961]) {
       await page.setViewportSize({ width, height: 900 })
       await expect
-        .poll(async () => Math.abs((await readTracks(page)).rail - RAIL_MIN) <= 1)
+        .poll(async () => Math.abs((await readTracks(page, RAIL_LABEL)).rail - RAIL_MIN) <= 1)
         .toBe(true)
 
-      const tracks = await readTracks(page)
+      const tracks = await readTracks(page, RAIL_LABEL)
       expect(tracks.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
       expect(tracks.rail).toBeLessThanOrEqual(RAIL_MIN + 1)
       expect(tracks.primary).toBeGreaterThan(0)
@@ -179,14 +165,14 @@ test.describe('body-cap rail — report library', () => {
 
     // The primary column absorbs the window delta while the rail stays pinned;
     // the retired 1100px transition would have pinned the rail at 300px.
-    const primaryAt961 = (await readTracks(page)).primary
+    const primaryAt961 = (await readTracks(page, RAIL_LABEL)).primary
     expect(primaryAt1100).toBeGreaterThan(primaryAt961 + 100)
 
     await page.setViewportSize({ width: 960, height: 900 })
-    await expect.poll(() => readLayoutDisplay(page)).toBe('block')
+    await expect.poll(() => readLayoutDisplay(page, RAIL_LABEL)).toBe('block')
 
-    const primaryBox = await primary(page).boundingBox()
-    const railBox = await rail(page).boundingBox()
+    const primaryBox = await primary(page, PRIMARY_LABEL).boundingBox()
+    const railBox = await rail(page, RAIL_LABEL).boundingBox()
     expect(primaryBox).not.toBeNull()
     expect(railBox).not.toBeNull()
     expect(Math.abs(primaryBox!.width - railBox!.width)).toBeLessThanOrEqual(1)
@@ -197,19 +183,19 @@ test.describe('body-cap rail — report library', () => {
     await page.setViewportSize({ width: 1200, height: 900 })
     await openReports(page, reportId)
 
-    const leadershipTab = rail(page).getByRole('tab', { name: /Leadership/ })
-    const personalTab = rail(page).getByRole('tab', { name: /Personal/ })
+    const leadershipTab = rail(page, RAIL_LABEL).getByRole('tab', { name: /Leadership/ })
+    const personalTab = rail(page, RAIL_LABEL).getByRole('tab', { name: /Personal/ })
     await expect(leadershipTab).toHaveAttribute('aria-selected', 'true')
-    await expect(rail(page).getByRole('heading', { name: LEADERSHIP_HEADING })).toBeVisible()
-    await expect(rail(page).getByText(LEADERSHIP_BODY)).toBeVisible()
+    await expect(rail(page, RAIL_LABEL).getByRole('heading', { name: LEADERSHIP_HEADING })).toBeVisible()
+    await expect(rail(page, RAIL_LABEL).getByText(LEADERSHIP_BODY)).toBeVisible()
 
     await personalTab.click()
     await expect(personalTab).toHaveAttribute('aria-selected', 'true')
-    await expect(rail(page).getByRole('heading', { name: PERSONAL_HEADING })).toBeVisible()
-    await expect(rail(page).getByText(PERSONAL_BODY)).toBeVisible()
-    await expect(rail(page).getByRole('heading', { name: LEADERSHIP_HEADING })).toHaveCount(0)
+    await expect(rail(page, RAIL_LABEL).getByRole('heading', { name: PERSONAL_HEADING })).toBeVisible()
+    await expect(rail(page, RAIL_LABEL).getByText(PERSONAL_BODY)).toBeVisible()
+    await expect(rail(page, RAIL_LABEL).getByRole('heading', { name: LEADERSHIP_HEADING })).toHaveCount(0)
 
-    const reviewLink = rail(page).getByRole('link', { name: /Open full review/ })
+    const reviewLink = rail(page, RAIL_LABEL).getByRole('link', { name: /Open full review/ })
     await expect(reviewLink).toHaveAttribute('href', `/reports/${reportId}?audience=personal`)
 
     await reviewLink.click()
