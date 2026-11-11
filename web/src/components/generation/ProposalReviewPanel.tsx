@@ -32,10 +32,10 @@ export function ProposalReviewPanel({
   const diff = useMemo(() => proposal && proposal.baselineContent != null ? lineDiff(proposal.baselineContent, proposal.content) : [], [proposal])
   if (!proposal) {
     return (
-      <aside aria-label="Read-only proposal review" className={styles.proposalEmpty}>
+      <div className={styles.proposalEmpty}>
         The proposed final version appears here after AI calls <code>propose_final_report</code>. Regular chat messages
         do not write directly to the report.
-      </aside>
+      </div>
     )
   }
 
@@ -55,10 +55,7 @@ export function ProposalReviewPanel({
         : 'Read-only review'
 
   return (
-    <aside
-      aria-label="Read-only proposal review"
-      className={`${styles.proposalPanel} ${styles.proposalSticky}`}
-    >
+    <div className={styles.proposalPanel}>
       <div className={styles.proposalHeader}>
         <div>
           <h3 className={styles.proposalTitle}>Proposed final version</h3>
@@ -119,7 +116,7 @@ export function ProposalReviewPanel({
 
       {tab === 'preview' && (
         <div role="tabpanel" className={styles.proposalPreview}>
-          <div className={styles.proposalDocument}>
+          <div className={styles.proposalDocument} data-testid="proposal-document">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{proposal.content}</ReactMarkdown>
           </div>
         </div>
@@ -153,7 +150,7 @@ export function ProposalReviewPanel({
         The current final version is unchanged until you accept. You can continue improving it in this session after
         saving.
       </p>
-    </aside>
+    </div>
   )
 }
 
