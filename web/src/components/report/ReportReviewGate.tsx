@@ -78,7 +78,7 @@ export function ReportReviewGate({
   ]
 
   return (
-    <aside className={styles.reviewPanel} aria-label="Report review gate">
+    <div className={styles.reviewPanel}>
       <div className={styles.reviewHeading}>
         <h2>Review gate</h2>
         <ShieldCheck size={18} aria-hidden="true" />
@@ -142,6 +142,6 @@ export function ReportReviewGate({
             : 'This final was saved directly by the user; no proposal was adopted.'
           : 'Adoption stays unavailable until a final exists. The source draft cannot be adopted on its own.'}
       </p>
-    </aside>
+    </div>
   )
 }

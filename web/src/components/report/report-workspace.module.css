@@ -17,7 +17,11 @@
   --amber: #8a4d05;
   --amber-bg: #fff3dd;
   --red: #a43b3b;
-  max-width: 1500px;
+  /* The 1500px page cap was removed for the body-cap rail layout: the content
+     mode and AI chat mode both fill the AppShell body while their internal
+     measures (document 72ch, generation createPanel 760, bubbles 86%) keep the
+     readable line lengths. */
+  max-width: none;
   /* Fill the viewport with the paper ground. The AI-chat mode renders no
      .contentGrid, so without this the themed body shows through below the
      report content (a black band in dark theme). */
@@ -400,13 +404,11 @@
 /* Content split --------------------------------------------------------- */
 
 .contentGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 0;
-  align-items: stretch;
-  min-height: 100dvh;
-  /* The rail is part of the shared frame: bleed through the surface's right
+  /* The two-column grid and its <=960px collapse are owned by WorkbenchLayout;
+     this module keeps the page surface (min-height) and the right-edge bleed.
+     The rail is part of the shared frame: bleed through the surface's right
      padding so it meets the body edge like the approved C split. */
+  min-height: 100dvh;
   margin-right: -28px;
 }
 
@@ -821,11 +823,22 @@
 
 .reviewPanel {
   display: grid;
-  gap: 12px;
+  /* Wide rail turns the gate into a two-column card: steps left, provenance
+     right. The page heading, copy, actions, and footnote span both columns. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+  align-content: start;
   padding: 18px;
   color: #ffffff;
   background: var(--navy);
   border-radius: 4px;
+}
+
+.reviewHeading,
+.reviewCopy,
+.reviewActions,
+.reviewNote {
+  grid-column: 1 / -1;
 }
 
 .reviewHeading {
@@ -1001,11 +1014,20 @@
   border: 0;
 }
 
+/* The nested compare view stacks while the two-column workbench is narrow.
+   This is document-internal layout, not the page split, so it keeps its own
+   breakpoint even though the workbench collapses at 960. */
 @media (max-width: 1100px) {
-  /* Below the desktop split the review gate moves under the document, so the
-     column becomes a full-width framed band rather than a side rail. */
-  .contentGrid {
+  .compareGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* WorkbenchLayout unifies the two-column collapse at <=960px; the page surface
+   follows so the rail reads as a continuation of the primary column rather
+   than a side-by-side neighbour. */
+@media (max-width: 960px) {
+  .contentGrid {
     min-height: 0;
     margin-right: 0;
   }
@@ -1020,10 +1042,6 @@
     background: var(--frame-ground);
     border-left: 0;
     border-top: 1px solid var(--line);
-  }
-
-  .compareGrid {
-    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1055,22 +1073,13 @@
     align-self: flex-start;
   }
 
-  .contentGrid {
-    display: block;
-    min-height: 0;
-    margin-right: 0;
-  }
-
-  .primaryColumn {
-    padding-right: 0;
+  /* Preserve the existing mobile gate layout: one column. */
+  .reviewPanel {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .contextColumn {
-    min-height: 0;
     padding: 20px 16px;
-    background: var(--frame-ground);
-    border-left: 0;
-    border-top: 1px solid var(--line);
   }
 
   .documentPanel {

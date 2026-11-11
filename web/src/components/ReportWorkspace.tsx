@@ -23,6 +23,7 @@ import { toast } from 'sonner'
 import { MilkdownEditor } from '@/components/editor/MilkdownEditor'
 import { GenerationWorkspace } from '@/components/GenerationWorkspace'
 import { ReportReviewGate } from '@/components/report/ReportReviewGate'
+import { WorkbenchLayout } from '@/components/WorkbenchLayout'
 import type { AudienceVariant, FinalStatus, Report, ReportVariant } from '@/lib/db/schema'
 import { EMPTY_SOURCE_DRAFT } from '@/lib/reports/source-draft'
 import { formatSystemDate } from '@/lib/time-format'
@@ -469,8 +470,11 @@ export function ReportWorkspace({
           onAccepted={acceptGeneratedVariant}
         />
       ) : (
-        <div className={styles.contentGrid}>
-          <section className={styles.primaryColumn} aria-label={`${variantLabels[variant]} report review`}>
+        <WorkbenchLayout className={styles.contentGrid}>
+          <WorkbenchLayout.Primary
+            className={styles.primaryColumn}
+            aria-label={`${variantLabels[variant]} report review`}
+          >
             <div className={styles.reviewSurface}>
               <div className={styles.paneBar}>
                 <div className={styles.paneTabs} role="tablist" aria-label="Report review pane">
@@ -618,9 +622,9 @@ export function ReportWorkspace({
                 </div>
               )}
             </div>
-          </section>
+          </WorkbenchLayout.Primary>
 
-          <div className={styles.contextColumn}>
+          <WorkbenchLayout.Rail className={styles.contextColumn} label="Report review gate">
             <ReportReviewGate
               audience={variant}
               sourceRevision={sourceRevision}
@@ -635,8 +639,8 @@ export function ReportWorkspace({
               onOpenGeneration={() => setWorkspaceMode('ai')}
               onEditFinal={() => setPane('edit')}
             />
-          </div>
-        </div>
+          </WorkbenchLayout.Rail>
+        </WorkbenchLayout>
       )}
     </div>
   )
