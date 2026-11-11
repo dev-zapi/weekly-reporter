@@ -158,7 +158,6 @@ export default function EditTemplatePage() {
           </WorkbenchLayout.Primary>
           <WorkbenchLayout.Rail
             className={styles.contextRail}
-            label="Generation style"
             aria-labelledby="template-style-title"
           >
             <h2 id="template-style-title">Generation style</h2>

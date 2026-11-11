@@ -33,12 +33,24 @@ export function WorkbenchLayoutPrimary({ className, ...props }: PrimaryProps) {
 }
 
 type RailProps = ComponentPropsWithoutRef<'aside'> & {
-  /** Accessible name for the rail; maps to the aside's aria-label. */
-  label: string
+  /**
+   * Convenience accessible name for the rail; maps to the aside's aria-label.
+   * An explicit `aria-label` or `aria-labelledby` passed through props wins.
+   */
+  label?: string
 }
 
-export function WorkbenchLayoutRail({ className, label, ...props }: RailProps) {
-  return <aside {...props} aria-label={label} className={cn(styles.rail, className)} />
+export function WorkbenchLayoutRail({
+  className,
+  label,
+  'aria-label': ariaLabel,
+  ...props
+}: RailProps) {
+  const accessibleName =
+    ariaLabel ?? (props['aria-labelledby'] && label ? undefined : label)
+  return (
+    <aside {...props} aria-label={accessibleName} className={cn(styles.rail, className)} />
+  )
 }
 
 WorkbenchLayout.Primary = WorkbenchLayoutPrimary
