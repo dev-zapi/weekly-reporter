@@ -1,4 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
+import {
+  BODY_MAX,
+  RAIL_MIN,
+  expectCollapsed,
+  primary,
+  rail,
+  railChildColumns,
+  readSurfaceWidths,
+  readTracks,
+} from './body-cap-rail-helpers'
 
 /**
  * body-cap rail 宽度契约（ticket #151 — 最后三处两栏页面）。
@@ -10,53 +20,36 @@ import { test, expect, type Page } from '@playwright/test'
  * 视口宽 W（>780，AppShell 未折叠）时，工作台主体的可用宽为 W - 248px
  * 左栏 - 24px gutter。契约与 #147 一致：
  *   - ≥1450：第一轨 ≤1000，右栏 ≥380 且随视口增长；
+ *   - 1000–1400：右栏贴 380 下限，中栏吃余量；
  *   - ≤960：折叠为单栏（display:block，主体与右栏同宽、竖直堆叠）。
  */
 
-const BODY_MAX = 1000
-const RAIL_MIN = 380
+/**
+ * 1000–1400：右栏贴 380 下限，中栏吃余量。宽屏轨值已由各页「封顶」用例覆盖，
+ * 这里只验证中区采样。
+ */
+async function expectRailPinned(page: Page, railLabel: string, path: string) {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.goto(path)
+  await expect(rail(page, railLabel)).toBeVisible()
 
-function rail(page: Page, label: string) {
-  return page.getByRole('complementary', { name: label })
-}
+  let primaryAt1400 = 0
+  for (const width of [1400, 1200, 1000]) {
+    await page.setViewportSize({ width, height: 900 })
+    await expect
+      .poll(async () => Math.abs((await readTracks(page, railLabel)).rail - RAIL_MIN) <= 1)
+      .toBe(true)
 
-function primary(page: Page, name: string) {
-  return page.getByRole('region', { name })
-}
+    const tracks = await readTracks(page, railLabel)
+    expect(tracks.rail).toBeGreaterThanOrEqual(RAIL_MIN - 1)
+    expect(tracks.rail).toBeLessThanOrEqual(RAIL_MIN + 1)
+    expect(tracks.primary).toBeGreaterThan(0)
+    if (width === 1400) primaryAt1400 = tracks.primary
+  }
 
-async function readTracks(
-  page: Page,
-  railLabel: string,
-): Promise<{ primary: number; rail: number }> {
-  const columns = await rail(page, railLabel).evaluate(
-    (el) => getComputedStyle(el.parentElement!).gridTemplateColumns,
-  )
-  const parts = columns.split(/\s+/).filter(Boolean).map((value) => Number.parseFloat(value))
-  return { primary: parts[0], rail: parts[1] }
-}
-
-async function readLayoutDisplay(page: Page, railLabel: string): Promise<string> {
-  return rail(page, railLabel).evaluate((el) => getComputedStyle(el.parentElement!).display)
-}
-
-/** Number of distinct horizontal positions the rail's direct children occupy. */
-async function railChildColumns(page: Page, railLabel: string): Promise<number> {
-  const xs = await rail(page, railLabel).evaluate((el) =>
-    Array.from(el.children).map((child) => Math.round(child.getBoundingClientRect().x)),
-  )
-  return new Set(xs).size
-}
-
-async function expectCollapsed(page: Page, railLabel: string, primaryName: string) {
-  await expect.poll(() => readLayoutDisplay(page, railLabel)).toBe('block')
-
-  const primaryBox = await primary(page, primaryName).boundingBox()
-  const railBox = await rail(page, railLabel).boundingBox()
-  expect(primaryBox).not.toBeNull()
-  expect(railBox).not.toBeNull()
-
-  expect(Math.abs(primaryBox!.width - railBox!.width)).toBeLessThanOrEqual(1)
-  expect(railBox!.y).toBeGreaterThanOrEqual(primaryBox!.y + primaryBox!.height - 1)
+  // The primary column absorbs the window delta while the rail stays pinned.
+  const primaryAt1000 = (await readTracks(page, railLabel)).primary
+  expect(primaryAt1400).toBeGreaterThan(primaryAt1000 + 200)
 }
 
 test.describe('body-cap rail — new report (/new)', () => {
@@ -82,6 +75,10 @@ test.describe('body-cap rail — new report (/new)', () => {
     const narrowRail = await rail(page, RAIL_LABEL).boundingBox()
     expect(narrowRail).not.toBeNull()
     expect(wideRail!.width).toBeGreaterThan(narrowRail!.width + 100)
+  })
+
+  test('下限：1000–1400 右栏贴 380，中栏吃余量', async ({ page }) => {
+    await expectRailPinned(page, RAIL_LABEL, '/new')
   })
 
   test('折叠：≤960 折叠为单栏，主体与右栏竖直堆叠', async ({ page }) => {
@@ -126,6 +123,10 @@ test.describe('body-cap rail — period plans (/plans)', () => {
     await page.setViewportSize({ width: 1450, height: 1000 })
     await expect.poll(async () => Math.abs((await readTracks(page, RAIL_LABEL)).rail - RAIL_MIN) <= 1).toBe(true)
     await expect.poll(() => railChildColumns(page, RAIL_LABEL)).toBe(1)
+  })
+
+  test('下限：1000–1400 右栏贴 380，中栏吃余量', async ({ page }) => {
+    await expectRailPinned(page, RAIL_LABEL, '/plans')
   })
 
   test('折叠：≤960 折叠为单栏，主体与右栏竖直堆叠', async ({ page }) => {
@@ -177,6 +178,10 @@ test.describe('body-cap rail — template edit (/templates/:id)', () => {
     expect(wideRail!.width).toBeGreaterThan(narrowRail!.width + 100)
   })
 
+  test('下限：1000–1400 右栏贴 380，中栏吃余量', async ({ page }) => {
+    await expectRailPinned(page, RAIL_LABEL, `/templates/${templateId}`)
+  })
+
   test('折叠：≤960 折叠为单栏，主体与右栏竖直堆叠', async ({ page }) => {
     await page.setViewportSize({ width: 960, height: 900 })
     await page.goto(`/templates/${templateId}`)
@@ -197,18 +202,29 @@ test.describe('body-cap rail — single-column pages stay full width', () => {
     { path: '/templates', heading: 'Template Management' },
     { path: '/security', heading: 'Security' },
     { path: '/collect', heading: 'Collection sources' },
+    { path: '/collect/new', heading: 'New source' },
+    { path: '/templates/new', heading: 'New Template' },
+    { path: '/prompts', heading: 'Prompt Management' },
   ]
 
-  async function readSurface(page: Page): Promise<{ body: number; surface: number }> {
-    return page.evaluate(() => {
-      const body = document.querySelector('main')
-      const surface = body?.firstElementChild as HTMLElement | null
-      if (!body || !surface) throw new Error('shell body surface not found')
-      return {
-        body: body.getBoundingClientRect().width,
-        surface: surface.getBoundingClientRect().width,
-      }
-    })
+  /**
+   * The route surface must fill the shell body at every desktop width and keep
+   * following viewport growth — the "unchanged full-width status" for pages
+   * outside the body-cap rail scope. Measured through `<main>` and its first
+   * child, so no page internals are asserted.
+   */
+  async function expectSurfaceFillsBody(page: Page) {
+    const at1280 = await readSurfaceWidths(page)
+    expect(Math.abs(at1280.surface - at1280.main)).toBeLessThanOrEqual(1)
+
+    await page.setViewportSize({ width: 1920, height: 900 })
+    const at1920 = await readSurfaceWidths(page)
+    expect(Math.abs(at1920.surface - at1920.main)).toBeLessThanOrEqual(1)
+
+    // Full-width status is unchanged: the route surface follows the shell
+    // body delta, not the 1000px body cap.
+    expect(at1920.surface).toBeGreaterThan(BODY_MAX + 1)
+    expect(at1920.surface - at1280.surface).toBeGreaterThan(600)
   }
 
   for (const { path, heading } of cases) {
@@ -217,17 +233,35 @@ test.describe('body-cap rail — single-column pages stay full width', () => {
       await page.goto(path)
       await expect(page.getByRole('heading', { level: 1, name: heading })).toBeVisible()
 
-      const at1280 = await readSurface(page)
-      expect(Math.abs(at1280.surface - at1280.body)).toBeLessThanOrEqual(1)
-
-      await page.setViewportSize({ width: 1920, height: 900 })
-      const at1920 = await readSurface(page)
-      expect(Math.abs(at1920.surface - at1920.body)).toBeLessThanOrEqual(1)
-
-      // Full-width status is unchanged: the route surface follows the shell
-      // body delta, not the 1000px body cap.
-      expect(at1920.surface).toBeGreaterThan(BODY_MAX + 1)
-      expect(at1920.surface - at1280.surface).toBeGreaterThan(600)
+      await expectSurfaceFillsBody(page)
     })
   }
+
+  test('/collect/:id 满宽不变，未进入 body-cap 栅格', async ({ page, request }) => {
+    const created = await request.post('/api/collect/sources', {
+      data: {
+        type: 'git-local',
+        name: 'body-cap rail e2e source',
+        projectScope: 'personal',
+        config: {
+          owner: '/tmp/body-cap-rail-e2e',
+          authorEmails: ['e2e@example.com'],
+        },
+      },
+    })
+    expect(created.status()).toBe(201)
+    const { id } = (await created.json()) as { id: number }
+
+    try {
+      await page.setViewportSize({ width: 1280, height: 900 })
+      await page.goto(`/collect/${id}`)
+      await expect(
+        page.getByRole('heading', { level: 1, name: `Edit source #${id}` }),
+      ).toBeVisible()
+
+      await expectSurfaceFillsBody(page)
+    } finally {
+      await request.delete(`/api/collect/sources/${id}`)
+    }
+  })
 })
