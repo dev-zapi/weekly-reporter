@@ -154,6 +154,11 @@
   --wr-line: #cbd6e2;
   --wr-focus: #74a2fa;
 
+  /* body-cap rail (ADR 0033): the primary workbench body stops at a readable
+     measure and the flexible rail keeps at least its minimum, taking the rest. */
+  --wr-body-max: 1000px;
+  --wr-rail-min: 380px;
+
   /* Next self-hosted Geist is the single UI family; Settings may override. */
   --font-ui: var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-editor: var(--font-geist-sans), "Noto Sans CJK SC", "Microsoft YaHei", system-ui, sans-serif;

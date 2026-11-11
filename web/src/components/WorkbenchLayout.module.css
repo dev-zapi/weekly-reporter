@@ -1,0 +1,26 @@
+/*
+ * body-cap rail — the shared two-column workbench contract (ADR 0033).
+ *
+ * Surface layers (background, padding, min-height) live in the page modules; this
+ * file only owns the grid tracks, the grid-item min-width reset, and the single
+ * global collapse point. Values come from the design-system tokens in
+ * src/styles/globals.css so the cap and the rail minimum are defined once.
+ */
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, var(--wr-body-max)) minmax(var(--wr-rail-min), 1fr);
+}
+
+/* Grid items default to min-width:auto, which lets long content push a track
+   past its cap. Reset both columns so the tracks stay authoritative. */
+.primary,
+.rail {
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .layout {
+    display: block;
+  }
+}

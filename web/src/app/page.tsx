@@ -19,16 +19,18 @@ import { PlanItemPreviewDialog } from '@/components/PlanItemPreviewDialog'
 import { HIGHLIGHT_DURATION_MS } from '@/lib/reference-constants'
 import { buildPlansDeepLink } from '@/lib/plan-links'
 import { dateOnlyToOffsetInstant } from '@/lib/periods'
+import { WorkbenchLayout } from '@/components/WorkbenchLayout'
 import styles from '@/components/timeline.module.css'
 
 const EVENTS_PAGE_LIMIT = 30
 const REFERENCE_LOAD_MAX_PAGES = 5
-const WIDE_LAYOUT_QUERY = '(min-width: 781px)'
+const WIDE_LAYOUT_QUERY = '(min-width: 961px)'
 
 /**
- * Auto-paging belongs to the two-column layout. Below 780px the split turns
- * into one column and the context aside follows the sentinel, so each appended
- * page would push Evidence trace, readiness, plans, and filters farther away.
+ * Auto-paging belongs to the two-column layout. At <=960px WorkbenchLayout
+ * collapses the split into one column and the context aside follows the
+ * sentinel, so each appended page would push Evidence trace, readiness, plans,
+ * and filters farther away.
  */
 function subscribeToWideLayout(onChange: () => void): () => void {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -430,8 +432,8 @@ export default function TimelinePage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.split}>
-        <section className={styles.primary} aria-labelledby="timeline-title">
+      <WorkbenchLayout className={styles.split}>
+        <WorkbenchLayout.Primary className={styles.primary} aria-labelledby="timeline-title">
           <header className={styles.pageHeading}>
             <div>
               <h1 id="timeline-title">Work evidence</h1>
@@ -484,9 +486,9 @@ export default function TimelinePage() {
               </div>
             </>
           )}
-        </section>
+        </WorkbenchLayout.Primary>
 
-        <aside className={styles.context} aria-label="Timeline context">
+        <WorkbenchLayout.Rail className={styles.context} label="Timeline context">
           <TimelineEvidenceTrace events={events} selectedEventId={activeEventId} />
           <TimelineReadiness eventsCount={events.length} refreshKey={completionVersion} />
           <ActivityHeatmap
@@ -521,8 +523,8 @@ export default function TimelinePage() {
             onTagsChanged={handleTagsChanged}
             tagsVersion={tagsVersion}
           />
-        </aside>
-      </div>
+        </WorkbenchLayout.Rail>
+      </WorkbenchLayout>
 
       <ReferencePreviewDialog
         eventId={referencePreviewId}
