@@ -15,9 +15,7 @@ const SHOW_USAGE = 'wrp styles show <key>'
 
 /** `wrp styles list` — the `/api/prompts/styles` body verbatim. */
 export async function list() {
-  const { status, body } = await api('/api/prompts/styles')
-  if (status !== 200) failResponse(status, body, 'read the AI style list again')
-  emitJson(body)
+  emitJson(await fetchStyleInventory())
 }
 
 /**
@@ -59,9 +57,15 @@ export async function show({ positional }) {
   emitJson(match)
 }
 
-async function fetchStyles() {
+/** The inventory body exactly as the API returns it (styles live under `body.styles`). */
+async function fetchStyleInventory() {
   const { status, body } = await api('/api/prompts/styles')
   if (status !== 200) failResponse(status, body, 'read the AI style list again')
+  return body
+}
+
+async function fetchStyles() {
+  const body = await fetchStyleInventory()
   return Array.isArray(body?.styles) ? body.styles : []
 }
 

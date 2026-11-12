@@ -35,8 +35,8 @@ function failUnknownTag(name) {
   fail(`no tag named '#${name}'`, 'the tag is misspelled, already gone, or never existed', 'run wrp tags list to see the inventory')
 }
 
-/** The inventory body exactly as the API returns it. */
-async function fetchTags() {
+/** The inventory body exactly as the API returns it (tags live under `body.tags`). */
+async function fetchTagInventory() {
   const { status, body } = await api('/api/tags')
   if (status !== 200) failResponse(status, body, 'read the tag inventory again')
   return body
@@ -48,7 +48,7 @@ function countOf(tags, name) {
 
 /** `wrp tags list` — the inventory body verbatim as one compact JSON line. */
 export async function list() {
-  emitJson(await fetchTags())
+  emitJson(await fetchTagInventory())
 }
 
 /** `wrp tags rename <from> <to> [--confirm]` — merges when the target exists. */
@@ -57,7 +57,7 @@ export async function rename({ flags, positional }) {
   const from = validateTagName(requireArg(positional, 0, 'source tag name', usage))
   const to = validateTagName(requireArg(positional, 1, 'target tag name', usage))
 
-  const tags = (await fetchTags())?.tags ?? []
+  const tags = (await fetchTagInventory())?.tags ?? []
   const fromCount = countOf(tags, from)
   if (fromCount === undefined) failUnknownTag(from)
   const mergeTarget = tags.find((tag) => tag.name === to)
@@ -89,7 +89,7 @@ export async function remove({ flags, positional }) {
   const usage = 'wrp tags remove <name> [--confirm]'
   const name = validateTagName(requireArg(positional, 0, 'tag name', usage))
 
-  const tags = (await fetchTags())?.tags ?? []
+  const tags = (await fetchTagInventory())?.tags ?? []
   const count = countOf(tags, name)
   if (count === undefined) failUnknownTag(name)
 
