@@ -32,9 +32,15 @@ Two properties of the app's semantics matter for user expectations:
 node {baseDir}/scripts/wrp.mjs tags list
 ```
 
-One line per tag with its event count, in the order the API returns (alphabetical),
-then the `— N tag(s)` footer. No arguments. When nothing exists yet it prints the
-no-tags-yet hint — that is a normal answer, not an error.
+Prints the API response body verbatim as one line of compact JSON: the whole
+inventory, each tag with its event count, in the order the API returns it
+(alphabetical). No arguments, no footer, no empty-state prose — parse with `jq`
+or `JSON.parse`. An empty inventory is the same shape with `"tags":[]` and exit
+0: a normal answer, not an error.
+
+```json
+{"tags":[{"name":"debug","count":8},{"name":"调试","count":12},{"name":"worklog","count":1}]}
+```
 
 ## Rename / Remove — always preview first
 

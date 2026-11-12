@@ -61,30 +61,28 @@ function chainComment(overrides) {
 }
 
 describe('wrp plans comments list', () => {
-  it('lists the chain with id/item/time/author/period/content and a footer', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        commentCount: 2,
-        comments: [
-          chainComment(),
-          chainComment({
-            id: 8,
-            planItemId: 12,
-            content: 'Successor follow-up',
-            author: null,
-            createdAt: '2026-10-20T09:00:00.000Z',
-            sourcePeriod: {
-              scope: 'week',
-              periodStart: '2026-10-19',
-              periodEnd: '2026-10-25',
-              monthKey: null,
-              label: 'Week 2026-10-19 - 2026-10-25',
-            },
-          }),
-        ],
-      },
-    }))
+  it('prints the aggregated chain body verbatim as one compact JSON line', async () => {
+    const body = {
+      commentCount: 2,
+      comments: [
+        chainComment(),
+        chainComment({
+          id: 8,
+          planItemId: 12,
+          content: 'Successor follow-up',
+          author: null,
+          createdAt: '2026-10-20T09:00:00.000Z',
+          sourcePeriod: {
+            scope: 'week',
+            periodStart: '2026-10-19',
+            periodEnd: '2026-10-25',
+            monthKey: null,
+            label: 'Week 2026-10-19 - 2026-10-25',
+          },
+        }),
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], {
       stub: server,
@@ -92,13 +90,9 @@ describe('wrp plans comments list', () => {
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13T09:00:00+00:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
-    )
-    expect(result.stdout).toContain(
-      '#8 [%12] [2026-10-20T09:00:00+00:00] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up',
-    )
-    expect(result.stdout).toContain('— 2 comment(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/plan-items/12/comments')
@@ -106,11 +100,9 @@ describe('wrp plans comments list', () => {
     expect(server.requests[0].headers['x-weekly-reporter-agent']).toMatch(/^weekly-reporter\//)
   })
 
-  it('renders comment times in the system zone, without the old UTC suffix', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: { commentCount: 1, comments: [chainComment()] },
-    }))
+  it('leaves API timestamps and period labels unformatted, whatever TZ says', async () => {
+    const body = { commentCount: 1, comments: [chainComment()] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], {
       stub: server,
@@ -118,19 +110,21 @@ describe('wrp plans comments list', () => {
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13T17:00:00+08:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
-    )
-    expect(result.stdout).not.toContain(' UTC]')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('2026-10-13T17:00:00+08:00')
+    expect(result.stdout).not.toContain('comment(s)')
   })
 
-  it('prints an explicit empty state', async () => {
-    const server = await stub(() => ({ status: 200, body: { commentCount: 0, comments: [] } }))
+  it('prints the empty comment body verbatim, with no prose', async () => {
+    const body = { commentCount: 0, comments: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe('No comments on plan item %12.')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No comments')
   })
 
   it('reports a missing plan item as an envelope and exits non-zero', async () => {
@@ -286,18 +280,16 @@ function planItem(overrides) {
 const WEEK_PLAN = { id: 3, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null }
 
 describe('wrp plans list', () => {
-  it('prints the plan header and items with every marker, even when false', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        plan: WEEK_PLAN,
-        items: [
-          planItem({ id: 5, text: 'High and flagged', priority: 'high', isImportant: true }),
-          planItem({ id: 6, text: 'Normal unflagged', priority: 'normal' }),
-          planItem({ id: 7, text: 'Deferred follow-up', priority: 'low', parentItemId: 9, deferredFromItemId: 2 }),
-        ],
-      },
-    }))
+  it('prints the plan body verbatim as one compact JSON line', async () => {
+    const body = {
+      plan: WEEK_PLAN,
+      items: [
+        planItem({ id: 5, text: 'High and flagged', priority: 'high', isImportant: true }),
+        planItem({ id: 6, text: 'Normal unflagged', priority: 'normal' }),
+        planItem({ id: 7, text: 'Deferred follow-up', priority: 'low', parentItemId: 9, deferredFromItemId: 2 }),
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
@@ -305,28 +297,17 @@ describe('wrp plans list', () => {
     })
 
     expect(result.code).toBe(0)
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe(plansUrl({ scope: 'week', date: wireDate('2026-10-15') }))
-
-    expect(result.stdout).toContain('plan 3 [week] [2026-10-12 → 2026-10-18]')
-    // Order is the API's (priority group, then position); the client prints it.
-    expect(result.stdout).toContain(
-      '%5 [planned] [work] [priority=high] [important=true] [urgent=false] High and flagged',
-    )
-    expect(result.stdout).toContain(
-      '%6 [planned] [work] [priority=normal] [important=false] [urgent=false] Normal unflagged',
-    )
-    expect(result.stdout).toContain(
-      '%7 [planned] [work] [priority=low] [important=false] [urgent=false] [parent=%9] [deferred-from=%2] Deferred follow-up',
-    )
-    expect(result.stdout.indexOf('%5')).toBeLessThan(result.stdout.indexOf('%6'))
-    expect(result.stdout.indexOf('%6')).toBeLessThan(result.stdout.indexOf('%7'))
-    expect(result.stdout).toContain('— 3 item(s)')
   })
 
   it('sends the week pair when week-start and week-end are given', async () => {
-    const server = await stub(() => ({ status: 200, body: { plan: WEEK_PLAN, items: [] } }))
+    const body = { plan: WEEK_PLAN, items: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(
       ['plans', 'list', '--scope', 'week', '--week-start', '2026-10-12', '--week-end', '2026-10-18'],
@@ -339,7 +320,8 @@ describe('wrp plans list', () => {
       weekStart: wireDate('2026-10-12'),
       weekEnd: wireDate('2026-10-18'),
     }))
-    expect(result.stdout).toContain('No items in this plan.')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No items')
   })
 
   it('sends the month key or a date for month scope', async () => {
@@ -367,15 +349,18 @@ describe('wrp plans list', () => {
     )
   })
 
-  it('prints an explicit empty state when no plan exists', async () => {
-    const server = await stub(() => ({ status: 200, body: { plan: null, items: [] } }))
+  it('prints the null-plan body verbatim, with no prose', async () => {
+    const body = { plan: null, items: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe('No plan found for this period.')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No plan found')
   })
 
   it('rejects missing or incomplete period flags before calling the API', async () => {

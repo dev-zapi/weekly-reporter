@@ -8,7 +8,7 @@
 import { api, json } from '../lib/api.mjs'
 import { requireArg } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
+import { emitJson, feedback, preview } from '../lib/output.mjs'
 
 // Mirror of the server's TAG_CHARSET_REGEX (internal/api/tags/tags.go,
 // IsValidTagName): Han characters, Latin letters, digits - never digits only.
@@ -35,26 +35,20 @@ function failUnknownTag(name) {
   fail(`no tag named '#${name}'`, 'the tag is misspelled, already gone, or never existed', 'run wrp tags list to see the inventory')
 }
 
-/** The inventory with per-tag event counts, as the API returns it (alphabetical). */
+/** The inventory body exactly as the API returns it. */
 async function fetchTags() {
   const { status, body } = await api('/api/tags')
   if (status !== 200) failResponse(status, body, 'read the tag inventory again')
-  return body?.tags ?? []
+  return body
 }
 
 function countOf(tags, name) {
   return tags.find((tag) => tag.name === name)?.count
 }
 
-/** `wrp tags list` — the inventory with per-tag event counts, alphabetical. */
+/** `wrp tags list` — the inventory body verbatim as one compact JSON line. */
 export async function list() {
-  const tags = await fetchTags()
-  if (tags.length === 0) {
-    emptyState('No tags yet — a tag appears when a manual event contains a #name token.')
-    return
-  }
-  for (const tag of tags) listLine(`#${tag.name}`, [], `— ${tag.count} event(s)`)
-  listFooter(tags.length, 'tag')
+  emitJson(await fetchTags())
 }
 
 /** `wrp tags rename <from> <to> [--confirm]` — merges when the target exists. */
@@ -63,7 +57,7 @@ export async function rename({ flags, positional }) {
   const from = validateTagName(requireArg(positional, 0, 'source tag name', usage))
   const to = validateTagName(requireArg(positional, 1, 'target tag name', usage))
 
-  const tags = await fetchTags()
+  const tags = (await fetchTags())?.tags ?? []
   const fromCount = countOf(tags, from)
   if (fromCount === undefined) failUnknownTag(from)
   const mergeTarget = tags.find((tag) => tag.name === to)
@@ -95,7 +89,7 @@ export async function remove({ flags, positional }) {
   const usage = 'wrp tags remove <name> [--confirm]'
   const name = validateTagName(requireArg(positional, 0, 'tag name', usage))
 
-  const tags = await fetchTags()
+  const tags = (await fetchTags())?.tags ?? []
   const count = countOf(tags, name)
   if (count === undefined) failUnknownTag(name)
 

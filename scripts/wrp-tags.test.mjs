@@ -43,29 +43,28 @@ afterEach(async () => {
 })
 
 describe('wrp tags list', () => {
-  it('prints one line per tag with its event count, then the total footer', async () => {
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = { tags: TAGS }
     const server = await stub(inventory())
     const result = await runWrp(['tags', 'list'], { stub: server, env: ENV })
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trimEnd().split('\n')).toEqual([
-      '#debug — 8 event(s)',
-      '#调试 — 12 event(s)',
-      '#worklog — 1 event(s)',
-      '— 3 tag(s)',
-    ])
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/tags')
   })
 
-  it('prints the no-tags-yet hint instead of an empty footer', async () => {
+  it('prints the empty inventory body verbatim, with no prose', async () => {
     const server = await stub(inventory([]))
     const result = await runWrp(['tags', 'list'], { stub: server, env: ENV })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('No tags yet')
-    expect(result.stdout).not.toContain('— 0 tag(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual({ tags: [] })
+    expect(result.stdout).not.toContain('No tags yet')
   })
 })
 
