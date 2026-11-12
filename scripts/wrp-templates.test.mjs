@@ -134,62 +134,48 @@ function outputLines(stdout) {
 // --- list -----------------------------------------------------------------
 
 describe('wrp templates list', () => {
-  it('lists both kinds with selection IDs, style, size and opening line', async () => {
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = { official: officialTemplates(), user: userTemplates() }
     const server = await stub()
     const result = await runWrp(['templates', 'list'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('official-general')
-    expect(result.stdout).toContain('official-tech-dev')
-    expect(result.stdout).toContain('user-3')
-    expect(result.stdout).toContain('[official]')
-    expect(result.stdout).toContain('[user]')
-    expect(result.stdout).toContain('style: formal')
-    expect(result.stdout).toContain('chars')
-    expect(result.stdout).toContain('通用正式周报模板')
-    // Opening line only: a multi-line body belongs to `show` (format law 5).
-    expect(result.stdout).toContain('你是通用正式写作助手。')
-    expect(result.stdout).not.toContain('请按正式格式总结风险与进展')
-    expect(result.stdout).toContain('— 3 template(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/templates')
   })
 
-  it('respects --kind official|user with the matching footer count', async () => {
+  it('--kind keeps the API shape and empties the other collection', async () => {
     const server = await stub()
 
     const official = await runWrp(['templates', 'list', '--kind', 'official'], { stub: server })
     expect(official.code).toBe(0)
-    expect(official.stdout).toContain('official-general')
-    expect(official.stdout).not.toContain('user-3')
-    expect(official.stdout).toContain('— 2 template(s)')
+    expect(JSON.parse(official.stdout)).toEqual({ official: officialTemplates(), user: [] })
 
     const user = await runWrp(['templates', 'list', '--kind', 'user'], { stub: server })
     expect(user.code).toBe(0)
-    expect(user.stdout).toContain('user-3')
-    expect(user.stdout).not.toContain('official-general')
-    expect(user.stdout).toContain('— 1 template(s)')
+    expect(JSON.parse(user.stdout)).toEqual({ official: [], user: userTemplates() })
   })
 
   it('matches --query against name, content, tags and description', async () => {
     const server = await stub()
+    const [general, tech] = officialTemplates()
 
     const byContent = await runWrp(['templates', 'list', '--query', '风险'], { stub: server })
     expect(byContent.code).toBe(0)
-    expect(byContent.stdout).toContain('official-general')
-    expect(byContent.stdout).not.toContain('official-tech-dev')
-    expect(byContent.stdout).toContain('— 1 template(s)')
+    expect(JSON.parse(byContent.stdout)).toEqual({ official: [general], user: [] })
 
     const byTags = await runWrp(['templates', 'list', '--query', '研发'], { stub: server })
-    expect(byTags.stdout).toContain('official-tech-dev')
-    expect(byTags.stdout).not.toContain('official-general')
+    expect(JSON.parse(byTags.stdout)).toEqual({ official: [tech], user: [] })
 
     const byDescription = await runWrp(['templates', 'list', '--query', '个人用'], { stub: server })
-    expect(byDescription.stdout).toContain('user-3')
+    expect(JSON.parse(byDescription.stdout)).toEqual({ official: [], user: userTemplates() })
   })
 
-  it('rejects an invalid --kind and prints an explicit empty state', async () => {
+  it('rejects an invalid --kind and prints the empty body for no matches', async () => {
     const server = await stub()
 
     const bad = await runWrp(['templates', 'list', '--kind', 'bogus'], { stub: server })
@@ -202,59 +188,53 @@ describe('wrp templates list', () => {
 
     const empty = await runWrp(['templates', 'list', '--query', '不存在的东西'], { stub: server })
     expect(empty.code).toBe(0)
-    expect(empty.stdout).toContain('No templates matched')
+    expect(JSON.parse(empty.stdout)).toEqual({ official: [], user: [] })
+    expect(empty.stdout).not.toContain('No templates matched')
   })
 })
 
 // --- show and reference resolution ----------------------------------------
 
 describe('wrp templates show', () => {
-  it('defaults to both parts: meta plus the content block', async () => {
+  it('defaults to both parts: the whole template row verbatim', async () => {
     const server = await stub()
     const result = await runWrp(['templates', 'show', 'user-3'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('user-3')
-    expect(result.stdout).toContain('[user]')
-    expect(result.stdout).toContain('style: concise')
-    expect(result.stdout).toContain('created: 2026-10-01T08:00:00+00:00   updated: 2026-10-02T09:30:00+00:00')
-    expect(result.stdout).toContain('description: 个人用的极简模板')
-    expect(result.stdout).toContain('tags: 个人,极简')
-    expect(result.stdout).toContain('cloned from official-minimal')
-    expect(result.stdout).toContain('content:')
-    expect(result.stdout).toContain('你是极简写作助手。')
-    expect(result.stdout).toContain('只写结论，不写背景。')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(userTemplates()[0])
+    expect(result.stderr).toBe('')
   })
 
-  it('renders created/updated in the system zone with an offset', async () => {
+  it('leaves API timestamps exactly as the API sent them, whatever TZ says', async () => {
     const server = await stub()
-    const result = await runWrp(['templates', 'show', 'user-3', '--part', 'meta'], {
+    const result = await runWrp(['templates', 'show', 'user-3'], {
       stub: server,
       env: { TZ: 'Asia/Shanghai' },
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('created: 2026-10-01T16:00:00+08:00   updated: 2026-10-02T17:30:00+08:00')
+    expect(JSON.parse(result.stdout)).toEqual(userTemplates()[0])
+    expect(result.stdout).not.toContain('2026-10-01T16:00:00+08:00')
   })
 
-  it('--part meta is cheap and prints no content', async () => {
+  it('--part meta selects the metadata sub-object and drops only content', async () => {
     const server = await stub()
+    const { content, ...meta } = officialTemplates()[0]
     const result = await runWrp(['templates', 'show', 'official-general', '--part', 'meta'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('official-general')
-    expect(result.stdout).toContain('read-only')
-    expect(result.stdout).not.toContain('content:')
-    expect(result.stdout).not.toContain('你是通用正式写作助手。')
+    const printed = JSON.parse(result.stdout)
+    expect(printed).toEqual(meta)
+    expect(printed).not.toHaveProperty('content')
   })
 
-  it('--part content prints only the content block', async () => {
+  it('--part content selects the content sub-object verbatim', async () => {
     const server = await stub()
     const result = await runWrp(['templates', 'show', 'official-general', '--part', 'content'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('你是通用正式写作助手。')
-    expect(result.stdout).not.toContain('style: formal')
+    expect(JSON.parse(result.stdout)).toBe(officialTemplates()[0].content)
   })
 
   it('rejects an invalid --part without calling the API', async () => {
@@ -273,19 +253,20 @@ describe('wrp templates show', () => {
 describe('template reference resolution', () => {
   it('accepts a selection ID, a bare user ID, and a case-insensitive name substring', async () => {
     const server = await stub()
+    const { content, ...meta } = userTemplates()[0]
 
     const bySelection = await runWrp(['templates', 'show', 'user-3', '--part', 'meta'], { stub: server })
     expect(bySelection.code).toBe(0)
-    expect(bySelection.stdout).toContain('user-3')
+    expect(JSON.parse(bySelection.stdout)).toEqual(meta)
 
     const byBareId = await runWrp(['templates', 'show', '3', '--part', 'meta'], { stub: server })
     expect(byBareId.code).toBe(0)
-    expect(byBareId.stdout).toContain('user-3')
+    expect(JSON.parse(byBareId.stdout)).toEqual(meta)
 
     // Substring, case-insensitive against the Latin part of the name.
     const byName = await runWrp(['templates', 'show', '极简', '--part', 'meta'], { stub: server })
     expect(byName.code).toBe(0)
-    expect(byName.stdout).toContain('user-3')
+    expect(JSON.parse(byName.stdout)).toEqual(meta)
   })
 
   it('fails loudly with the candidate list when a name is ambiguous', async () => {
@@ -567,31 +548,27 @@ describe('wrp templates delete', () => {
 // --- styles ---------------------------------------------------------------
 
 describe('wrp styles list', () => {
-  it('prints every style key with temperature, default marker and prompt size', async () => {
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = { styles: aiStyles() }
     const server = await stub()
     const result = await runWrp(['styles', 'list'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('formal')
-    expect(result.stdout).toContain('正式')
-    expect(result.stdout).toContain('temp 0.3')
-    expect(result.stdout).toContain('default')
-    expect(result.stdout).toContain('technical')
-    expect(result.stdout).toContain('— 4 style(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests[0].url).toBe('/api/prompts/styles')
   })
 })
 
 describe('wrp styles show', () => {
-  it('prints the full writing prompt for an exact key', async () => {
+  it('prints the full style row verbatim for an exact key', async () => {
     const server = await stub()
     const result = await runWrp(['styles', 'show', 'technical'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('technical')
-    expect(result.stdout).toContain('技术研发')
-    expect(result.stdout).toContain('prompt:')
-    expect(result.stdout).toContain('你是技术专家，突出工程细节和风险。')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(aiStyles()[1])
   })
 
   it('accepts a unique case-insensitive substring of the key or label', async () => {
@@ -599,7 +576,7 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'TECH'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('technical')
+    expect(JSON.parse(result.stdout)).toEqual(aiStyles()[1])
   })
 
   it('lists the valid keys for an unknown style and fails', async () => {
@@ -681,18 +658,16 @@ describe('format laws', () => {
     )
   })
 
-  it('law 2: list lines lead with the id token, bracket metadata, then the body', async () => {
+  it('law 2: read verbs print the API body as their only stdout line', async () => {
     const server = await stub()
-    const result = await runWrp(['templates', 'list', '--kind', 'user'], { stub: server })
+    const templates = await runWrp(['templates', 'list'], { stub: server })
+    expect(templates.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(templates.stdout).not.toContain('template(s)')
+    expect(templates.stdout).not.toContain('[official]')
 
-    const rows = outputLines(result.stdout).filter((line) => line.startsWith('user-'))
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatch(/^user-3 (\[[^\]]+\] )+我的极简模板 — 你是极简写作助手。/)
-
-    const styleRows = outputLines((await runWrp(['styles', 'list'], { stub: server })).stdout).filter((line) =>
-      line.startsWith('formal'),
-    )
-    expect(styleRows[0]).toMatch(/^formal (\[[^\]]+\] )+正式$/)
+    const styles = await runWrp(['styles', 'list'], { stub: server })
+    expect(styles.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(styles.stdout).not.toContain('style(s)')
   })
 
   it('law 3: every failure is exactly one JSON error envelope on stderr with a fix hint', async () => {
@@ -732,19 +707,14 @@ describe('format laws', () => {
     expect(result.stderr).toBe('')
   })
 
-  it('law 5: template content and style prompts print only under show', async () => {
+  it('law 5 is dead: list output carries the full body text inside the JSON', async () => {
     const server = await stub()
 
     const list = await runWrp(['templates', 'list'], { stub: server })
-    expect(list.stdout).not.toContain('只写结论，不写背景。')
-
-    const show = await runWrp(['templates', 'show', 'user-3'], { stub: server })
-    expect(show.stdout).toContain('只写结论，不写背景。')
+    expect(JSON.parse(list.stdout).user[0].content).toContain('只写结论，不写背景。')
 
     const styleList = await runWrp(['styles', 'list'], { stub: server })
-    expect(styleList.stdout).not.toContain('你是技术专家，突出工程细节和风险。')
-
-    const styleShow = await runWrp(['styles', 'show', 'technical'], { stub: server })
-    expect(styleShow.stdout).toContain('你是技术专家，突出工程细节和风险。')
+    const technical = JSON.parse(styleList.stdout).styles.find((style) => style.key === 'technical')
+    expect(technical.systemPrompt).toContain('你是技术专家，突出工程细节和风险。')
   })
 })

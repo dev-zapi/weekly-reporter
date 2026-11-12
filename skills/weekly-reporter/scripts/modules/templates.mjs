@@ -18,8 +18,7 @@
 import { readFile } from 'node:fs/promises'
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { block, emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
-import { formatInstant } from '../lib/time.mjs'
+import { emitJson, feedback, preview } from '../lib/output.mjs'
 
 const NAME_MAX = 100
 const DESCRIPTION_MAX = 200
@@ -36,43 +35,50 @@ const DELETE_USAGE = 'wrp templates delete <ref> [--confirm]'
 
 const REF_FIX = 'run wrp templates list to see the existing templates'
 
-/** `wrp templates list` — both kinds, with the fields a chooser needs. */
+/**
+ * `wrp templates list` — the `/api/templates` body verbatim.
+ *
+ * `--kind` and `--query` select rows client-side (the endpoint takes no
+ * filters), but every emitted row is the API row untouched and the body keeps
+ * its `{official, user}` shape; with neither flag the response is passed
+ * through unchanged.
+ */
 export async function list({ flags }) {
   const kind = flags.kind ?? 'all'
   if (!['official', 'user', 'all'].includes(kind)) {
     fail('invalid --kind', `'${kind}' must be official, user or all`, `usage: ${LIST_USAGE}`)
   }
 
-  const { official, user } = await fetchAll()
+  const { status, body } = await api('/api/templates')
+  if (status !== 200) failResponse(status, body, REF_FIX)
+
   const needle = flags.query?.toLowerCase()
+  if (!needle && kind === 'all') {
+    emitJson(body)
+    return
+  }
 
   // Name, content, tags and description all participate: callers remember "the
   // template that mentions 风险", not which field it lived in.
   const matches = (template) =>
     !needle ||
     [template.name, template.content, template.tags, template.description]
-      .filter(Boolean)
-      .some((field) => field.toLowerCase().includes(needle))
+      .filter((field) => field !== undefined && field !== null)
+      .some((field) => fieldText(field).toLowerCase().includes(needle))
 
-  const selected = []
-  if (kind !== 'user') selected.push(...official.filter(matches))
-  if (kind !== 'official') selected.push(...user.filter(matches))
-
-  if (selected.length === 0) {
-    emptyState(needle ? `No templates matched '${flags.query}'.` : 'No templates yet — create one with wrp templates create.')
-    return
-  }
-
-  for (const template of selected) {
-    const metadata = [template.kind, `style: ${template.aiStyle}`, `${template.content.length} chars`]
-    if (template.tags) metadata.push(`tags: ${template.tags}`)
-    if (template.sourceTemplateId) metadata.push(`cloned from ${template.sourceTemplateId}`)
-    listLine(template.selectionId, metadata, `${template.name} — ${firstLine(template.content) || '(empty)'}`)
-  }
-  listFooter(selected.length, 'template')
+  emitJson({
+    ...body,
+    official: kind === 'user' ? [] : (body?.official ?? []).filter(matches),
+    user: kind === 'official' ? [] : (body?.user ?? []).filter(matches),
+  })
 }
 
-/** `wrp templates show` — metadata, and the full body only under a part mode. */
+/**
+ * `wrp templates show` — the resolved row verbatim; `--part` filters it.
+ *
+ * `both` (default) is the whole API row, `content` is its `content` value, and
+ * `meta` is the row without that one large field.
+ */
 export async function show({ flags, positional }) {
   const part = flags.part ?? 'both'
   if (!['meta', 'content', 'both'].includes(part)) {
@@ -81,8 +87,16 @@ export async function show({ flags, positional }) {
 
   const template = await resolveRef(positional[0], SHOW_USAGE)
 
-  if (part === 'meta' || part === 'both') printMeta(template)
-  if (part === 'content' || part === 'both') block('content', template.content || '(empty)')
+  if (part === 'content') {
+    emitJson(template.raw.content ?? null)
+    return
+  }
+  if (part === 'meta') {
+    const { content, ...meta } = template.raw
+    emitJson(meta)
+    return
+  }
+  emitJson(template.raw)
 }
 
 /** `wrp templates create` — a new user template from scratch. */
@@ -225,6 +239,7 @@ function normalizeOfficial(row) {
     sourceTemplateId: null,
     createdAt: null,
     updatedAt: null,
+    raw: row,
   }
 }
 
@@ -243,7 +258,13 @@ function normalizeUser(row) {
     sourceTemplateId: row.sourceTemplateId ?? null,
     createdAt: row.createdAt ?? null,
     updatedAt: row.updatedAt ?? null,
+    raw: row,
   }
+}
+
+/** Searchable text for a field: user tags are a comma string, official tags an array. */
+function fieldText(field) {
+  return Array.isArray(field) ? field.join(', ') : String(field)
 }
 
 /**
@@ -373,26 +394,7 @@ function requireName(name, { optional = false, usage = CREATE_USAGE } = {}) {
   }
 }
 
-function printMeta(template) {
-  const metadata = [template.kind, `style: ${template.aiStyle}`, `${template.content.length} chars`]
-  if (template.tags) metadata.push(`tags: ${template.tags}`)
-  if (template.sourceTemplateId) metadata.push(`cloned from ${template.sourceTemplateId}`)
-  listLine(template.selectionId, metadata, template.name)
-  console.log(`description: ${template.description ?? '—'}`)
-  if (template.kind === 'user') {
-    console.log(`created: ${formatDate(template.createdAt)}   updated: ${formatDate(template.updatedAt)}`)
-  } else {
-    console.log(`read-only — clone it to edit: wrp templates clone ${template.selectionId} --name "<new name>"`)
-  }
-}
-
-/** ISO instant → `2026-10-01T16:00:00+08:00` in the system zone. */
-function formatDate(value) {
-  if (value == null) return '—'
-  return formatInstant(value) ?? String(value)
-}
-
-/** First line of a body, trimmed for one-line listings. */
+/** First line of a body, trimmed for one-line previews. */
 function firstLine(text, max = 44) {
   const line = (text ?? '').split('\n').find((candidate) => candidate.trim()) ?? ''
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
