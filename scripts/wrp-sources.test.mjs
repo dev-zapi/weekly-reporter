@@ -5,7 +5,13 @@
 // body), the lines it prints, and its exit codes.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -111,9 +117,11 @@ describe('wrp sources list', () => {
     const result = await runWrp(['sources', 'list', '--status', 'alive'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid --status')
-    expect(result.stderr).toContain('enabled, disabled, unavailable')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --status')
+    expect(error.message).toContain('enabled, disabled, unavailable')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -232,14 +240,16 @@ describe('wrp sources show', () => {
 
     const ambiguous = await runWrp(['sources', 'show', 'ac'], { stub: server })
     expect(ambiguous.code).not.toBe(0)
-    expect(errorLines(ambiguous.stderr)).toHaveLength(1)
-    expect(ambiguous.stderr).toContain("✗ 'ac' matches 2 collect sources")
-    expect(ambiguous.stderr).toContain('#7 acme')
-    expect(ambiguous.stderr).toContain('#8 acme-extra')
-    expect(ambiguous.stderr).toContain('pass one of those IDs instead')
+    expect(ambiguous.stdout).toBe('')
+    const { error } = errorEnvelope(ambiguous)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("'ac' matches 2 collect sources")
+    expect(error.message).toContain('#7 acme')
+    expect(error.message).toContain('#8 acme-extra')
+    expect(error.fix).toContain('pass one of those IDs instead')
   })
 
-  it('reports a missing id and a missing name as one ✗ line each', async () => {
+  it('reports a missing id and a missing name as one envelope each', async () => {
     const server = await stub((request) =>
       request.url === '/api/collect/sources/99'
         ? { status: 404, body: { error: '采集源不存在', code: 'NOT_FOUND' } }
@@ -248,13 +258,18 @@ describe('wrp sources show', () => {
 
     const byId = await runWrp(['sources', 'show', '99'], { stub: server })
     expect(byId.code).not.toBe(0)
-    expect(errorLines(byId.stderr)).toHaveLength(1)
-    expect(byId.stderr).toContain('✗ no collect source with ID 99')
+    expect(byId.stdout).toBe('')
+    const idError = errorEnvelope(byId).error
+    expect(idError.status).toBe(404)
+    expect(idError.code).toBe('NOT_FOUND')
+    expect(idError.message).toContain('no collect source with ID 99')
 
     const byName = await runWrp(['sources', 'show', 'ghost'], { stub: server })
     expect(byName.code).not.toBe(0)
-    expect(errorLines(byName.stderr)).toHaveLength(1)
-    expect(byName.stderr).toContain("✗ no collect source matches 'ghost'")
+    expect(byName.stdout).toBe('')
+    const nameError = errorEnvelope(byName).error
+    expect(nameError.status).toBeNull()
+    expect(nameError.message).toContain("no collect source matches 'ghost'")
   })
 })
 
@@ -333,40 +348,40 @@ describe('wrp sources create', () => {
 
     const badType = await runWrp(['sources', 'create', '--type', 'svn', '--name', 'x', '--path', '/r', '--email', 'a@b'], { stub: server })
     expect(badType.code).not.toBe(0)
-    expect(badType.stderr).toContain("✗ invalid --type: 'svn'")
+    expect(errorEnvelope(badType).error.message).toContain("invalid --type: 'svn'")
 
     const longName = await runWrp(['sources', 'create', '--name', 'x'.repeat(101), '--path', '/r', '--email', 'a@b'], { stub: server })
     expect(longName.code).not.toBe(0)
-    expect(longName.stderr).toContain('✗ invalid --name: 101 characters')
-    expect(longName.stderr).toContain('at most 100')
+    expect(errorEnvelope(longName).error.message).toContain('invalid --name: 101 characters')
+    expect(errorEnvelope(longName).error.message).toContain('at most 100')
 
     const noEmails = await runWrp(['sources', 'create', '--name', 'x', '--path', '/r'], { stub: server })
     expect(noEmails.code).not.toBe(0)
-    expect(noEmails.stderr).toContain('✗ missing --email')
-    expect(noEmails.stderr).toContain('at least one author email is required')
+    expect(errorEnvelope(noEmails).error.message).toContain('missing --email')
+    expect(errorEnvelope(noEmails).error.message).toContain('at least one author email is required')
 
     const badEmail = await runWrp(['sources', 'create', '--name', 'x', '--path', '/r', '--email', 'nope'], { stub: server })
     expect(badEmail.code).not.toBe(0)
-    expect(badEmail.stderr).toContain("✗ invalid --email: 'nope'")
+    expect(errorEnvelope(badEmail).error.message).toContain("invalid --email: 'nope'")
 
     const noPath = await runWrp(['sources', 'create', '--name', 'x', '--email', 'a@b'], { stub: server })
     expect(noPath.code).not.toBe(0)
-    expect(noPath.stderr).toContain('✗ missing --path')
+    expect(errorEnvelope(noPath).error.message).toContain('missing --path')
 
     const remoteMissing = await runWrp(
       ['sources', 'create', '--type', 'git-remote-gitlab', '--name', 'x', '--owner', 'o', '--email', 'a@b'],
       { stub: server },
     )
     expect(remoteMissing.code).not.toBe(0)
-    expect(remoteMissing.stderr).toContain('✗ missing --repo, --token')
-    expect(remoteMissing.stderr).toContain('git-remote-gitlab')
+    expect(errorEnvelope(remoteMissing).error.message).toContain('missing --repo, --token')
+    expect(errorEnvelope(remoteMissing).error.message).toContain('git-remote-gitlab')
 
     const pathOnRemote = await runWrp(
       ['sources', 'create', '--type', 'git-remote-gitee', '--name', 'x', '--path', '/r', '--email', 'a@b'],
       { stub: server },
     )
     expect(pathOnRemote.code).not.toBe(0)
-    expect(pathOnRemote.stderr).toContain('✗ --path applies to git-local only')
+    expect(errorEnvelope(pathOnRemote).error.message).toContain('--path applies to git-local only')
 
     expect(server.requests).toHaveLength(0)
   })
@@ -379,8 +394,11 @@ describe('wrp sources create', () => {
     const result = await runWrp(['sources', 'create', '--name', 'x', '--path', '/r', '--email', 'a@b', '--alias', 'acme'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ DUPLICATE_ALIAS: 别名已被使用: acme')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error.code).toBe('DUPLICATE_ALIAS')
+    expect(error.message).toBe('别名已被使用: acme')
   })
 })
 
@@ -501,20 +519,20 @@ describe('wrp sources update', () => {
 
     const nothing = await runWrp(['sources', 'update', '7'], { stub: server })
     expect(nothing.code).not.toBe(0)
-    expect(nothing.stderr).toContain('✗ nothing to update')
-    expect(nothing.stderr).toContain('pass at least one field')
+    expect(errorEnvelope(nothing).error.message).toContain('nothing to update')
+    expect(errorEnvelope(nothing).error.message).toContain('pass at least one field')
 
     const both = await runWrp(['sources', 'update', '7', '--email', 'x@y', '--add-email', 'z@y'], { stub: server })
     expect(both.code).not.toBe(0)
-    expect(both.stderr).toContain('✗ --email and --add-email are exclusive')
+    expect(errorEnvelope(both).error.message).toContain('--email and --add-email are exclusive')
 
     const bothAliases = await runWrp(['sources', 'update', '7', '--alias', 'x', '--add-alias', 'z'], { stub: server })
     expect(bothAliases.code).not.toBe(0)
-    expect(bothAliases.stderr).toContain('✗ --alias and --add-alias are exclusive')
+    expect(errorEnvelope(bothAliases).error.message).toContain('--alias and --add-alias are exclusive')
 
     const bothOwners = await runWrp(['sources', 'update', '7', '--path', '/a', '--owner', 'b'], { stub: server })
     expect(bothOwners.code).not.toBe(0)
-    expect(bothOwners.stderr).toContain('✗ --path and --owner are synonyms')
+    expect(errorEnvelope(bothOwners).error.message).toContain('--path and --owner are synonyms')
 
     expect(server.requests.filter((request) => request.method === 'PUT')).toHaveLength(0)
   })
@@ -525,8 +543,10 @@ describe('wrp sources update', () => {
 
     const result = await runWrp(['sources', 'update', '7', '--name', 'still-empty'], { stub: server })
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('✗ no author email to send')
-    expect(result.stderr).toContain('--add-email')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('no author email to send')
+    expect(error.fix).toContain('--add-email')
   })
 })
 
@@ -562,10 +582,12 @@ describe('wrp sources enable', () => {
     const result = await runWrp(['sources', 'enable', 'broken'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ #5 broken is unavailable')
-    expect(result.stderr).toContain('enabling it now would not fix the cause')
-    expect(result.stderr).toContain('wrp sources update 5 --add-email <address>')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('#5 broken is unavailable')
+    expect(error.message).toContain('enabling it now would not fix the cause')
+    expect(error.fix).toContain('wrp sources update 5 --add-email <address>')
     expect(server.requests.filter((request) => request.method === 'PATCH')).toHaveLength(0)
   })
 
@@ -595,7 +617,7 @@ describe('wrp sources delete', () => {
 
     expect(result.code).not.toBe(0)
     expect(server.requests.filter((request) => request.method === 'DELETE')).toHaveLength(0)
-    expect(errorLines(result.stderr)).toHaveLength(0)
+    expect(result.stderr).toBe('')
     expect(result.stdout).toContain('PLAN:')
     expect(result.stdout).toContain('#7 acme (git-local, work)')
     expect(result.stdout).toContain('owner: /repos/acme')

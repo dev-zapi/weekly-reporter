@@ -43,6 +43,7 @@ export async function api(path, init = {}) {
       `Cannot reach weekly-reporter at ${baseUrl}`,
       'is the server running?',
       'start it with npm run dev (or point the client elsewhere with WEEKLY_REPORTER_BASE_URL)',
+      { status: null },
     )
   }
   if (response.status === 401) failUnauthorized(baseUrl)

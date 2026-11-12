@@ -5,7 +5,13 @@
 // the client sends, the lines it prints and its exit code - never lib internals.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const ENV = { WEEKLY_REPORTER_PAT: 'wrp_test_token' }
 
@@ -95,9 +101,10 @@ describe('wrp tags rename - plan gate', () => {
 
     expect(result.code).toBe(1)
     expect(result.stdout).toBe('')
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ no tag named '#missing'")
-    expect(result.stderr).toContain('wrp tags list')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("no tag named '#missing'")
+    expect(error.fix).toContain('wrp tags list')
     expect(server.requests).toHaveLength(1)
   })
 })
@@ -164,9 +171,10 @@ describe('wrp tags remove', () => {
     const result = await runWrp(['tags', 'remove', 'missing'], { stub: server, env: ENV })
 
     expect(result.code).toBe(1)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ no tag named '#missing'")
-    expect(result.stderr).toContain('wrp tags list')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("no tag named '#missing'")
+    expect(error.fix).toContain('wrp tags list')
   })
 
   it('deletes with --confirm and reports the affected count', async () => {
@@ -193,11 +201,12 @@ describe('client-side tag-name validation', () => {
     const result = await runWrp(['tags', 'rename', 'my-tag', 'debug'], { stub: server, env: ENV })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ invalid tag name: 'my-tag'")
-    expect(result.stderr).toContain('Chinese characters, Latin letters and digits')
-    expect(result.stderr).toContain('at least one non-digit')
     expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("invalid tag name: 'my-tag'")
+    expect(error.message).toContain('Chinese characters, Latin letters and digits')
+    expect(error.message).toContain('at least one non-digit')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -206,8 +215,9 @@ describe('client-side tag-name validation', () => {
     const result = await runWrp(['tags', 'remove', '123'], { stub: server, env: ENV })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ invalid tag name: '123'")
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("invalid tag name: '123'")
     expect(server.requests).toHaveLength(0)
   })
 
@@ -216,8 +226,9 @@ describe('client-side tag-name validation', () => {
     const result = await runWrp(['tags', 'rename', '调试', 'bad_target'], { stub: server, env: ENV })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ invalid tag name: 'bad_target'")
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("invalid tag name: 'bad_target'")
     expect(server.requests).toHaveLength(0)
   })
 })

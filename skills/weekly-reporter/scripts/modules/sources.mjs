@@ -102,7 +102,9 @@ export async function resolveSource(ref) {
   if (/^\d+$/.test(normalizedRef)) {
     const { status, body } = await api(`/api/collect/sources/${normalizedRef}`)
     if (status === 200) return body?.source ?? body
-    if (status === 404) fail(`no collect source with ID ${normalizedRef}`, 'nothing has that ID', 'run wrp sources list to see what exists')
+    if (status === 404) {
+      fail(`no collect source with ID ${normalizedRef}`, 'nothing has that ID', 'run wrp sources list to see what exists', { status: 404, code: body?.code })
+    }
     failResponse(status, body, 're-run wrp sources list to check the ID')
   }
 
@@ -482,7 +484,7 @@ export async function lookup({ flags = {} } = {}) {
       `no collect source for path '${path}'`,
       'that directory is not onboarded yet',
       'exit 3 is the clean not-onboarded signal: offer to create the source and sync it',
-      { exitCode: LOOKUP_NOT_FOUND_EXIT },
+      { exitCode: LOOKUP_NOT_FOUND_EXIT, status: 404, code: body?.code },
     )
   }
   if (status !== 200) failResponse(status, body, 're-run wrp sources lookup --path <repo-root>')
@@ -570,12 +572,14 @@ export async function sync({ flags = {}, positional = [] } = {}) {
         `sync failed — #${source.id} ${sourceName} auto-disabled`,
         result.error ?? 'unknown error',
         `the server cannot collect from this source: check the stored path with wrp sources show ${source.id}, or add emails with wrp sources update ${source.id} --path <repo> --add-email <address>, then re-enable it`,
+        { status, code: body?.code },
       )
     }
     fail(
       `sync failed for #${source.id} ${sourceName}`,
       result.error ?? 'unknown error',
       `at least one branch did not collect — failed branches: ${describeFailedBranches(result.branches ?? [])}`,
+      { status, code: body?.code },
     )
   }
 
@@ -635,6 +639,7 @@ async function syncAll({ flags = {}, positional = [] } = {}) {
       `partial sync failure (${failed.length}/${results.length} sources failed)`,
       failed.map((result) => `#${result.sourceId} ${result.sourceName}`).join(', '),
       fix,
+      { status, code: body?.code },
     )
   }
 

@@ -1,10 +1,14 @@
-// Error lines for the wrp client - format law 3:
+// Error envelope for the wrp client - format law 3:
 //
-//   ✗ <cause|API code>: <message> → <fix>
+//   {"error":{"status":…,"code":…,"message":…,"fix":…}}
 //
-// Every failure is exactly one stderr line with a non-zero exit, so an agent
-// can self-recover from the output alone. Cause/message may be Chinese when
-// they come from the API; client-generated text is English.
+// Every failure is exactly one compact JSON line on stderr with a non-zero
+// exit, so an agent branches on `status`/`code` instead of matching prose.
+// `status` is the HTTP status, or null for a client-side fault (bad flags,
+// unresolvable refs, an unreachable server). `code` appears only when the API
+// or the client supplies one. `message` distills the API error or client cause;
+// `fix` carries the actionable next step. Cause/message may be Chinese when they
+// come from the API; client-generated text is English.
 
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,11 +24,23 @@ export const INIT_COMMAND = `! node "${join(SCRIPTS_DIR, 'wrp.mjs')}" init`
 
 export const EXIT_FAILURE = 1
 
-/** Print one `✗ …` line to stderr and exit non-zero. */
-export function fail(cause, message, fix, { exitCode = EXIT_FAILURE } = {}) {
-  const detail = message === undefined || message === '' ? '' : `: ${message}`
-  const hint = fix ? ` → ${fix}` : ''
-  console.error(`✗ ${cause}${detail}${hint}`)
+/**
+ * Print one JSON error envelope to stderr and exit non-zero.
+ *
+ * `cause` is the headline ("unknown module: x", an API code, …); `message` is
+ * the detail. They are distilled into one `message` field so no information the
+ * old `✗ cause: message` line carried is lost. `status` is the HTTP status when
+ * one exists; `code` is set only by the API or an explicit client signal.
+ */
+export function fail(cause, message, fix, { exitCode = EXIT_FAILURE, status = null, code } = {}) {
+  const distilled = [cause, message]
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .join(': ')
+  const error = { status }
+  if (code !== undefined && code !== null && code !== '') error.code = code
+  error.message = distilled
+  if (fix) error.fix = fix
+  console.error(JSON.stringify({ error }))
   process.exit(exitCode)
 }
 
@@ -34,21 +50,23 @@ export function failUnauthorized(baseUrl) {
     `unauthorized (HTTP 401) from ${baseUrl}`,
     'PAT missing, invalid, expired, or revoked',
     `provision machine credentials, then re-run: ${INIT_COMMAND}`,
+    { status: 401 },
   )
 }
 
 /**
- * Map a non-2xx API response to the ✗ law. The API's `code`/`error` fields are
- * passed through verbatim; `fix` is the caller's actionable next step.
+ * Map a non-2xx API response to the envelope. The API's `code` becomes the
+ * envelope's `code` verbatim; `message` is its `error`/`message` detail; `fix`
+ * is the caller's actionable next step. The HTTP status is carried separately,
+ * so the synthesized "request failed (HTTP n)" prose is gone.
  */
 export function failResponse(status, body, fix) {
-  const cause = body?.code || (status >= 500 ? `server error (HTTP ${status})` : `request failed (HTTP ${status})`)
   const message = body?.error || body?.message || 'no detail returned'
   const hint = fix || (status >= 500 ? 'check the server logs for details' : 're-run with corrected input (wrp --help)')
-  fail(cause, message, hint)
+  fail(message, '', hint, { status, code: body?.code })
 }
 
-/** The ✗ line for a command that is registered but not built yet. */
+/** The envelope for a command that is registered but not built yet. */
 export function failNotImplemented(command, ticket) {
   const planned = ticket ? `scheduled in #${ticket}` : 'scheduled in a later ticket'
   fail(`not implemented: ${command}`, planned, 'run wrp --help for the commands available today')

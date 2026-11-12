@@ -11,7 +11,13 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -135,14 +141,16 @@ describe('wrp reports list', () => {
     expect(result.stdout).not.toContain('page 1/1 of 0 reports')
   })
 
-  it('rejects a malformed date with one ✗ line and no request', async () => {
+  it('rejects a malformed date with one envelope and no request', async () => {
     const server = await stub()
 
     const result = await runWrp(['reports', 'list', '--start', '2026/02/01'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ --start must be a YYYY-MM-DD date')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--start must be a YYYY-MM-DD date')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -257,8 +265,10 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12', '--part', 'everything'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ --part must be one of meta, source, draft, final, both')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--part must be one of meta, source, draft, final, both')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -268,7 +278,10 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('✗ report #12 has no leadership variant')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('report #12 has no leadership variant')
   })
 
   it('rejects a non-numeric id (no parseInt truncation) before calling the API', async () => {
@@ -277,8 +290,10 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12abc'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('a numeric report id is required')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('a numeric report id is required')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -348,7 +363,7 @@ describe('wrp reports preview', () => {
 
     const missing = await runWrp(['reports', 'preview', '--start', '2026-02-09'], { stub: server })
     expect(missing.code).not.toBe(0)
-    expect(missing.stderr).toContain('✗ missing period end (--end)')
+    expect(errorEnvelope(missing).error.message).toContain('missing period end (--end)')
   })
 })
 
@@ -419,8 +434,10 @@ describe('wrp reports create', () => {
     })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing report title (--title)')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing report title (--title)')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -485,7 +502,7 @@ describe('wrp reports save-final', () => {
     expect(result.stdout.trim()).toBe('✓ final saved: #31 (leadership) — 18 chars, status current')
   })
 
-  it('turns revision drift into one loud ✗ line carrying the API 409 code', async () => {
+  it('turns revision drift into one loud envelope carrying the API 409 code', async () => {
     const server = await stub(() => ({
       status: 409,
       body: {
@@ -500,10 +517,12 @@ describe('wrp reports save-final', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ SOURCE_REVISION_CONFLICT: The source draft has changed.')
-    expect(result.stderr).toContain('→ re-read with wrp reports show 31 --part meta')
     expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('SOURCE_REVISION_CONFLICT')
+    expect(error.message).toContain('The source draft has changed.')
+    expect(error.fix).toContain('re-read with wrp reports show 31 --part meta')
   })
 
   it('requires exactly one of --content/--file and an integer revision', async () => {
@@ -511,21 +530,21 @@ describe('wrp reports save-final', () => {
 
     const neither = await runWrp(['reports', 'save-final', '31', '--variant', 'leadership'], { stub: server })
     expect(neither.code).not.toBe(0)
-    expect(neither.stderr).toContain('✗ provide exactly one of --content or --file')
+    expect(errorEnvelope(neither).error.message).toContain('provide exactly one of --content or --file')
 
     const badRevision = await runWrp(
       ['reports', 'save-final', '31', '--variant', 'leadership', '--content', 'x', '--source-revision', 'abc'],
       { stub: server },
     )
     expect(badRevision.code).not.toBe(0)
-    expect(badRevision.stderr).toContain('✗ --source-revision must be an integer')
+    expect(errorEnvelope(badRevision).error.message).toContain('--source-revision must be an integer')
 
     const badVariant = await runWrp(
       ['reports', 'save-final', '31', '--variant', 'boss', '--content', 'x'],
       { stub: server },
     )
     expect(badVariant.code).not.toBe(0)
-    expect(badVariant.stderr).toContain('✗ --variant must be leadership or personal')
+    expect(errorEnvelope(badVariant).error.message).toContain('--variant must be leadership or personal')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -577,10 +596,12 @@ describe('wrp reports delete', () => {
     const result = await runWrp(['reports', 'delete', '31', '--confirm'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ AUDIT_RECORD_REQUIRED: This report contains generation audit records')
-    expect(result.stderr).toContain('→ keep this report')
     expect(result.stdout).not.toContain('✓')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('AUDIT_RECORD_REQUIRED')
+    expect(error.message).toContain('This report contains generation audit records')
+    expect(error.fix).toContain('keep this report')
   })
 
   it('deletes with --confirm and prints the feedback line', async () => {

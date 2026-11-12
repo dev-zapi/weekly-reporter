@@ -7,7 +7,13 @@
 // is asserted exactly.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -80,7 +86,7 @@ describe('wrp sources lookup', () => {
     expect(result.stdout).toContain('emails:   a@example.com')
   })
 
-  it('exits 3 with the not-found line when no source is registered for the path', async () => {
+  it('exits 3 with the not-found envelope when no source is registered for the path', async () => {
     const server = await stub(() => ({
       status: 404,
       body: { error: '采集源不存在', code: 'NOT_FOUND' },
@@ -90,9 +96,11 @@ describe('wrp sources lookup', () => {
 
     expect(result.code).toBe(3)
     expect(result.stdout).toBe('')
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("no collect source for path '/repos/ghost'")
-    expect(result.stderr).toContain('exit 3')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.code).toBe('NOT_FOUND')
+    expect(error.message).toContain("no collect source for path '/repos/ghost'")
+    expect(error.fix).toContain('exit 3')
   })
 
   it('keeps every other lookup failure at a non-3 exit code', async () => {
@@ -101,8 +109,11 @@ describe('wrp sources lookup', () => {
     const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
 
     expect(result.code).not.toBe(3)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ LOOKUP_ERROR: 查询采集源失败')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(500)
+    expect(error.code).toBe('LOOKUP_ERROR')
+    expect(error.message).toBe('查询采集源失败')
   })
 
   it('requires --path before any request', async () => {
@@ -110,7 +121,9 @@ describe('wrp sources lookup', () => {
     const result = await runWrp(['sources', 'lookup'], { stub: server })
 
     expect(result.code).not.toBe(3)
-    expect(result.stderr).toContain('✗ missing repository path (--path)')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing repository path (--path)')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -146,14 +159,17 @@ describe('wrp sources emails', () => {
     expect(result.stdout).toContain('(no commit authors found in the last 300 commits)')
   })
 
-  it('passes a server failure through as one ✗ line', async () => {
+  it('passes a server failure through as one envelope', async () => {
     const server = await stub(() => ({ status: 500, body: { error: '读取仓库失败', code: 'EMAILS_ERROR' } }))
 
     const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
 
     expect(result.code).toBe(1)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ EMAILS_ERROR: 读取仓库失败')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(500)
+    expect(error.code).toBe('EMAILS_ERROR')
+    expect(error.message).toBe('读取仓库失败')
   })
 })
 
@@ -223,7 +239,7 @@ describe('wrp sources sync', () => {
     expect(JSON.parse(server.requests[2].body)).toEqual({ sourceId: 7 })
   })
 
-  it('turns a 409 SOURCE_BUSY into a ✗ line with the retry hint', async () => {
+  it('turns a 409 SOURCE_BUSY into an envelope with the retry hint', async () => {
     const server = await syncStub({
       post: { status: 409, body: { error: '该仓库正在操作中，请稍后重试', code: 'SOURCE_BUSY' } },
     })
@@ -231,9 +247,12 @@ describe('wrp sources sync', () => {
     const result = await runWrp(['sources', 'sync', '7'], { stub: server })
 
     expect(result.code).toBe(1)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ SOURCE_BUSY: 该仓库正在操作中，请稍后重试')
-    expect(result.stderr).toContain('retry in a few seconds')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('SOURCE_BUSY')
+    expect(error.message).toBe('该仓库正在操作中，请稍后重试')
+    expect(error.fix).toContain('retry in a few seconds')
   })
 
   it('names the auto-disable and the path fix when the source vanished mid-sync', async () => {
@@ -251,10 +270,12 @@ describe('wrp sources sync', () => {
     const result = await runWrp(['sources', 'sync', '7'], { stub: server })
 
     expect(result.code).toBe(1)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('auto-disabled')
-    expect(result.stderr).toContain('未配置邮箱')
-    expect(result.stderr).toContain('wrp sources update 7 --path')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(500)
+    expect(error.code).toBe('SYNC_FAILED')
+    expect(error.message).toContain('auto-disabled')
+    expect(error.message).toContain('未配置邮箱')
+    expect(error.fix).toContain('wrp sources update 7 --path')
   })
 
   it('lists the failed branches on other SYNC_FAILED outcomes', async () => {
@@ -279,10 +300,12 @@ describe('wrp sources sync', () => {
     const result = await runWrp(['sources', 'sync', '7'], { stub: server })
 
     expect(result.code).toBe(1)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ sync failed for #7 acme')
-    expect(result.stderr).toContain('push rejected')
-    expect(result.stderr).toContain('failed branches: main: push rejected')
-    expect(result.stderr).not.toContain('dev:')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(500)
+    expect(error.code).toBe('SYNC_FAILED')
+    expect(error.message).toContain('sync failed for #7 acme')
+    expect(error.message).toContain('push rejected')
+    expect(error.fix).toContain('failed branches: main: push rejected')
+    expect(error.fix).not.toContain('dev:')
   })
 })

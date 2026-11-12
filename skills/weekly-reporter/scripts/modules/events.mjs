@@ -117,7 +117,7 @@ export async function list({ flags }) {
   const { status, body, bodyParsed } = await api(path)
 
   if (!bodyParsed && status === 200) {
-    fail(`unexpected response (HTTP ${status})`, 'the API returned no JSON body', 'check the server logs for details')
+    fail('unexpected response', 'the API returned no JSON body', 'check the server logs for details', { status })
   }
   if (status !== 200) {
     failResponse(status, body, 'widen the filters (--date, --week-start/--week-end, --tags)')
@@ -208,7 +208,7 @@ export async function update({ positional, flags }) {
     return
   }
   if (status === 404) {
-    fail('event not found (HTTP 404)', body?.error || 'no event with that id', 'check the id against wrp events list')
+    fail('event not found', body?.error || 'no event with that id', 'check the id against wrp events list', { status: 404 })
   }
   failResponse(status, body, 're-run wrp events list and retry with a valid id or content')
 }
@@ -224,13 +224,14 @@ export async function deleteEvent({ positional }) {
   }
   if (status === 403) {
     fail(
-      'delete refused (HTTP 403)',
+      'delete refused',
       body?.error || 'the event is not manual',
       'auto-collected events mirror git history — fix the commit or the collect source instead',
+      { status: 403 },
     )
   }
   if (status === 404) {
-    fail('event not found (HTTP 404)', body?.error || 'no event with that id', 'check the id against wrp events list')
+    fail('event not found', body?.error || 'no event with that id', 'check the id against wrp events list', { status: 404 })
   }
   failResponse(status, body, 're-run wrp events list and retry with a valid id')
 }

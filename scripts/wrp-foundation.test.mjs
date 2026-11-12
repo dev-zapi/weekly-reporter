@@ -13,12 +13,20 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   closedPort,
-  errorLines,
   makeHome,
   runWrp,
   startStubServer,
   WRP_PATH,
 } from './wrp-cli-harness.mjs'
+
+/**
+ * Decode the one JSON error envelope a failing run printed on stderr. The CLI
+ * may have written prompt text first (wrp init), so parse the last line.
+ */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 // Two-level everywhere; the only three-level command is `plans comments`.
 const APPROVED_SURFACE = {
@@ -70,15 +78,17 @@ describe('wrp --help', () => {
 })
 
 describe('unknown commands', () => {
-  it('rejects an unknown module with one ✗ line and no request', async () => {
+  it('rejects an unknown module with one JSON error envelope and no request', async () => {
     const server = await stub()
     const result = await runWrp(['frobnicate', 'list'], { stub: server })
 
     expect(result.code).not.toBe(0)
     expect(result.stdout).toBe('')
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unknown module')
-    expect(result.stderr).toContain('wrp --help')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error).not.toHaveProperty('code')
+    expect(error.message).toContain('unknown module')
+    expect(error.fix).toContain('wrp --help')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -87,9 +97,11 @@ describe('unknown commands', () => {
     const result = await runWrp(['tags', 'publish'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unknown verb')
-    expect(result.stderr).toContain('wrp tags --help')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unknown verb')
+    expect(error.fix).toContain('wrp tags --help')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -97,8 +109,9 @@ describe('unknown commands', () => {
     const result = await runWrp(['plans', 'comments'])
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unknown verb')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unknown verb')
   })
 })
 
@@ -107,8 +120,8 @@ describe('command surface', () => {
   // #128 built it, and every later module ticket builds the rest. Rather than
   // pin whichever verb is still pending, derive the pending set from the CLI's
   // own per-command help: a command that still renders the note must dispatch
-  // to exactly one ✗ line and never touch the API. Once every module lands, the
-  // pending set is empty and this test only has to stay green.
+  // to exactly one JSON error envelope and never touch the API. Once every
+  // module lands, the pending set is empty and this test only has to stay green.
   const commands = Object.entries(APPROVED_SURFACE).flatMap(([module, verbs]) =>
     verbs.map((verb) => (verb ? [module, ...verb.split(' ')] : [module])),
   )
@@ -127,7 +140,7 @@ describe('command surface', () => {
     }
   })
 
-  it('dispatches any still-pending command to one ✗ line without hitting the API', async () => {
+  it('dispatches any still-pending command to one envelope without hitting the API', async () => {
     const server = await stub()
 
     for (const argv of commands) {
@@ -138,20 +151,22 @@ describe('command surface', () => {
       const result = await runWrp(argv, { stub: server })
       expect(result.code, `${label} is pending but exited 0`).not.toBe(0)
       expect(result.stdout).toBe('')
-      expect(errorLines(result.stderr), `${label} should fail with one ✗ line`).toHaveLength(1)
-      expect(result.stderr).toContain(`✗ not implemented: ${label}`)
+      const { error } = errorEnvelope(result)
+      expect(error.status, `${label} should report a client-side fault`).toBeNull()
+      expect(error.message, `${label} should say it is not implemented`).toContain(`not implemented: ${label}`)
     }
     expect(server.requests).toHaveLength(0)
   })
 
-  it('keeps genuinely bad input to one ✗ line without hitting the API', async () => {
+  it('keeps genuinely bad input to one envelope without hitting the API', async () => {
     const server = await stub()
     const result = await runWrp(['sources', 'lookup', '--nope'], { stub: server })
 
     expect(result.code).not.toBe(0)
     expect(result.stdout).toBe('')
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unknown flag: --nope')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unknown flag: --nope')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -164,10 +179,11 @@ describe('positional arity ceiling', () => {
 
     expect(result.code).not.toBe(0)
     expect(result.stdout).toBe('')
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unexpected argument: junk')
-    expect(result.stderr).toContain('wrp events list takes no positional arguments')
-    expect(result.stderr).toContain('usage: wrp events list')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unexpected argument: junk')
+    expect(error.fix).toContain('wrp events list takes no positional arguments')
+    expect(error.fix).toContain('usage: wrp events list')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -177,9 +193,10 @@ describe('positional arity ceiling', () => {
     const result = await runWrp(['sources', 'show', '#7', 'extra'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unexpected argument: extra')
-    expect(result.stderr).toContain('takes at most 1 positional argument')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unexpected argument: extra')
+    expect(error.fix).toContain('takes at most 1 positional argument')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -198,7 +215,7 @@ describe('positional arity ceiling', () => {
 })
 
 describe('unreachable server', () => {
-  it('prints the Cannot-reach line with the start-server fix hint', async () => {
+  it('prints the Cannot-reach envelope with the start-server fix hint', async () => {
     const port = await closedPort()
     const baseUrl = `http://127.0.0.1:${port}`
     const result = await runWrp(['tags', 'list'], {
@@ -206,21 +223,56 @@ describe('unreachable server', () => {
     })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain(`✗ Cannot reach weekly-reporter at ${baseUrl}`)
-    expect(result.stderr).toContain('npm run dev')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error).not.toHaveProperty('code')
+    expect(error.message).toContain(`Cannot reach weekly-reporter at ${baseUrl}`)
+    expect(error.fix).toContain('npm run dev')
   })
 })
 
 describe('401 handoff', () => {
-  it('turns any 401 into the run-wrp-init guidance line', async () => {
+  it('turns any 401 into the run-wrp-init guidance envelope', async () => {
     const server = await stub(() => ({ status: 401, body: { error: 'Unauthorized' } }))
     const result = await runWrp(['tags', 'list'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unauthorized (HTTP 401)')
-    expect(result.stderr).toContain(`! node "${WRP_PATH}" init`)
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(401)
+    expect(error.message).toContain('unauthorized (HTTP 401)')
+    expect(error.message).toContain('PAT missing, invalid, expired, or revoked')
+    expect(error.fix).toContain(`! node "${WRP_PATH}" init`)
+  })
+})
+
+describe('API failure envelope', () => {
+  it('carries the HTTP status, API code, message and fix on one JSON line', async () => {
+    const server = await stub(() => ({ status: 500, body: { code: 'BOOM', error: 'db down' } }))
+    const result = await runWrp(['tags', 'list'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr.trimEnd().split('\n')).toHaveLength(1)
+    expect(errorEnvelope(result)).toEqual({
+      error: {
+        status: 500,
+        code: 'BOOM',
+        message: 'db down',
+        fix: 'read the tag inventory again',
+      },
+    })
+  })
+
+  it('omits code when the API supplied none, keeping status and message', async () => {
+    const server = await stub(() => ({ status: 400, body: { error: 'bad filter' } }))
+    const result = await runWrp(['tags', 'list'], { stub: server })
+
+    expect(result.code).toBe(1)
+    expect(errorEnvelope(result)).toEqual({
+      error: { status: 400, message: 'bad filter', fix: 'read the tag inventory again' },
+    })
   })
 })
 

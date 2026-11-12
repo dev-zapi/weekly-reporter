@@ -8,7 +8,13 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -188,8 +194,10 @@ describe('wrp templates list', () => {
 
     const bad = await runWrp(['templates', 'list', '--kind', 'bogus'], { stub: server })
     expect(bad.code).not.toBe(0)
-    expect(errorLines(bad.stderr)).toHaveLength(1)
-    expect(bad.stderr).toContain('✗')
+    expect(bad.stdout).toBe('')
+    const { error } = errorEnvelope(bad)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --kind')
     expect(server.requests).toHaveLength(0)
 
     const empty = await runWrp(['templates', 'list', '--query', '不存在的东西'], { stub: server })
@@ -254,7 +262,10 @@ describe('wrp templates show', () => {
     const result = await runWrp(['templates', 'show', 'user-3', '--part', 'bogus'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --part')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -282,12 +293,14 @@ describe('template reference resolution', () => {
     const result = await runWrp(['templates', 'show', '模板'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("'模板'")
-    expect(result.stderr).toContain('official-general')
-    expect(result.stderr).toContain('official-tech-dev')
-    expect(result.stderr).toContain('user-3')
-    expect(result.stderr).toContain('→')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("'模板'")
+    expect(error.message).toContain('official-general')
+    expect(error.message).toContain('official-tech-dev')
+    expect(error.message).toContain('user-3')
+    expect(error.fix).toBeTruthy()
   })
 
   it('reports unknown names and unknown bare user IDs distinctly', async () => {
@@ -295,13 +308,11 @@ describe('template reference resolution', () => {
 
     const missingName = await runWrp(['templates', 'show', 'nope'], { stub: server })
     expect(missingName.code).not.toBe(0)
-    expect(errorLines(missingName.stderr)).toHaveLength(1)
-    expect(missingName.stderr).toContain('no template matches')
+    expect(errorEnvelope(missingName).error.message).toContain('no template matches')
 
     const missingId = await runWrp(['templates', 'show', '999'], { stub: server })
     expect(missingId.code).not.toBe(0)
-    expect(errorLines(missingId.stderr)).toHaveLength(1)
-    expect(missingId.stderr).toContain('no user template with ID 999')
+    expect(errorEnvelope(missingId).error.message).toContain('no user template with ID 999')
   })
 })
 
@@ -313,9 +324,10 @@ describe('official templates are read-only', () => {
     const result = await runWrp(['templates', 'update', 'official-general', '--description', 'x'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('official')
-    expect(result.stderr).toContain('wrp templates clone official-general')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('official')
+    expect(error.fix).toContain('wrp templates clone official-general')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 
@@ -324,8 +336,9 @@ describe('official templates are read-only', () => {
     const result = await runWrp(['templates', 'delete', 'official-general', '--confirm'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('wrp templates clone official-general')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.fix).toContain('wrp templates clone official-general')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 })
@@ -373,16 +386,16 @@ describe('wrp templates create', () => {
 
     const neither = await runWrp(['templates', 'create', '--name', 'x'], { stub: server })
     expect(neither.code).not.toBe(0)
-    expect(errorLines(neither.stderr)).toHaveLength(1)
-    expect(neither.stderr).toContain('--content')
-    expect(neither.stderr).toContain('--file')
+    const neitherError = errorEnvelope(neither).error.message
+    expect(neitherError).toContain('--content')
+    expect(neitherError).toContain('--file')
 
     const both = await runWrp(
       ['templates', 'create', '--name', 'x', '--content', 'a', '--file', '/tmp/nope'],
       { stub: server },
     )
     expect(both.code).not.toBe(0)
-    expect(errorLines(both.stderr)).toHaveLength(1)
+    expect(errorEnvelope(both).error.message).toContain('at most one of --content or --file')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -391,15 +404,14 @@ describe('wrp templates create', () => {
 
     const longName = await runWrp(['templates', 'create', '--name', 'x'.repeat(101), '--content', 'a'], { stub: server })
     expect(longName.code).not.toBe(0)
-    expect(errorLines(longName.stderr)).toHaveLength(1)
-    expect(longName.stderr).toContain('at most 100')
+    expect(errorEnvelope(longName).error.message).toContain('at most 100')
 
     const longDescription = await runWrp(
       ['templates', 'create', '--name', 'ok', '--content', 'a', '--description', 'd'.repeat(201)],
       { stub: server },
     )
     expect(longDescription.code).not.toBe(0)
-    expect(longDescription.stderr).toContain('at most 200')
+    expect(errorEnvelope(longDescription).error.message).toContain('at most 200')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -408,9 +420,9 @@ describe('wrp templates create', () => {
 
     const typo = await runWrp(['templates', 'create', '--name', 'ok', '--content', 'a', '--style', 'frmal'], { stub: server })
     expect(typo.code).not.toBe(0)
-    expect(errorLines(typo.stderr)).toHaveLength(1)
-    expect(typo.stderr).toContain('frmal')
-    expect(typo.stderr).toContain('formal')
+    const typoError = errorEnvelope(typo).error
+    expect(typoError.message).toContain('frmal')
+    expect(typoError.fix).toContain('formal')
     expect(server.requests.map((request) => request.url)).toEqual(['/api/prompts/styles'])
 
     const validStub = await stub({
@@ -506,7 +518,9 @@ describe('wrp templates update', () => {
     const result = await runWrp(['templates', 'update', 'user-3'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('nothing to update')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 
@@ -515,8 +529,9 @@ describe('wrp templates update', () => {
     const result = await runWrp(['templates', 'update', 'user-3', '--style', 'nope'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('nope')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('nope')
     expect(server.requests.map((request) => request.url)).toEqual(['/api/templates', '/api/prompts/styles'])
   })
 })
@@ -592,9 +607,10 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'zzz'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('formal')
-    expect(result.stderr).toContain('→')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('no AI style matches')
+    expect(error.fix).toContain('formal')
   })
 
   it('reports an ambiguous substring with the candidates', async () => {
@@ -602,9 +618,10 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'a'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('formal')
-    expect(result.stderr).toContain('technical')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('formal')
+    expect(error.message).toContain('technical')
   })
 
   it('requires a key', async () => {
@@ -612,7 +629,8 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -677,7 +695,7 @@ describe('format laws', () => {
     expect(styleRows[0]).toMatch(/^formal (\[[^\]]+\] )+正式$/)
   })
 
-  it('law 3: every failure is exactly one ✗ line on stderr with a → fix hint', async () => {
+  it('law 3: every failure is exactly one JSON error envelope on stderr with a fix hint', async () => {
     const server = await stub()
     const failures = [
       ['templates', 'list', '--kind', 'bogus'],
@@ -693,10 +711,14 @@ describe('format laws', () => {
 
     for (const args of failures) {
       const result = await runWrp(args, { stub: server })
-      expect(result.code, `${args.join(' ')} should exit non-zero`).not.toBe(0)
-      expect(errorLines(result.stderr), `${args.join(' ')} prints one ✗ line`).toHaveLength(1)
-      expect(result.stderr, `${args.join(' ')} carries a fix hint`).toContain('→')
-      expect(result.stdout, `${args.join(' ')} keeps stdout free of ✗`).not.toContain('✗')
+      const label = args.join(' ')
+      expect(result.code, `${label} should exit non-zero`).not.toBe(0)
+      expect(result.stderr.trimEnd().split('\n'), `${label} prints one envelope`).toHaveLength(1)
+      const { error } = errorEnvelope(result)
+      expect(error.status, `${label} is a client-side fault`).toBeNull()
+      expect(error.message, `${label} carries the cause`).toBeTruthy()
+      expect(error.fix, `${label} carries a fix hint`).toBeTruthy()
+      expect(result.stdout, `${label} keeps stdout empty`).toBe('')
     }
   })
 

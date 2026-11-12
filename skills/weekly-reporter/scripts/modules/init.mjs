@@ -146,9 +146,10 @@ async function createPatViaApi(baseUrl, name) {
   }
   if (!response.ok) {
     fail(
-      body?.code || `failed to create PAT (HTTP ${response.status})`,
+      'failed to create PAT',
       body?.error || 'the startup password may be wrong',
       're-run wrp init --base-url <url> with the current startup password',
+      { status: response.status, code: body?.code },
     )
   }
   if (!body?.token) fail('failed to create PAT', 'the API returned no token', 'create one in the web UI and store it with wrp init --pat <token>')
