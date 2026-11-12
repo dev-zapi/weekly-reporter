@@ -5,8 +5,8 @@
 // `flags.flagName`, so a command reads `flags.weekStart` regardless of the
 // dashed spelling.
 //
-// Unknown flags are rejected instead of ignored: a typo must surface as a ✗
-// line, never as a silently dropped filter.
+// Unknown flags are rejected instead of ignored: a typo must surface as an
+// error envelope, never as a silently dropped filter.
 
 import { fail } from './errors.mjs'
 
@@ -57,7 +57,7 @@ export function parseArgs(argv, spec = {}, usage = 'wrp --help') {
   return { flags, positional, help: false }
 }
 
-/** A positional argument, or one ✗ line naming what was missing. */
+/** A positional argument, or one error envelope naming what was missing. */
 export function requireArg(positional, index, label, usage) {
   const value = positional[index]
   if (value === undefined || value.trim() === '') {
@@ -66,7 +66,7 @@ export function requireArg(positional, index, label, usage) {
   return value
 }
 
-/** A required value flag, or one ✗ line naming what was missing. */
+/** A required value flag, or one error envelope naming what was missing. */
 export function requireFlag(flags, name, label, usage) {
   const value = flags[name]
   if (value === undefined || String(value).trim() === '') {

@@ -221,9 +221,10 @@ the id and the API-stamped authorship, so attribution is observable.
 wrp plans comments delete <item-id> <comment-id>
 ```
 
-`<item-id>` is the item the comment is **pinned to** (the `%<itemId>` on its
-list line), not the item you are viewing. Deletion is permanent and also removes
-the comment's `@id` citation index rows. Confirm with the user first.
+`<item-id>` is the item the comment is **pinned to** (the `planItemId` field
+of the comment in the JSON body), not the item you are viewing. Deletion is
+permanent and also removes the comment's `@id` citation index rows. Confirm with
+the user first.
 
 Success: `✓ comment deleted: #<commentId> on %<itemId>`.
 

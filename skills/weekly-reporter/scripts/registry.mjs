@@ -4,8 +4,8 @@
 // The full approved surface from spec #119 lives here from day one, including
 // the verbs later tickets implement - an unbuilt verb is registered with a
 // `ticket` field instead of an `run` function, so it dispatches to a clear
-// "not implemented" ✗ line rather than an "unknown word" one. Help text is
-// generated from this table; never hand-maintain usage strings.
+// "not implemented" error envelope rather than an "unknown word" one. Help text
+// is generated from this table; never hand-maintain usage strings.
 //
 // Entry shape:
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }

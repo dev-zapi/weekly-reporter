@@ -28,7 +28,7 @@ description: >-
 ## 前置
 
 - 数据访问统一走 **weekly-reporter（wrp）**：入口 `node <weekly-reporter>/scripts/wrp.mjs <module> <verb> [args]`（`<weekly-reporter>` 指代 weekly-reporter 技能目录）。本技能只用 `wrp sources sync` 与 `wrp events list`。路径解析：优先用同级已部署技能 `~/.claude/skills/weekly-reporter`（软链至 `~/.agents/skills/weekly-reporter`）；不存在则用仓库内 `skills/weekly-reporter/`。
-- 事件列表的 `#<id>` 行、分页提示与空态语义见 weekly-reporter 的 `references/events.md`；`sources sync --all` 的结果行、部分失败与自动禁用语义见 `references/sources.md`。这里不复述，输出对不上时先查那两份文档。
+- `events list` 的 JSON body（`events` / `hasMore` / `nextCursorToken`）与 `sources sync --all` 的结果行、部分失败与自动禁用语义见 weekly-reporter 的 `references/events.md` 与 `references/sources.md`。这里不复述，输出对不上时先查那两份文档。
 - wrp 用内置 `fetch`（Node 18+），从环境变量（`WEEKLY_REPORTER_PAT`；`WEEKLY_REPORTER_BASE_URL` 或别名 `WEEKLY_REPORTER_URL`）或 `~/.config/weekly-reporter/auth.json` 读取凭据，base URL 默认 `http://localhost:6868`。任何 `/api/**` 调用返回 401 时，让用户在会话里运行 `! node <weekly-reporter>/scripts/wrp.mjs init` 配置 PAT，再重试。
 
 ## 工作流
@@ -45,7 +45,7 @@ node <weekly-reporter>/scripts/wrp.mjs sources sync --all
 
 `sync --all` 之后时间线即最新；运行时点晚于最后一条事件属正常，尾段静默如实写进观察（例如「11:33 后时间线安静下来」），无需声明「数据截至」。
 
-部分失败时 wrp 打印 `✗ partial sync failure (N/M sources failed): …`，其余源已经同步成功。**不中断**，照常复盘，在输出末尾加一行注记：`注：#N <name>、#M <name> 未能同步，复盘基于现有数据`——把**全部**失败源都列出来，读者才知道这份复盘缺了哪几块。
+部分失败时 stdout 仍打印每个源的结果行，stderr 再打印一条 JSON 错误 envelope：`{"error":{"status":…,"code":"PARTIAL_SYNC_FAILED","message":"partial sync failure (N/M sources failed): #N <name>, #M <name>","fix":…}}`，退出码非零；其余源已经同步成功。**不中断**，照常复盘，在输出末尾加一行注记：`注：#N <name>、#M <name> 未能同步，复盘基于现有数据`——从 envelope 的 `message` 里取**全部**失败源都列出来，读者才知道这份复盘缺了哪几块。
 
 ### 2 — 查询
 
@@ -54,8 +54,8 @@ node <weekly-reporter>/scripts/wrp.mjs events list --date <D> --limit 200
 ```
 
 - **不带 `--source`。** 手动和自动一起取——复盘要的是完整的一天，不是某一类事件。
-- 若 footer 显示满 200 条并出现 `next page: --cursor <id>@<epoch-millis>`，按提示用 `--cursor` 翻页取全（整段 cursor 照抄即可）。复盘要报数字和时段，漏一页会让结论失真。
-- 空态由 wrp 打印显式空态行并退出 `0`，这不是错误；按下面的「空与稀薄数据」处理。
+- 输出是一条紧凑 JSON：`JSON.parse` 后读 `events[]`，每条的 `id`、`eventTime`、`source`、`content`、`metadata`（标签与引用）都在。若 `hasMore` 为 `true`，把 body 里的 `nextCursorToken` 原样传给 `--cursor` 翻页取全；复盘要报数字和时段，漏一页会让结论失真。
+- 空结果是原始 body `{"events":[]}` 且退出 `0`，这不是错误；按下面的「空与稀薄数据」处理。
 
 ### 3 — 蒸馏
 
@@ -74,7 +74,7 @@ node <weekly-reporter>/scripts/wrp.mjs events list --date <D> --limit 200
 - **手动与自动一视同仁。** 采集源事件和手动事件之间没有必然关联：同一段时间线里可能是两摊互不相干的事，也可能手动事件正是某组提交的结论。都当素材，不做「自动是正文、手动是补充」的预设。
 - **单元 = nameable accomplishment。** 一行能命名的 shipped / fixed / decided 才成条。同一件事的系列提交、以及描述同一件事的手动事件，合并成一个 bullet；互不相干的各成一条。
 - **跨分支重复提交必须合并。** 内容相同或几乎相同、时间相近的自动事件（同一提交被 rebase、cherry-pick，或同名分支各推一次），只出现一次。重复 bullet 会让读者高估当天的工作量。
-- **项目归属从内容推断。** 提交信息的 ticket 前缀（`MMOA-*`、`MMCL-*`）、conventional-commit 的 scope、仓库名都是线索。`events list` 的来源列展示的是**源类型** `[manual]` / `[git-local]`，**不含具体源名**；`--source` 的过滤值则是 `manual|auto`，两者不是一回事，且本技能不带 `--source`。所以归属只能靠文本判断；判断不出就不写项目名，不要编。
+- **项目归属从内容推断。** 提交信息的 ticket 前缀（`MMOA-*`、`MMCL-*`）、conventional-commit 的 scope、仓库名都是线索。JSON body 里每条事件的 `source` 字段是 `"manual"` 或采集源名称，**不含源类型**；`--source` 的过滤值则是 `manual|auto`，两者不是一回事，且本技能不带 `--source`。所以归属只能靠文本判断；判断不出就不写项目名，不要编。
 - **★ 保留。** 手动事件在对应 bullet 行首留一个 ★，读者一眼就能看出哪条有人工判断的痕迹。
 - **数字要数得出来。** 票号个数、提交条数都从事件里数，不夸大、不虚构；数不清就不写数字。「全天 N 条」类数字用**原始事件条数**（未去重）；提及重复时可写「其中 X 组跨分支重复」。
 - **排序。** bullet 按各簇首个事件的时间升序排列，让故事线顺着时间读下去。
@@ -123,14 +123,14 @@ node <weekly-reporter>/scripts/wrp.mjs events list --date <D> --limit 200
 
 ## 错误处理
 
-| 现象 | 原因 | 处理 |
+| 现象（stderr 的 JSON envelope） | 原因 | 处理 |
 |---|---|---|
-| `✗ partial sync failure (N/M sources failed)` | 部分采集源失败，其余已同步 | 不中断，继续复盘，输出末尾加一行注记，点名失败的源 |
-| `✗ Cannot reach weekly-reporter` | 服务未启动或 base URL 不对 | 无法查询，照 wrp 的 ✗ 行原样转述并停止，不要用缓存或记忆编造复盘 |
-| `unauthorized (HTTP 401)` | PAT 缺失、失效或撤销 | 让用户运行 `! node <weekly-reporter>/scripts/wrp.mjs init`，再重试 |
-| `SOURCE_BUSY: 该仓库正在操作中` | 另一同步或抓取持锁 | 等几秒重试一次；仍失败就跳过同步，基于现有数据复盘并在末尾注记 |
-| footer 出现 `next page: --cursor …` | 当天超过 200 条 | 用提示里的 cursor 翻页取全再蒸馏 |
-| events list 空态行 | 当天确实没有事件 | 按「空与稀薄数据」处理，不报错、不造内容 |
+| `code: "PARTIAL_SYNC_FAILED"` | 部分采集源失败，其余已同步 | 不中断，继续复盘，输出末尾加一行注记，点名 `message` 里列出的失败源 |
+| `status: null`、`message` 以 `Cannot reach weekly-reporter at` 开头 | 服务未启动或 base URL 不对 | 无法查询，照 envelope 的 `message` 原样转述并停止，不要用缓存或记忆编造复盘 |
+| `status: 401` | PAT 缺失、失效或撤销 | 让用户运行 `! node <weekly-reporter>/scripts/wrp.mjs init`，再重试（`fix` 里就是这条命令） |
+| `status: 409`、`code: "SOURCE_BUSY"` | 另一同步或抓取持锁 | 等几秒重试一次；仍失败就跳过同步，基于现有数据复盘并在末尾注记 |
+| stdout 的 `hasMore: true` | 当天超过 200 条 | 用 body 里的 `nextCursorToken` 作 `--cursor` 翻页取全再蒸馏 |
+| stdout 是 `{"events":[]}`、退出 0 | 当天确实没有事件 | 按「空与稀薄数据」处理，不报错、不造内容 |
 
 ## 不要做的事
 

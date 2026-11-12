@@ -33,7 +33,7 @@ If the weekly-reporter skill is not installed, run the client directly from the 
 wrp reports preview --start 2026-09-14 --end 2026-09-20
 ```
 
-Empty draft for a variant → say so and stop for that variant; the fix is a collect-source sync or a date correction, not writing.
+Empty draft for a variant → say so and stop for that variant; the fix is a collect-source sync or a date correction, not writing. `preview` prints one line of compact JSON: read `variants[].sourceDraft` for each audience variant (the `- No events this week` or legacy `- 本周暂无事件` literal marks an empty draft).
 
 **2. Reuse or create.** Check the week isn't already covered, then create if needed:
 
@@ -42,13 +42,13 @@ wrp reports list --start 2026-09-14 --end 2026-09-20
 wrp reports create --title "2026 Week 38 Work Report" --start 2026-09-14 --end 2026-09-20
 ```
 
-Nothing stops duplicate reports for one week, so always list first. If a report already exists with a current final, you are in Flow B, not here.
+Nothing stops duplicate reports for one week, so always list first: `wrp reports list` prints one JSON line, and `reports[].id` plus each report's `variants` array tell you whether a report for the week already exists. If one exists with a current final, you are in Flow B, not here.
 
-**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with `wrp templates list` and `wrp templates show <ref>` (its `show` prints the full instruction text — that text defines the target structure and writing requirements). For style, unless the user names one, use the template's own AI style, shown by `wrp templates show <ref> --part meta`; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
+**3. Choose variant, template, style.** Default: write both variants, each confirmed separately. Pick the template with `wrp templates list` and `wrp templates show <ref>`; each prints one line of compact JSON, and the row's `content` field is the full instruction text that defines the target structure and writing requirements. For style, unless the user names one, use the template's own AI style — `wrp templates show <ref> --part meta` prints the row without the content, so its `aiStyle` field is right there; `formal` is the fallback. Read the chosen style's prompt live — it is the voice you write in:
 
 ```bash
-wrp styles list            # one line per style
-wrp styles show technical  # full writing prompt
+wrp styles list            # JSON: {"styles":[…]} with every key and label
+wrp styles show technical  # JSON: the style row; read its systemPrompt
 ```
 
 **4. Read the source draft** for the variant you are writing:
@@ -57,7 +57,7 @@ wrp styles show technical  # full writing prompt
 wrp reports show <id> --variant leadership --part source
 ```
 
-Note the `sourceRevision` in the metadata — you will pass it when saving.
+Note the `sourceRevision` in the selected variant (`variants[].sourceRevision`; `--part source` keeps the meta fields) — you will pass it when saving.
 
 **5. Optionally consult the previous week's final.** If you want continuity, look up the previous week (weekStart − 7) and, if that report has a current final for the same variant, read its 下周计划 section:
 
@@ -90,7 +90,7 @@ wrp reports show <id> --variant personal --part final
 wrp reports show <id> --variant personal --part source
 ```
 
-If the final's status is `stale`, say so: the draft was regenerated after it was written. Editing stale text forward is usually wrong — offer to re-author from the fresh draft instead (Flow A from step 3).
+If the final's `finalStatus` is `stale`, say so: the draft was regenerated after it was written. Editing stale text forward is usually wrong — offer to re-author from the fresh draft instead (Flow A from step 3).
 
 Otherwise: apply only the requested changes to the existing text (it is the user's adopted wording — don't rewrite what they didn't ask about), show the full revised text, get approval, and save exactly as in Flow A step 8 (same template/style flags, so provenance survives revision).
 
@@ -98,11 +98,11 @@ Otherwise: apply only the requested changes to the existing text (it is the user
 
 | Situation | Meaning | What to do |
 |---|---|---|
-| `unauthorized (HTTP 401) from <url>` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (run the exact `! node "…/wrp.mjs" init` command the `✗` line prints) |
-| `Cannot reach weekly-reporter` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
-| `SOURCE_REVISION_CONFLICT` (409) on save | Draft regenerated since you read it | Re-read source, rebase your text on the new draft, re-review, re-save |
-| Empty draft on preview/create | No events in range | Stop; suggest sync or date fix |
-| Save with unknown template/style | 400 `VALIDATION_ERROR` | Re-check ids via `wrp templates list` / `wrp styles list` |
+| `status: 401`, `message` starts `unauthorized (HTTP 401) from` | PAT missing, invalid, expired, or revoked | Provision credentials with `wrp init` (run the exact `! node "…/wrp.mjs" init` command carried in the envelope's `fix`) |
+| `status: null`, `message` starts `Cannot reach weekly-reporter at` | Server down / wrong port | `npm run dev` or set `WEEKLY_REPORTER_BASE_URL` |
+| `status: 409`, `code: SOURCE_REVISION_CONFLICT` on save | Draft regenerated since you read it | Re-read source, rebase your text on the new draft, re-review, re-save |
+| Empty `sourceDraft` on preview/create | No events in range | Stop; suggest sync or date fix |
+| `status: 400`, `code: VALIDATION_ERROR` on save | Unknown template/style | Re-check ids via `wrp templates list` / `wrp styles list` |
 
 ## Out of scope
 
