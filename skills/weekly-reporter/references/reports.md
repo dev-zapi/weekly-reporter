@@ -38,68 +38,79 @@ has been adopted yet; `current` means the final matches its source revision.
 
 ## Reading
 
+Every read verb prints the API response body **verbatim** as one line of compact
+JSON on stdout. Parse it once: there is no wrapper object, and no field is
+renamed or dropped.
+
 ```bash
 wrp reports list [--page <n>] [--page-size <n>]
 wrp reports list [--query <text>] [--start <YYYY-MM-DD>] [--end <YYYY-MM-DD>]
 ```
 
-One line per report: `#id` first, then bracketed metadata (the covered week and
-each variant's final status), then the title. The per-variant status usually
-tells you which report and variant to open next.
+Page mode prints the body as returned, for example:
+
+```json
+{"reports":[{"id":12,"title":"…","weekStart":"2026-02-09","weekEnd":"2026-02-15","variants":[…]}],"total":12,"page":1,"pageSize":10}
+```
+
+Paging state lives in the body: `page`, `pageSize` and `total`. Continue while
+`page * pageSize < total`; there are no `page x/y` or `next: --page N` hint
+lines. Each report carries its full `variants` array, so the per-variant
+`finalStatus` is available without a second call.
 
 Any of `--query`/`--start`/`--end` switches to **search mode**: unpaginated,
-newest first. `--query` matches titles, source drafts and finals; `--start`/
-`--end` filter by covered week. Page mode prints `page N/M of T reports, newest
-first` and a `next: --page N+1` hint while more pages exist.
-
-When nothing matches, the command prints only the explicit empty-state line and
-exits `0` — no count footer and no page hint.
+newest first, returning `{"reports":[…]}`. `--query` matches titles, source
+drafts and finals; `--start`/`--end` filter by covered week. An empty result is
+`{"reports":[]}` and still exits `0` — zero results is a successful read, not a
+failure.
 
 ```bash
 wrp reports show <id> [--variant leadership|personal] [--part meta|draft|final|both]
 ```
 
-`--part meta` (the default) prints metadata and per-variant sizes only — cheap,
-and enough to decide what to read. Ask for `draft`, `final`, or `both` only when
-you actually need the text: a source draft can run to thousands of characters,
-so pass `--variant` to avoid pulling both. `source` is accepted anywhere `draft`
-is (an alias for the same part), including on the command line. Multi-line
-drafts and finals are only ever printed by `show` under one of these explicit
-modes; never reconstruct them from a list line.
+`show` prints the whole report body by default, including the `variants` array,
+each variant's `sourceDraft` and `finalContent`, and `snapshots`. One call
+yields the draft and final together.
 
-`show` renders the report header with its `updated` timestamp in the **system
-time zone** as ISO 8601 with an explicit offset and seconds; the covered week
-stays a date-only key and the snapshot count follows:
+`--variant` narrows the `variants` array to one audience variant. `--part`
+projects out the payload fields you do not need:
 
-```
-#12 [2026-02-09~2026-02-15] 2026 Week 7 Work Report
-updated: 2026-02-15T18:00:00+08:00   snapshots: 42 event(s)
-```
+| `--part` | Variant fields kept | Use when |
+|---|---|---|
+| `both` (default) | everything | you want the whole body |
+| `meta` | all except `sourceDraft` and `finalContent` | you only need ids, statuses, `sourceRevision`, template/style provenance |
+| `draft` / `source` | all except `finalContent` | you need the source draft text |
+| `final` | all except `sourceDraft` | you need the adopted final text |
 
-The header is `#id [weekStart~weekEnd] title`; per-variant final status
-(`[leadership:current] [personal:none]`) appears only on `wrp reports list`
-lines, never on `show`.
+The selected projection prints verbatim, so drafts and finals stay reachable at
+`variants[].sourceDraft` / `variants[].finalContent` in every mode. `--part meta`
+is the cheap read that still carries `sourceRevision` for a later `save-final`
+conflict check. Report instants are the API's own ISO strings; the client never
+reformats them.
 
-`TZ` overrides the display zone (e.g. `TZ=UTC wrp reports show 12`). Date-range
-flags (`--start`/`--end`) remain date-only `YYYY-MM-DD`; the client expands each
-to a system-zone midnight instant before it reaches the wire.
-
-Ids are **strict digits**: pass the numeric id exactly as printed after `#` by
-`wrp reports list` — the prefix is tolerated. The retired script's `parseInt`
-tolerated suffixes such as `12abc`; wrp does not, so
-`✗ a numeric report id is required` is a typo, not an id to truncate.
+Ids are **strict digits**: pass the numeric id exactly as it appears in the
+body's `id` field. A leading `#` is tolerated for convenience. The retired
+script's `parseInt` tolerated suffixes such as `12abc`; wrp does not, so
+`a numeric report id is required` means fix the id, do not truncate it.
 
 ## Previewing a range
 
 ```bash
-wrp reports preview --start <YYYY-MM-DD> --end <YYYY-MM-DD> [--variant …] [--full]
+wrp reports preview --start <YYYY-MM-DD> --end <YYYY-MM-DD> [--variant …]
 ```
 
-Prints the first 12 non-empty lines per variant with line and character counts;
-`--full` prints everything. **This creates nothing**, so it is the safe way to
-confirm a date range — worth doing whenever the user gives a vague range like
-"last week". An empty draft is marked `(EMPTY)` here so the mistake surfaces
-before anything is written.
+Prints the API preview body verbatim as one line of compact JSON:
+
+```json
+{"variants":[{"variant":"leadership","sourceDraft":"- …"},{"variant":"personal","sourceDraft":"- …"}]}
+```
+
+Every draft is **complete**: the old 12-line head truncation and its `--full`
+escape hatch are gone. `--variant` narrows the variants array. **This creates
+nothing**, so it is the safe way to confirm a date range — worth doing whenever
+the user gives a vague range like "last week". An empty source draft (the
+`- No events this week` or legacy `- 本周暂无事件` literal) shows up as such in
+`sourceDraft`, so the mistake surfaces before anything is written.
 
 ## Writing
 
@@ -161,14 +172,25 @@ Never work around it (there is no flag that does).
 
 ## Errors
 
-| Line | Cause | What to do |
+A failure prints one compact JSON envelope on stderr and exits non-zero; stdout
+stays empty. Branch on `status` and `code`, never on prose:
+
+```json
+{"error":{"status":404,"code":"NOT_FOUND","message":"Report not found","fix":"find the id with wrp reports list"}}
+```
+
+`status` is the HTTP status, or `null` for a client-side fault (bad flags, bad
+ids, an unreachable server). `code` appears only when the API or the client
+supplies one. `fix` names the actionable next step. Exit codes stay `0`/`1`/`3`.
+
+| `status` / `code` | Cause | What to do |
 |---|---|---|
-| `✗ unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | hand the user the `wrp init` command the line prints |
-| `✗ Cannot reach weekly-reporter …` | Server not running, or wrong port | start the server, or set `WEEKLY_REPORTER_BASE_URL` |
-| `✗ NOT_FOUND: Report not found` | Bad id | confirm it with `wrp reports list` |
-| `✗ SOURCE_REVISION_CONFLICT: …` (409) | Draft changed since you read it | re-read `show`, rebuild the final from the current draft |
-| `✗ AUDIT_RECORD_REQUIRED: …` (409) | Delete blocked by an accepted-proposal audit trail | keep the report; archive its sessions in the app if needed |
-| `✗ VALIDATION_ERROR: …` | Bad dates, empty title, `weekStart` after `weekEnd` | fix the input and retry |
+| `401` | PAT missing, invalid, expired, or revoked | run the `wrp init` command the envelope's `fix` names |
+| `null` / message starts `cannot reach` | Server not running, or wrong port | start the server, or set `WEEKLY_REPORTER_BASE_URL` |
+| `404` `NOT_FOUND` | Bad id | confirm it with `wrp reports list` |
+| `409` `SOURCE_REVISION_CONFLICT` | Draft changed since you read it | re-read `show`, rebuild the final from the current draft |
+| `409` `AUDIT_RECORD_REQUIRED` | Delete blocked by an accepted-proposal audit trail | keep the report; archive its sessions in the app if needed |
+| `400` `VALIDATION_ERROR` | Bad dates, empty title, `weekStart` after `weekEnd` | fix the input and retry |
 
 ## Out of scope
 

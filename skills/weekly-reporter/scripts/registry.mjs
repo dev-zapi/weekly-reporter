@@ -228,11 +228,10 @@ export const MODULES = [
         flag('--variant', 'value', 'report variant'),
         flag('--part', 'value', 'meta | draft | final | both (source is an alias for draft)'),
       ], 127, reports.show),
-      command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant] [--full]', [
+      command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant]', [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
         flag('--variant', 'value', 'report variant'),
-        flag('--full', 'boolean', 'print every line, not just the first 12'),
       ], 127, reports.preview),
       command('create', 'reports', 'Create a report (snapshots events, builds both drafts)', 'wrp reports create --title <text> --start <date> --end <date>', [
         flag('--title', 'value', 'report title'),
