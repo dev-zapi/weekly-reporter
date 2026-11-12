@@ -86,7 +86,10 @@ the API wrote it. Timestamps are not converted to the system time zone: they
 stay in the wire form (`2026-11-07T10:00:00.000Z`, per ADR-0032). Empty results
 print their raw body (for example `{"sources":[],"total":0,"page":1,"pageSize":100}`)
 and still exit `0`, so zero results are distinguishable from failure by the exit
-code alone. There is no footer, count line or empty-state prose.
+code alone. There is no footer, count line or empty-state prose. Only page 1 is
+printed (`pageSize` 100) and there is no continuation flag, so if `total` exceeds
+the rows returned, more sources exist — narrow the result with the server-side
+`--name` filter (or another filter).
 
 `wrp sources show <ref>` prints the resolved source record verbatim as one
 compact JSON line — the full config, the masked token, per-branch cursors and

@@ -79,7 +79,7 @@ export async function fetchAllSources(filters = {}) {
 export async function resolveSource(ref) {
   if (!ref) fail('missing source reference', 'pass an ID, name or alias', 'usage: wrp sources show <ref>')
 
-  // Every list line prints ids as "#12", so accept that form too.
+  // Accept the display form `#12` as well as the bare numeric ID.
   const normalizedRef = ref.replace(/^#/, '')
   if (/^\d+$/.test(normalizedRef)) {
     const { status, body } = await api(`/api/collect/sources/${normalizedRef}`)

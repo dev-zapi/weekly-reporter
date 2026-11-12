@@ -159,11 +159,17 @@ wrp styles show <key>
 ```
 
 Both are read verbs: each prints its API response body **verbatim** as one line of
-compact JSON. `styles list` returns `{"styles":[…]}` with every configured style;
-`styles show <key>` prints the one matching style row:
+compact JSON. `styles list` returns `{"styles":[…]}` with every configured style:
 
 ```json
 {"styles":[{"key":"technical","label":"技术研发","systemPrompt":"你是技术专家，突出工程细节和风险。","temperature":"0.4","detailLevel":"detailed","resultOriented":"true","isDefault":false}]}
+```
+
+`styles show <key>` prints the one matching style row on its own — not the list
+wrapper:
+
+```json
+{"key":"technical","label":"技术研发","systemPrompt":"你是技术专家，突出工程细节和风险。","temperature":"0.4","detailLevel":"detailed","resultOriented":"true","isDefault":false}
 ```
 
 The key lookup accepts an exact key or a unique case-insensitive substring of the

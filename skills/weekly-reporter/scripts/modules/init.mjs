@@ -110,7 +110,8 @@ function readStartupPassword() {
     }
     // ctrl-C (SIGINT, either typed at a TTY or delivered as a signal) and
     // ctrl-D / a closed pipe (close) must not hang forever. An interrupt is
-    // reported as `✗ cancelled`, an empty answer as a missing password.
+    // reported as the `cancelled` error envelope, an empty answer as a
+    // missing-password envelope.
     onSignal = () => settle(INTERRUPTED)
     process.once('SIGINT', onSignal)
     rl.once('SIGINT', onSignal)
