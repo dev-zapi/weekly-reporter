@@ -366,7 +366,7 @@ describe('self-report headers', () => {
 })
 
 describe('reference verb (tags list) used by the seam', () => {
-  it('prints one line per tag plus the list footer', async () => {
+  it('prints the body verbatim as one line of compact JSON', async () => {
     const server = await stub(() => ({
       status: 200,
       body: {
@@ -380,9 +380,13 @@ describe('reference verb (tags list) used by the seam', () => {
     const result = await runWrp(['tags', 'list'], { stub: server, env: { WEEKLY_REPORTER_PAT: 't' } })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('#调试 — 12 event(s)')
-    expect(result.stdout).toContain('#worklog — 1 event(s)')
-    expect(result.stdout).toContain('— 2 tag(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual({
+      tags: [
+        { name: '调试', count: 12 },
+        { name: 'worklog', count: 1 },
+      ],
+    })
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/tags')
   })

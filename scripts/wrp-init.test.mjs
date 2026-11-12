@@ -333,7 +333,7 @@ describe('provisioning lifecycle', () => {
     // No env vars: the command must authenticate from the stored credential.
     const listed = await runWrp(['tags', 'list'], { home })
     expect(listed.code).toBe(0)
-    expect(listed.stdout).toContain('— 1 tag(s)')
+    expect(JSON.parse(listed.stdout)).toEqual({ tags: [{ name: 'x', count: 1 }] })
     expect(server.requests.at(-1).headers.authorization).toBe(`Bearer ${token}`)
 
     expect((await runWrp(['init', '--clear'], { home })).code).toBe(0)
