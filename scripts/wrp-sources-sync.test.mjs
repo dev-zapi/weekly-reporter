@@ -55,8 +55,9 @@ function query(url) {
 }
 
 describe('wrp sources lookup', () => {
-  it('prints the record fields for a registered path and exits 0', async () => {
-    const server = await stub(() => ({ status: 200, body: source() }))
+  it('prints the source record verbatim for a registered path and exits 0', async () => {
+    const body = source()
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
 
@@ -64,26 +65,19 @@ describe('wrp sources lookup', () => {
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(query(server.requests[0].url)).toEqual({ type: 'git-local', path: '/repos/acme' })
-    expect(result.stdout).toContain('id:       7')
-    expect(result.stdout).toContain('name:     acme')
-    expect(result.stdout).toContain('status:   enabled')
-    expect(result.stdout).toContain('enabled:  true')
-    expect(result.stdout).toContain('scope:    work')
-    expect(result.stdout).toContain('emails:   a@example.com, b@example.com')
-    expect(result.stdout).toContain('branches: main')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
-  it('prints "all branches" for a source with no branch config', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: source({ config: { owner: '/repos/acme', authorEmails: ['a@example.com'] } }),
-    }))
+  it('leaves an empty branch config verbatim, keeping the all-branches sentinel visible', async () => {
+    const body = source({ config: { owner: '/repos/acme', authorEmails: ['a@example.com'] } })
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['sources', 'lookup', '--path', '/repos/acme'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('branches: all branches')
-    expect(result.stdout).toContain('emails:   a@example.com')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(JSON.parse(result.stdout).config).not.toHaveProperty('branches')
   })
 
   it('exits 3 with the not-found envelope when no source is registered for the path', async () => {
@@ -129,34 +123,31 @@ describe('wrp sources lookup', () => {
 })
 
 describe('wrp sources emails', () => {
-  it('prints the fixed-width commits/email/name table in server order', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        authors: [
-          { email: 'a@example.com', name: 'Alice', count: 12 },
-          { email: 'b@example.com', name: 'Bob', count: 3 },
-        ],
-      },
-    }))
+  it('prints the authors body verbatim in server order', async () => {
+    const body = {
+      authors: [
+        { email: 'a@example.com', name: 'Alice', count: 12 },
+        { email: 'b@example.com', name: 'Bob', count: 3 },
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
 
     expect(result.code).toBe(0)
     expect(query(server.requests[0].url)).toEqual({ type: 'git-local', path: '/repos/acme' })
-    const lines = result.stdout.trimEnd().split('\n')
-    expect(lines[0]).toBe('commits  email                          name')
-    expect(lines[1]).toBe('     12  a@example.com                   Alice')
-    expect(lines[2]).toBe('      3  b@example.com                   Bob')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
-  it('prints the empty hint when the repo has no commit authors', async () => {
+  it('prints the raw empty body when the repo has no commit authors', async () => {
     const server = await stub(() => ({ status: 200, body: { authors: [] } }))
 
     const result = await runWrp(['sources', 'emails', '--path', '/repos/acme'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('(no commit authors found in the last 300 commits)')
+    expect(result.stdout).not.toContain('(no commit authors found in the last 300 commits)')
+    expect(JSON.parse(result.stdout)).toEqual({ authors: [] })
   })
 
   it('passes a server failure through as one envelope', async () => {

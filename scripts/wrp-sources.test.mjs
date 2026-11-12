@@ -74,11 +74,9 @@ function query(url) {
 }
 
 describe('wrp sources list', () => {
-  it('applies all five filters and prints one line per source plus the footer', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: { sources: [source()], total: 1, page: 1, pageSize: 100 },
-    }))
+  it('applies all five filters and prints the response body verbatim', async () => {
+    const body = { sources: [source()], total: 1, page: 1, pageSize: 100 }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(
       ['sources', 'list', '--name', 'acme', '--type', 'git-local', '--status', 'enabled', '--scope', 'work', '--sync', 'success'],
@@ -97,19 +95,18 @@ describe('wrp sources list', () => {
       syncStatus: 'success',
       page: '1',
     })
-    expect(result.stdout).toContain(
-      '#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00',
-    )
-    expect(result.stdout).toContain('— 1 source(s) (work 1 / personal 0)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
-  it('prints an explicit empty state and no footer when nothing matches', async () => {
-    const server = await stub(() => ({ status: 200, body: { sources: [], total: 0 } }))
+  it('prints the raw empty body so zero results stay distinguishable from failure', async () => {
+    const body = { sources: [], total: 0, page: 1, pageSize: 100 }
+    const server = await stub(() => ({ status: 200, body }))
     const result = await runWrp(['sources', 'list'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('No collect sources match.')
-    expect(result.stdout).not.toContain('— 0 source(s)')
+    expect(result.stdout).not.toContain('No collect sources match.')
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
   it('rejects an invalid filter before any request', async () => {
@@ -125,94 +122,61 @@ describe('wrp sources list', () => {
     expect(server.requests).toHaveLength(0)
   })
 
-  it('shows the branch mode and never-synced marker', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        sources: [
-          source({
-            id: 3,
-            type: 'git-remote-github',
-            name: 'remote',
-            config: { owner: 'org', repo: 'r', authorEmails: ['a@example.com'] },
-            projectScope: 'personal',
-            lastSyncAt: null,
-            lastSyncStatus: null,
-          }),
-        ],
-        total: 1,
-      },
-    }))
-    const result = await runWrp(['sources', 'list'], { stub: server })
-
-    expect(result.stdout).toContain(
-      '#3 [git-remote-github] [personal] [enabled] remote — 1 emails, default-branch, never synced',
-    )
-  })
-
-  it('marks a failed last sync, accepting both server spellings', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        sources: [
-          source({ id: 4, name: 'legacy', lastSyncStatus: 'failure' }),
-          source({ id: 5, name: 'go', lastSyncStatus: 'failed' }),
-        ],
-        total: 2,
-      },
-    }))
+  it('passes every server field through, including both failed-sync spellings', async () => {
+    // The Go server writes `failed`; the retired TS server wrote `failure`.
+    // Both must survive verbatim rather than being re-rendered into a marker.
+    const body = {
+      sources: [
+        source({ id: 4, name: 'legacy', lastSyncStatus: 'failure' }),
+        source({ id: 5, name: 'go', lastSyncStatus: 'failed' }),
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 100,
+    }
+    const server = await stub(() => ({ status: 200, body }))
     const result = await runWrp(['sources', 'list'], { stub: server, env: { TZ: 'UTC' } })
 
-    // The Go server writes `failed`; the retired TS server wrote `failure`.
-    // Either spelling must render the failure marker, not look healthy.
-    expect(result.stdout).toContain(
-      '#4 [git-local] [work] [enabled] legacy (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00 (failed)',
-    )
-    expect(result.stdout).toContain(
-      '#5 [git-local] [work] [enabled] go (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T10:00:00+00:00 (failed)',
-    )
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
   it('accepts --sync failed as a synonym of failure', async () => {
-    const server = await stub(() => ({ status: 200, body: { sources: [], total: 0 } }))
+    const body = { sources: [], total: 0, page: 1, pageSize: 100 }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['sources', 'list', '--sync', 'failed'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('No collect sources match.')
     expect(query(server.requests[0].url).syncStatus).toBe('failed')
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 })
 
 describe('wrp sources show', () => {
-  it('prints the full config, per-branch cursors and timestamps', async () => {
+  it('prints the whole source record verbatim, config, cursors and timestamps included', async () => {
+    const body = source()
     const server = await stub((request) =>
       request.url === '/api/collect/sources/7'
-        ? { status: 200, body: source() }
-        : { status: 200, body: { sources: [source()], total: 1 } },
+        ? { status: 200, body }
+        : { status: 200, body: { sources: [body], total: 1 } },
     )
     const result = await runWrp(['sources', 'show', '7'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/collect/sources/7')
-    expect(result.stdout).toContain('#7 acme')
-    expect(result.stdout).toContain('type: git-local   scope: work   status: enabled')
-    expect(result.stdout).toContain('last sync: 2026-11-07T10:00:00+00:00 (success)')
-    expect(result.stdout).toContain('owner: /repos/acme')
-    expect(result.stdout).toContain('authorEmails (2): a@example.com, b@example.com')
-    expect(result.stdout).toContain('aliases: acme-local')
-    expect(result.stdout).toContain('branch main @ cursor 2026-10-01T10:00:00+00:00')
-    expect(result.stdout).toContain('cursor main @ 2026-10-01T10:00:00+00:00')
-    expect(result.stdout).toContain('created: 2026-01-01T00:00:00+00:00   updated: 2026-11-01T00:00:00+00:00')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
   })
 
-  it('renders timestamps in the system zone with an explicit offset', async () => {
-    const server = await stub(() => ({ status: 200, body: source() }))
+  it('does not re-render timestamps in the system zone', async () => {
+    const body = source()
+    const server = await stub(() => ({ status: 200, body }))
     const result = await runWrp(['sources', 'show', '7'], { stub: server, env: { TZ: 'Asia/Shanghai' } })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('last sync: 2026-11-07T18:00:00+08:00 (success)')
-    expect(result.stdout).toContain('created: 2026-01-01T08:00:00+08:00   updated: 2026-11-01T08:00:00+08:00')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).toContain('2026-11-07T10:00:00.000Z')
   })
 
   it('resolves a name or alias exactly before falling back to a substring', async () => {
@@ -221,11 +185,11 @@ describe('wrp sources show', () => {
 
     const exact = await runWrp(['sources', 'show', 'acme-local'], { stub: server })
     expect(exact.code).toBe(0)
-    expect(exact.stdout).toContain('#7 acme')
+    expect(JSON.parse(exact.stdout)).toEqual(source())
 
     const substring = await runWrp(['sources', 'show', 'extra'], { stub: server })
     expect(substring.code).toBe(0)
-    expect(substring.stdout).toContain('#8 acme-extra')
+    expect(JSON.parse(substring.stdout)).toEqual(sibling)
   })
 
   it('lists candidates with ids when a ref is ambiguous', async () => {
@@ -236,7 +200,7 @@ describe('wrp sources show', () => {
 
     // `acme` is an exact match on #7, so it is not ambiguous.
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('#7 acme')
+    expect(JSON.parse(result.stdout)).toEqual(source())
 
     const ambiguous = await runWrp(['sources', 'show', 'ac'], { stub: server })
     expect(ambiguous.code).not.toBe(0)

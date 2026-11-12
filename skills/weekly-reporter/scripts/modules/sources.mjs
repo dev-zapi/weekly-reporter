@@ -3,18 +3,17 @@
 // A collect source is a repo the app pulls commits from. The API's PUT replaces
 // the whole record, so `update` fetches the current source, resends every field
 // it did not change, and never echoes the masked token or the sync cursors back
-// (ADR-0011; the server preserves both). `list`/`show`/`create`/`update`/
-// `enable`/`delete` are ported verbatim from the pre-merge source-management
-// scripts; `lookup`/`emails`/`sync` are ported verbatim from collect-git-source.
-// Only the printed lines follow the wrp output contract (format law 3 for
-// errors, law 1 for feedback); `lookup`'s exit code 3 is preserved as the clean
-// not-found branch signal the onboarding flow switches on.
+// (ADR-0011; the server preserves both). `list`/`show`/`lookup`/`emails` are
+// read verbs: each prints the API body verbatim as one compact JSON line, so no
+// field, mask, cursor or timestamp is lost. Write verbs keep the ✓ feedback
+// line, and every failure is one JSON error envelope on stderr; `lookup`'s exit
+// code 3 remains the clean not-found branch signal the onboarding flow switches
+// on.
 
 import { api, json } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { emptyState, feedback, listFooter, listLine, preview } from '../lib/output.mjs'
-import { formatInstant } from '../lib/time.mjs'
+import { emitJson, emptyState, feedback, preview } from '../lib/output.mjs'
 
 /** `sources lookup` found nothing: the flow branches on this without parsing text. */
 const LOOKUP_NOT_FOUND_EXIT = 3
@@ -26,21 +25,8 @@ export const SOURCE_STATUSES = ['enabled', 'disabled', 'unavailable']
 // synonym on the `--sync` filter, like the `failure` value it maps to.
 export const SYNC_STATUSES = ['success', 'failure', 'failed', 'never']
 
-/** The Go server writes `failed` where the retired TS server wrote `failure`. */
-const FAILED_SYNC_STATUSES = new Set(['failure', 'failed'])
-
-function isFailedSyncStatus(status) {
-  return FAILED_SYNC_STATUSES.has(status)
-}
-
 function usageOf(command) {
   return `wrp sources ${command}`
-}
-
-/** ISO instant → `2026-11-07T18:00:00+08:00` in the system zone. */
-export function formatDate(value) {
-  if (value == null) return '—'
-  return formatInstant(value) ?? String(value)
 }
 
 /** Branch config entries are strings or `{ name, lastCommitTime }` objects. */
@@ -50,35 +36,31 @@ export function branchNames(source) {
   return branches.map((branch) => (typeof branch === 'string' ? branch : branch?.name)).filter(Boolean)
 }
 
-function isMixedEnabledState(source) {
-  return source.enabled === false && source.status === 'enabled'
-}
-
-/** Empty branch config is meaningful: local = all branches, remote = default branch. */
-function branchMode(source) {
-  if (branchNames(source).length > 0) return `${branchNames(source).length} branches`
-  return source.type === 'git-local' ? 'all-branches' : 'default-branch'
-}
-
-/**
- * Fetch every collect source, following the API's pagination. Filters map
- * straight onto the list endpoint's query params (`name` matches the display
- * name OR any alias server-side).
- */
-export async function fetchAllSources(filters = {}) {
+/** The query params the list endpoint takes: filters, page and page size. */
+function listParams(filters = {}, page = '1') {
   const params = new URLSearchParams({ pageSize: '100' })
   if (filters.name) params.set('name', filters.name)
   if (filters.type) params.set('type', filters.type)
   if (filters.sourceStatus) params.set('sourceStatus', filters.sourceStatus)
   if (filters.projectScope) params.set('projectScope', filters.projectScope)
   if (filters.syncStatus) params.set('syncStatus', filters.syncStatus)
+  params.set('page', page)
+  return params
+}
 
+/**
+ * Fetch every collect source the API pages through. `<ref>` resolution needs
+ * the whole set (a name may live on a later page); the `list` verb itself
+ * prints the response body verbatim and never merges pages. Filters map
+ * straight onto the list endpoint's query params (`name` matches the display
+ * name OR any alias server-side).
+ */
+export async function fetchAllSources(filters = {}) {
   const all = []
   let page = 1
   let total = Infinity
   while (all.length < total) {
-    params.set('page', String(page))
-    const { status, body } = await api(`/api/collect/sources?${params}`)
+    const { status, body } = await api(`/api/collect/sources?${listParams(filters, String(page))}`)
     if (status !== 200) failResponse(status, body, 're-run wrp sources list')
     const batch = body?.sources ?? []
     all.push(...batch)
@@ -142,89 +124,33 @@ function validateEnum(flag, value, allowed) {
   }
 }
 
-/** `wrp sources list` — filters, one line per source, count footer. */
+/** `wrp sources list` — filters applied server-side; the response body verbatim. */
 export async function list({ flags = {} } = {}) {
   validateEnum('type', flags.type, TYPES)
   validateEnum('status', flags.status, SOURCE_STATUSES)
   validateEnum('scope', flags.scope, SCOPES)
   validateEnum('sync', flags.sync, SYNC_STATUSES)
 
-  const sources = await fetchAllSources({
+  const params = listParams({
     name: flags.name,
     type: flags.type,
     sourceStatus: flags.status,
     projectScope: flags.scope,
     syncStatus: flags.sync,
   })
+  const { status, body } = await api(`/api/collect/sources?${params}`)
+  if (status !== 200) failResponse(status, body, 're-run wrp sources list')
 
-  if (sources.length === 0) {
-    emptyState('No collect sources match.')
-    return
-  }
-
-  for (const source of sources) {
-    const aliases = source.config?.aliases ?? []
-    const aliasNote = aliases.length ? ` (alias: ${aliases.join(', ')})` : ''
-    const emails = source.config?.authorEmails?.length ?? 0
-    const sync = source.lastSyncStatus
-      ? `sync ${formatDate(source.lastSyncAt)}${isFailedSyncStatus(source.lastSyncStatus) ? ' (failed)' : ''}`
-      : 'never synced'
-    const metadata = [source.type, source.projectScope, source.status]
-    // enabled=false with status=enabled is a stale mixed state (a bare PATCH of
-    // enabled does not recompute status); surface it when it occurs.
-    if (isMixedEnabledState(source)) metadata.push('enabled=false')
-    listLine(
-      `#${source.id}`,
-      metadata,
-      `${source.name}${aliasNote} — ${emails} emails, ${branchMode(source)}, ${sync}`,
-    )
-  }
-
-  const work = sources.filter((source) => source.projectScope === 'work').length
-  // Law 2's footer may carry a caller-supplied detail; the scope breakdown is
-  // the deliberate extension here (documented in references/sources.md).
-  listFooter(sources.length, 'source', { detail: `(work ${work} / personal ${sources.length - work})` })
+  // Verbatim: every field, mask, pagination value and timestamp the API wrote,
+  // including an empty `sources` array (zero results are not a failure).
+  emitJson(body)
 }
 
-/** `wrp sources show <ref>` — the only place cursors and full config are shown. */
+/** `wrp sources show <ref>` — the resolved source record verbatim. */
 export async function show({ positional = [] } = {}) {
   const usage = usageOf('show <ref>')
   const source = await resolveSource(requireArg(positional, 0, 'source reference', usage))
-  const config = source.config ?? {}
-
-  console.log(`#${source.id} ${source.name}`)
-  console.log(
-    `  type: ${source.type}   scope: ${source.projectScope}   status: ${source.status}${isMixedEnabledState(source) ? ' (enabled=false)' : ''}`,
-  )
-  console.log(`  last sync: ${source.lastSyncStatus ? `${formatDate(source.lastSyncAt)} (${source.lastSyncStatus})` : 'never'}`)
-
-  console.log('  config:')
-  if (config.owner) console.log(`    owner: ${config.owner}`) // git-local: absolute local path; remote: org/user
-  if (config.repo) console.log(`    repo: ${config.repo}`)
-  if (config.baseUrl) console.log(`    baseUrl: ${config.baseUrl}`)
-  // The server always masks tokens to [ENCRYPTED]; git-local never uses one.
-  if (config.token && source.type !== 'git-local') console.log(`    token: ${config.token}`)
-  const emails = config.authorEmails ?? []
-  console.log(`    authorEmails (${emails.length}): ${emails.join(', ')}`)
-  const aliases = config.aliases ?? []
-  if (aliases.length) console.log(`    aliases: ${aliases.join(', ')}`)
-
-  const branches = config.branches
-  if (Array.isArray(branches) && branches.length) {
-    for (const branch of branches) {
-      if (typeof branch === 'string') console.log(`    branch ${branch}`)
-      else console.log(`    branch ${branch.name} @ cursor ${formatDate(branch.lastCommitTime)}`)
-    }
-  } else {
-    // Empty branch config is meaningful: git-local = collect all local branches,
-    // remote = follow the repo's default branch (ADR-0017).
-    console.log('    branches: (none configured — all-branches / default branch)')
-  }
-  for (const cursor of config.branchCursors ?? []) {
-    console.log(`    cursor ${cursor.name} @ ${formatDate(cursor.lastCommitTime)}`)
-  }
-
-  console.log(`  created: ${formatDate(source.createdAt)}   updated: ${formatDate(source.updatedAt)}`)
+  emitJson(source)
 }
 
 /**
@@ -470,8 +396,9 @@ export async function deleteSource({ flags = {}, positional = [] } = {}) {
  * directory. The repo is located by its normalized absolute path only (stored
  * as `config.owner`); the name is display-only, so it can never be the locator.
  *
- * A 404 is the *clean* branch signal: one stderr line and exit 3, so the
- * onboarding flow switches on the exit code instead of parsing error text.
+ * A 404 is the *clean* branch signal: one JSON error envelope on stderr and
+ * exit 3, so the onboarding flow switches on the exit code instead of parsing
+ * error text.
  */
 export async function lookup({ flags = {} } = {}) {
   const path = requireFlag(flags, 'path', 'repository path', usageOf('lookup --path <repo-root>')).trim()
@@ -489,22 +416,14 @@ export async function lookup({ flags = {} } = {}) {
   }
   if (status !== 200) failResponse(status, body, 're-run wrp sources lookup --path <repo-root>')
 
-  const branches = branchNames(body)
-  const emails = body?.config?.authorEmails ?? []
-  console.log(`id:       ${body.id}`)
-  console.log(`name:     ${body.name}`)
-  console.log(`status:   ${body.status}`)
-  console.log(`enabled:  ${body.enabled}`)
-  console.log(`scope:    ${body.projectScope}`)
-  console.log(`emails:   ${emails.length ? emails.join(', ') : '—'}`)
-  // Empty branch config is meaningful: git-local collects every local branch.
-  console.log(`branches: ${branches.length ? branches.join(', ') : 'all branches'}`)
+  emitJson(body)
 }
 
 /**
  * `wrp sources emails --path <repo root>` — the commit authors the API sees for
- * a directory, in server order (count desc, last 300 commits), so the caller can
- * pick whose commits get collected.
+ * a directory, in server order (count desc, last 300 commits), printed verbatim
+ * so the caller can pick whose commits get collected. An empty `authors` array
+ * is a valid body, not an error.
  */
 export async function emails({ flags = {} } = {}) {
   const path = requireFlag(flags, 'path', 'repository path', usageOf('emails --path <repo-root>')).trim()
@@ -513,19 +432,7 @@ export async function emails({ flags = {} } = {}) {
   const { status, body } = await api(`/api/collect/sources/emails?${params}`)
   if (status !== 200) failResponse(status, body, 'check the path is a readable git repository, then re-run')
 
-  const authors = body?.authors ?? []
-  if (authors.length === 0) {
-    emptyState('(no commit authors found in the last 300 commits)')
-    return
-  }
-
-  // Server order is meaningful (count desc); only the columns are padded. The
-  // header literal is carried over verbatim from the retired script.
-  const countWidth = Math.max(7, String(authors[0].count).length)
-  console.log(`${'commits'.padStart(countWidth)}  email                          name`)
-  for (const author of authors) {
-    console.log(`${String(author.count).padStart(countWidth)}  ${(author.email ?? '').padEnd(30)}  ${author.name ?? ''}`)
-  }
+  emitJson(body)
 }
 
 /**

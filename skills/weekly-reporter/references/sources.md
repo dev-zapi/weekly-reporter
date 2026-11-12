@@ -40,14 +40,14 @@ A collect source (采集源) is a repo the app pulls commits from.
   least one is required (the API rejects an empty list).
 - **status** — derived, not free text: `enabled` (has emails and is on),
   `disabled` (manually off), `unavailable` (no author emails or a broken local
-  path). A source can briefly be `enabled` with `enabled=false`; that stale mix
-  is surfaced in `list`/`show`.
+  path). A source can briefly be `enabled` with `enabled=false`; every read verb
+  returns both fields verbatim, so the stale mix stays visible.
 - **branches** — an empty branch config is meaningful: `git-local` collects
   **all local branches**, remote types follow the repo's **default branch**
   (ADR-0017). A non-empty list pins collection to exactly those branches.
 - **sync cursors** — each branch carries its own cursor (`config.branchCursors`,
-  committer-date based, ADR-0001/0017). Cursors are only ever displayed by
-  `show`; they are never accepted in a request.
+  committer-date based, ADR-0001/0017). Read verbs (`list`/`show`/`lookup`)
+  return them verbatim in the JSON body; they are never accepted in a request.
 - **last sync status** — `lastSyncStatus` is written as `failure` by the retired
   TypeScript server and as `failed` by the Go server. The `--sync failure` filter
   matches both spellings, and `--sync failed` is accepted as a synonym; either
@@ -66,35 +66,31 @@ A numeric ID (`7` or `#7`), a display name, or an alias:
 1. numeric → fetched directly by ID;
 2. otherwise an exact case-insensitive match on a name or alias;
 3. otherwise a substring match on names and aliases;
-4. more than one candidate → one `✗ '<ref>' matches N collect sources: #1 a, #2 b`
-   line; pass one of those IDs. Nothing matches → `✗ no collect source matches '<ref>'`.
+4. more than one candidate → one JSON error envelope whose `message` lists
+   `'<ref>' matches N collect sources: #1 a, #2 b`; pass one of those IDs.
+   Nothing matches → an envelope with `no collect source matches '<ref>'`.
 
 ## Query
 
-`wrp sources list` applies `--name`, `--type`, `--status`, `--scope` and
-`--sync` server-side and prints one line per source:
+Read verbs print the API response body **verbatim** as one line of compact
+JSON on stdout — every field, mask, cursor and timestamp included, with no
+client-side re-rendering. `wrp sources list` applies `--name`, `--type`,
+`--status`, `--scope` and `--sync` server-side, then prints the list response:
 
+```json
+{"sources":[{"id":7,"type":"git-local","name":"acme","config":{"owner":"/repos/acme","authorEmails":["a@example.com","b@example.com"],"aliases":["acme-local"],"branches":[{"name":"main","lastCommitTime":"2026-10-01T10:00:00.000Z"}],"branchCursors":[{"name":"main","lastCommitTime":"2026-10-01T10:00:00.000Z"}]},"enabled":true,"status":"enabled","projectScope":"work","lastSyncAt":"2026-11-07T10:00:00.000Z","lastSyncStatus":"success","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-11-01T00:00:00.000Z"}],"total":1,"page":1,"pageSize":100}
 ```
-#7 [git-local] [work] [enabled] acme (alias: acme-local) — 2 emails, 1 branches, sync 2026-11-07T18:00:00+08:00
-— 1 source(s) (work 1 / personal 0)
-```
 
-Timestamps render in the **system time zone** as ISO 8601 with an explicit
-offset and seconds (`2026-11-07T18:00:00+08:00`); the zone comes from the OS
-setting or `TZ`, so `TZ=UTC wrp sources list …` shows the same instant as
-`2026-11-07T10:00:00+00:00`.
+The body carries the pagination state (`page`, `pageSize`, `total`) exactly as
+the API wrote it. Timestamps are not converted to the system time zone: they
+stay in the wire form (`2026-11-07T10:00:00.000Z`, per ADR-0032). Empty results
+print their raw body (for example `{"sources":[],"total":0,"page":1,"pageSize":100}`)
+and still exit `0`, so zero results are distinguishable from failure by the exit
+code alone. There is no footer, count line or empty-state prose.
 
-The body carries the name (+ aliases), email count, branch mode
-(`all-branches` for a local source with no branch list, `default-branch` for a
-remote one) and the last sync time or `never synced`. The footer may append a
-work/personal scope breakdown after the count. Empty results print
-`No collect sources match.` with no footer.
-
-`wrp sources show <ref>` is the only place the full config, per-branch cursors
-and timestamps are printed. Multi-line output is deliberately confined to
-`show`. Every timestamp it prints (`last sync`, branch cursors,
-`created`/`updated`) uses the same system-zone ISO 8601 format with an explicit
-offset.
+`wrp sources show <ref>` prints the resolved source record verbatim as one
+compact JSON line — the full config, the masked token, per-branch cursors and
+all timestamps included.
 
 ## Create
 
@@ -171,10 +167,11 @@ two directories are never matched by name.
      branch of the flow: branch on the exit code, never on the error text. Ask
      once — "要把这个仓库接入并立即同步吗？" — and only on yes continue to
      step 3.
-   - any other exit — a real error; surface the one `✗` line.
-3. `wrp sources emails --path <repo root>` — present the
-   `commits`/`email`/`name` table and have the user pick at least one author
-   email plus the `projectScope` (default `personal`).
+   - any other exit — a real error; surface the error envelope's `message` and
+     `fix` fields.
+3. `wrp sources emails --path <repo root>` — show the `authors` body and have the
+   user pick at least one author email plus the `projectScope` (default
+   `personal`).
 4. `wrp sources create --type git-local --path <repo root> --name <repo dir
    basename> --email <a> [...] --scope <work|personal>` — path is the locator,
    the name is only a label.
@@ -182,7 +179,7 @@ two directories are never matched by name.
 
 **Never auto-create and never auto-enable.** Both write live configuration, so
 each needs explicit user confirmation first. Do not guess emails either — offer
-the table and let the user choose.
+the `authors` body and let the user choose.
 
 ### lookup — find the source for a path
 
@@ -190,26 +187,20 @@ the table and let the user choose.
 wrp sources lookup --path <repo root>
 ```
 
-Exit 0 prints the record fields:
+Exit 0 prints the source record verbatim as one line of compact JSON:
 
-```
-id:       7
-name:     acme
-status:   enabled
-enabled:  true
-scope:    work
-emails:   a@example.com, b@example.com
-branches: main, dev
+```json
+{"id":7,"type":"git-local","name":"acme","config":{"owner":"/repos/acme","authorEmails":["a@example.com","b@example.com"],"aliases":["acme-local"],"branches":[{"name":"main","lastCommitTime":"2026-10-01T10:00:00.000Z"}],"branchCursors":[{"name":"main","lastCommitTime":"2026-10-01T10:00:00.000Z"}]},"enabled":true,"status":"enabled","projectScope":"work","lastSyncAt":"2026-11-07T10:00:00.000Z","lastSyncStatus":"success","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-11-01T00:00:00.000Z"}
 ```
 
-`branches: all branches` means the branch config is empty, which for git-local
-is the meaningful **all-branches** sentinel (ADR-0017) — not an error and not a
-prompt to pin branches. `unavailable` means the source cannot be collected:
-either no author emails or a local path the server cannot read. Enabling it
-does not fix either cause.
+A missing `config.branches` means the branch config is empty, which for
+git-local is the meaningful **all-branches** sentinel (ADR-0017) — not an error
+and not a prompt to pin branches. `status: "unavailable"` means the source
+cannot be collected: either no author emails or a local path the server cannot
+read. Enabling it does not fix either cause.
 
-Exit codes: `0` found, `3` not found (clean onboarding branch), `1` other
-errors.
+Exit codes: `0` found, `3` not found (clean onboarding branch, carried by a JSON
+error envelope on stderr), `1` other errors.
 
 ### emails — commit authors for a path
 
@@ -217,18 +208,16 @@ errors.
 wrp sources emails --path <repo root>
 ```
 
-Prints the fixed-width table in the server's order (commit count desc), off the
-last 300 commits:
+Prints the API body verbatim as one line, in the server's order (commit count
+desc, off the last 300 commits):
 
-```
-commits  email                          name
-     12  a@example.com                   Alice
-      3  b@example.com                   Bob
+```json
+{"authors":[{"email":"a@example.com","name":"Alice","count":12},{"email":"b@example.com","name":"Bob","count":3}]}
 ```
 
-No authors prints `(no commit authors found in the last 300 commits)`. A repo
-with no commits or an unreadable path can legitimately produce that empty
-answer, so check the path before concluding the user has no history.
+No authors prints the raw body `{"authors":[]}` (exit 0). A repo with no commits
+or an unreadable path can legitimately produce that empty answer, so check the
+path before concluding the user has no history.
 
 ### sync — trigger collection
 
@@ -279,19 +268,19 @@ Failure outcomes:
   Nothing is wrong; retry in a few seconds.
 - **500 `SYNC_FAILED` with `autoDisabled`** — the server disabled the source
   because it cannot collect at all (no configured emails or a path that is gone
-  or unreadable). The `✗` line names the auto-disable and prints the fix: check
-  the stored path with `wrp sources show <id>`, fix it with
-  `wrp sources update <id> --path <repo root> --add-email <address>`, then
+  or unreadable). The error envelope names the auto-disable (`message`) and
+  carries the fix: check the stored path with `wrp sources show <id>`, fix it
+  with `wrp sources update <id> --path <repo root> --add-email <address>`, then
   re-enable it.
 - **500 `SYNC_FAILED` without `autoDisabled`** — at least one branch failed; the
-  `✗` line lists the failed branches with their errors. Fix the cause and
-  re-run.
+  error envelope's `fix` lists the failed branches with their errors. Fix the
+  cause and re-run.
 - **500 `PARTIAL_SYNC_FAILED` (`--all`)** — at least one source failed. The
   per-source lines still print (a failed source shows `✗ <error>`, plus
-  `(auto-disabled)` when the server disabled it), then one `✗ partial sync
-  failure (N/M sources failed): <ids and names> → every other source still
-  synced; fix the listed sources (wrp sources show <id>), then re-run`. Exit is
-  non-zero; failures never hide the other sources' results.
+  `(auto-disabled)` when the server disabled it), then one error envelope with
+  `partial sync failure (N/M sources failed)` and the fix `every other source
+  still synced; fix the listed sources (wrp sources show <id>), then re-run`.
+  Exit is non-zero; failures never hide the other sources' results.
 - **409 `SOURCE_BUSY` (`--all`)** — a repo lock is held, so the whole batch
   fails with the same retry hint.
 
@@ -302,9 +291,18 @@ effect.
 
 ## Errors
 
+Every failure prints one compact JSON envelope on stderr with a non-zero exit:
+
+```json
+{"error":{"status":404,"code":"NOT_FOUND","message":"…","fix":"…"}}
+```
+
+`status` is the HTTP status (or `null` for a client-side fault), `code` appears
+when the API supplies one, and `fix` is the actionable next step.
+
 | Message | Cause | Fix |
 |---|---|---|
-| `unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | provision credentials with `wrp init` (exact command in the ✗ line) |
+| `unauthorized (HTTP 401)` | PAT missing, invalid, expired, or revoked | provision credentials with `wrp init` (exact command in the envelope's `fix`) |
 | `Cannot reach weekly-reporter at …` | server down / wrong URL | start it (`npm run dev`) or set `WEEKLY_REPORTER_BASE_URL` |
 | `no collect source matches '<ref>'` | nothing by that ID/name/alias | `wrp sources list` |
 | `'<ref>' matches N collect sources` | name/alias is ambiguous | pass one of the listed `#id`s |
