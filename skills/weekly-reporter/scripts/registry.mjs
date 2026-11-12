@@ -224,7 +224,7 @@ export const MODULES = [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
       ], 127, reports.list),
-      command('show', 'reports', 'Show one report (metadata only unless --part asks for the text)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both] (draft is also accepted as source)', [
+      command('show', 'reports', 'Show one report (whole body; --part/--variant narrow it)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both] (draft is also accepted as source)', [
         flag('--variant', 'value', 'report variant'),
         flag('--part', 'value', 'meta | draft | final | both (source is an alias for draft)'),
       ], 127, reports.show),
