@@ -4,8 +4,8 @@
 // The full approved surface from spec #119 lives here from day one, including
 // the verbs later tickets implement - an unbuilt verb is registered with a
 // `ticket` field instead of an `run` function, so it dispatches to a clear
-// "not implemented" ✗ line rather than an "unknown word" one. Help text is
-// generated from this table; never hand-maintain usage strings.
+// "not implemented" error envelope rather than an "unknown word" one. Help text
+// is generated from this table; never hand-maintain usage strings.
 //
 // Entry shape:
 //   { name, summary, usage, flags: [{ name, kind, summary }], run?, ticket? }
@@ -224,15 +224,14 @@ export const MODULES = [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
       ], 127, reports.list),
-      command('show', 'reports', 'Show one report (metadata only unless --part asks for the text)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both] (draft is also accepted as source)', [
+      command('show', 'reports', 'Show one report (whole body; --part/--variant narrow it)', 'wrp reports show <id> [--variant] [--part meta|draft|final|both] (draft is also accepted as source)', [
         flag('--variant', 'value', 'report variant'),
         flag('--part', 'value', 'meta | draft | final | both (source is an alias for draft)'),
       ], 127, reports.show),
-      command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant] [--full]', [
+      command('preview', 'reports', 'Preview the events a report would snapshot (creates nothing)', 'wrp reports preview --start <date> --end <date> [--variant]', [
         flag('--start', 'value', 'period start (YYYY-MM-DD)'),
         flag('--end', 'value', 'period end (YYYY-MM-DD)'),
         flag('--variant', 'value', 'report variant'),
-        flag('--full', 'boolean', 'print every line, not just the first 12'),
       ], 127, reports.preview),
       command('create', 'reports', 'Create a report (snapshots events, builds both drafts)', 'wrp reports create --title <text> --start <date> --end <date>', [
         flag('--title', 'value', 'report title'),

@@ -8,7 +8,13 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -128,125 +134,107 @@ function outputLines(stdout) {
 // --- list -----------------------------------------------------------------
 
 describe('wrp templates list', () => {
-  it('lists both kinds with selection IDs, style, size and opening line', async () => {
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = { official: officialTemplates(), user: userTemplates() }
     const server = await stub()
     const result = await runWrp(['templates', 'list'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('official-general')
-    expect(result.stdout).toContain('official-tech-dev')
-    expect(result.stdout).toContain('user-3')
-    expect(result.stdout).toContain('[official]')
-    expect(result.stdout).toContain('[user]')
-    expect(result.stdout).toContain('style: formal')
-    expect(result.stdout).toContain('chars')
-    expect(result.stdout).toContain('通用正式周报模板')
-    // Opening line only: a multi-line body belongs to `show` (format law 5).
-    expect(result.stdout).toContain('你是通用正式写作助手。')
-    expect(result.stdout).not.toContain('请按正式格式总结风险与进展')
-    expect(result.stdout).toContain('— 3 template(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/templates')
   })
 
-  it('respects --kind official|user with the matching footer count', async () => {
+  it('--kind keeps the API shape and empties the other collection', async () => {
     const server = await stub()
 
     const official = await runWrp(['templates', 'list', '--kind', 'official'], { stub: server })
     expect(official.code).toBe(0)
-    expect(official.stdout).toContain('official-general')
-    expect(official.stdout).not.toContain('user-3')
-    expect(official.stdout).toContain('— 2 template(s)')
+    expect(JSON.parse(official.stdout)).toEqual({ official: officialTemplates(), user: [] })
 
     const user = await runWrp(['templates', 'list', '--kind', 'user'], { stub: server })
     expect(user.code).toBe(0)
-    expect(user.stdout).toContain('user-3')
-    expect(user.stdout).not.toContain('official-general')
-    expect(user.stdout).toContain('— 1 template(s)')
+    expect(JSON.parse(user.stdout)).toEqual({ official: [], user: userTemplates() })
   })
 
   it('matches --query against name, content, tags and description', async () => {
     const server = await stub()
+    const [general, tech] = officialTemplates()
 
     const byContent = await runWrp(['templates', 'list', '--query', '风险'], { stub: server })
     expect(byContent.code).toBe(0)
-    expect(byContent.stdout).toContain('official-general')
-    expect(byContent.stdout).not.toContain('official-tech-dev')
-    expect(byContent.stdout).toContain('— 1 template(s)')
+    expect(JSON.parse(byContent.stdout)).toEqual({ official: [general], user: [] })
 
     const byTags = await runWrp(['templates', 'list', '--query', '研发'], { stub: server })
-    expect(byTags.stdout).toContain('official-tech-dev')
-    expect(byTags.stdout).not.toContain('official-general')
+    expect(JSON.parse(byTags.stdout)).toEqual({ official: [tech], user: [] })
 
     const byDescription = await runWrp(['templates', 'list', '--query', '个人用'], { stub: server })
-    expect(byDescription.stdout).toContain('user-3')
+    expect(JSON.parse(byDescription.stdout)).toEqual({ official: [], user: userTemplates() })
   })
 
-  it('rejects an invalid --kind and prints an explicit empty state', async () => {
+  it('rejects an invalid --kind and prints the empty body for no matches', async () => {
     const server = await stub()
 
     const bad = await runWrp(['templates', 'list', '--kind', 'bogus'], { stub: server })
     expect(bad.code).not.toBe(0)
-    expect(errorLines(bad.stderr)).toHaveLength(1)
-    expect(bad.stderr).toContain('✗')
+    expect(bad.stdout).toBe('')
+    const { error } = errorEnvelope(bad)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --kind')
     expect(server.requests).toHaveLength(0)
 
     const empty = await runWrp(['templates', 'list', '--query', '不存在的东西'], { stub: server })
     expect(empty.code).toBe(0)
-    expect(empty.stdout).toContain('No templates matched')
+    expect(JSON.parse(empty.stdout)).toEqual({ official: [], user: [] })
+    expect(empty.stdout).not.toContain('No templates matched')
   })
 })
 
 // --- show and reference resolution ----------------------------------------
 
 describe('wrp templates show', () => {
-  it('defaults to both parts: meta plus the content block', async () => {
+  it('defaults to both parts: the whole template row verbatim', async () => {
     const server = await stub()
     const result = await runWrp(['templates', 'show', 'user-3'], { stub: server, env: { TZ: 'UTC' } })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('user-3')
-    expect(result.stdout).toContain('[user]')
-    expect(result.stdout).toContain('style: concise')
-    expect(result.stdout).toContain('created: 2026-10-01T08:00:00+00:00   updated: 2026-10-02T09:30:00+00:00')
-    expect(result.stdout).toContain('description: 个人用的极简模板')
-    expect(result.stdout).toContain('tags: 个人,极简')
-    expect(result.stdout).toContain('cloned from official-minimal')
-    expect(result.stdout).toContain('content:')
-    expect(result.stdout).toContain('你是极简写作助手。')
-    expect(result.stdout).toContain('只写结论，不写背景。')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(userTemplates()[0])
+    expect(result.stderr).toBe('')
   })
 
-  it('renders created/updated in the system zone with an offset', async () => {
+  it('leaves API timestamps exactly as the API sent them, whatever TZ says', async () => {
     const server = await stub()
-    const result = await runWrp(['templates', 'show', 'user-3', '--part', 'meta'], {
+    const result = await runWrp(['templates', 'show', 'user-3'], {
       stub: server,
       env: { TZ: 'Asia/Shanghai' },
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('created: 2026-10-01T16:00:00+08:00   updated: 2026-10-02T17:30:00+08:00')
+    expect(JSON.parse(result.stdout)).toEqual(userTemplates()[0])
+    expect(result.stdout).not.toContain('2026-10-01T16:00:00+08:00')
   })
 
-  it('--part meta is cheap and prints no content', async () => {
+  it('--part meta selects the metadata sub-object and drops only content', async () => {
     const server = await stub()
+    const { content, ...meta } = officialTemplates()[0]
     const result = await runWrp(['templates', 'show', 'official-general', '--part', 'meta'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('official-general')
-    expect(result.stdout).toContain('read-only')
-    expect(result.stdout).not.toContain('content:')
-    expect(result.stdout).not.toContain('你是通用正式写作助手。')
+    const printed = JSON.parse(result.stdout)
+    expect(printed).toEqual(meta)
+    expect(printed).not.toHaveProperty('content')
   })
 
-  it('--part content prints only the content block', async () => {
+  it('--part content selects the content sub-object verbatim', async () => {
     const server = await stub()
     const result = await runWrp(['templates', 'show', 'official-general', '--part', 'content'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('你是通用正式写作助手。')
-    expect(result.stdout).not.toContain('style: formal')
+    expect(JSON.parse(result.stdout)).toBe(officialTemplates()[0].content)
   })
 
   it('rejects an invalid --part without calling the API', async () => {
@@ -254,7 +242,10 @@ describe('wrp templates show', () => {
     const result = await runWrp(['templates', 'show', 'user-3', '--part', 'bogus'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --part')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -262,19 +253,20 @@ describe('wrp templates show', () => {
 describe('template reference resolution', () => {
   it('accepts a selection ID, a bare user ID, and a case-insensitive name substring', async () => {
     const server = await stub()
+    const { content, ...meta } = userTemplates()[0]
 
     const bySelection = await runWrp(['templates', 'show', 'user-3', '--part', 'meta'], { stub: server })
     expect(bySelection.code).toBe(0)
-    expect(bySelection.stdout).toContain('user-3')
+    expect(JSON.parse(bySelection.stdout)).toEqual(meta)
 
     const byBareId = await runWrp(['templates', 'show', '3', '--part', 'meta'], { stub: server })
     expect(byBareId.code).toBe(0)
-    expect(byBareId.stdout).toContain('user-3')
+    expect(JSON.parse(byBareId.stdout)).toEqual(meta)
 
     // Substring, case-insensitive against the Latin part of the name.
     const byName = await runWrp(['templates', 'show', '极简', '--part', 'meta'], { stub: server })
     expect(byName.code).toBe(0)
-    expect(byName.stdout).toContain('user-3')
+    expect(JSON.parse(byName.stdout)).toEqual(meta)
   })
 
   it('fails loudly with the candidate list when a name is ambiguous', async () => {
@@ -282,12 +274,14 @@ describe('template reference resolution', () => {
     const result = await runWrp(['templates', 'show', '模板'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("'模板'")
-    expect(result.stderr).toContain('official-general')
-    expect(result.stderr).toContain('official-tech-dev')
-    expect(result.stderr).toContain('user-3')
-    expect(result.stderr).toContain('→')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain("'模板'")
+    expect(error.message).toContain('official-general')
+    expect(error.message).toContain('official-tech-dev')
+    expect(error.message).toContain('user-3')
+    expect(error.fix).toBeTruthy()
   })
 
   it('reports unknown names and unknown bare user IDs distinctly', async () => {
@@ -295,13 +289,11 @@ describe('template reference resolution', () => {
 
     const missingName = await runWrp(['templates', 'show', 'nope'], { stub: server })
     expect(missingName.code).not.toBe(0)
-    expect(errorLines(missingName.stderr)).toHaveLength(1)
-    expect(missingName.stderr).toContain('no template matches')
+    expect(errorEnvelope(missingName).error.message).toContain('no template matches')
 
     const missingId = await runWrp(['templates', 'show', '999'], { stub: server })
     expect(missingId.code).not.toBe(0)
-    expect(errorLines(missingId.stderr)).toHaveLength(1)
-    expect(missingId.stderr).toContain('no user template with ID 999')
+    expect(errorEnvelope(missingId).error.message).toContain('no user template with ID 999')
   })
 })
 
@@ -313,9 +305,10 @@ describe('official templates are read-only', () => {
     const result = await runWrp(['templates', 'update', 'official-general', '--description', 'x'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('official')
-    expect(result.stderr).toContain('wrp templates clone official-general')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('official')
+    expect(error.fix).toContain('wrp templates clone official-general')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 
@@ -324,8 +317,9 @@ describe('official templates are read-only', () => {
     const result = await runWrp(['templates', 'delete', 'official-general', '--confirm'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('wrp templates clone official-general')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.fix).toContain('wrp templates clone official-general')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 })
@@ -373,16 +367,16 @@ describe('wrp templates create', () => {
 
     const neither = await runWrp(['templates', 'create', '--name', 'x'], { stub: server })
     expect(neither.code).not.toBe(0)
-    expect(errorLines(neither.stderr)).toHaveLength(1)
-    expect(neither.stderr).toContain('--content')
-    expect(neither.stderr).toContain('--file')
+    const neitherError = errorEnvelope(neither).error.message
+    expect(neitherError).toContain('--content')
+    expect(neitherError).toContain('--file')
 
     const both = await runWrp(
       ['templates', 'create', '--name', 'x', '--content', 'a', '--file', '/tmp/nope'],
       { stub: server },
     )
     expect(both.code).not.toBe(0)
-    expect(errorLines(both.stderr)).toHaveLength(1)
+    expect(errorEnvelope(both).error.message).toContain('at most one of --content or --file')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -391,15 +385,14 @@ describe('wrp templates create', () => {
 
     const longName = await runWrp(['templates', 'create', '--name', 'x'.repeat(101), '--content', 'a'], { stub: server })
     expect(longName.code).not.toBe(0)
-    expect(errorLines(longName.stderr)).toHaveLength(1)
-    expect(longName.stderr).toContain('at most 100')
+    expect(errorEnvelope(longName).error.message).toContain('at most 100')
 
     const longDescription = await runWrp(
       ['templates', 'create', '--name', 'ok', '--content', 'a', '--description', 'd'.repeat(201)],
       { stub: server },
     )
     expect(longDescription.code).not.toBe(0)
-    expect(longDescription.stderr).toContain('at most 200')
+    expect(errorEnvelope(longDescription).error.message).toContain('at most 200')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -408,9 +401,9 @@ describe('wrp templates create', () => {
 
     const typo = await runWrp(['templates', 'create', '--name', 'ok', '--content', 'a', '--style', 'frmal'], { stub: server })
     expect(typo.code).not.toBe(0)
-    expect(errorLines(typo.stderr)).toHaveLength(1)
-    expect(typo.stderr).toContain('frmal')
-    expect(typo.stderr).toContain('formal')
+    const typoError = errorEnvelope(typo).error
+    expect(typoError.message).toContain('frmal')
+    expect(typoError.fix).toContain('formal')
     expect(server.requests.map((request) => request.url)).toEqual(['/api/prompts/styles'])
 
     const validStub = await stub({
@@ -506,7 +499,9 @@ describe('wrp templates update', () => {
     const result = await runWrp(['templates', 'update', 'user-3'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('nothing to update')
     expect(server.requests.map((request) => request.method)).toEqual(['GET'])
   })
 
@@ -515,8 +510,9 @@ describe('wrp templates update', () => {
     const result = await runWrp(['templates', 'update', 'user-3', '--style', 'nope'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('nope')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('nope')
     expect(server.requests.map((request) => request.url)).toEqual(['/api/templates', '/api/prompts/styles'])
   })
 })
@@ -552,31 +548,27 @@ describe('wrp templates delete', () => {
 // --- styles ---------------------------------------------------------------
 
 describe('wrp styles list', () => {
-  it('prints every style key with temperature, default marker and prompt size', async () => {
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = { styles: aiStyles() }
     const server = await stub()
     const result = await runWrp(['styles', 'list'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('formal')
-    expect(result.stdout).toContain('正式')
-    expect(result.stdout).toContain('temp 0.3')
-    expect(result.stdout).toContain('default')
-    expect(result.stdout).toContain('technical')
-    expect(result.stdout).toContain('— 4 style(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests[0].url).toBe('/api/prompts/styles')
   })
 })
 
 describe('wrp styles show', () => {
-  it('prints the full writing prompt for an exact key', async () => {
+  it('prints the full style row verbatim for an exact key', async () => {
     const server = await stub()
     const result = await runWrp(['styles', 'show', 'technical'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('technical')
-    expect(result.stdout).toContain('技术研发')
-    expect(result.stdout).toContain('prompt:')
-    expect(result.stdout).toContain('你是技术专家，突出工程细节和风险。')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(aiStyles()[1])
   })
 
   it('accepts a unique case-insensitive substring of the key or label', async () => {
@@ -584,7 +576,7 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'TECH'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('technical')
+    expect(JSON.parse(result.stdout)).toEqual(aiStyles()[1])
   })
 
   it('lists the valid keys for an unknown style and fails', async () => {
@@ -592,9 +584,10 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'zzz'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('formal')
-    expect(result.stderr).toContain('→')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('no AI style matches')
+    expect(error.fix).toContain('formal')
   })
 
   it('reports an ambiguous substring with the candidates', async () => {
@@ -602,9 +595,10 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show', 'a'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('formal')
-    expect(result.stderr).toContain('technical')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('formal')
+    expect(error.message).toContain('technical')
   })
 
   it('requires a key', async () => {
@@ -612,7 +606,8 @@ describe('wrp styles show', () => {
     const result = await runWrp(['styles', 'show'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -663,21 +658,19 @@ describe('format laws', () => {
     )
   })
 
-  it('law 2: list lines lead with the id token, bracket metadata, then the body', async () => {
+  it('law 2: read verbs print the API body as their only stdout line', async () => {
     const server = await stub()
-    const result = await runWrp(['templates', 'list', '--kind', 'user'], { stub: server })
+    const templates = await runWrp(['templates', 'list'], { stub: server })
+    expect(templates.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(templates.stdout).not.toContain('template(s)')
+    expect(templates.stdout).not.toContain('[official]')
 
-    const rows = outputLines(result.stdout).filter((line) => line.startsWith('user-'))
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatch(/^user-3 (\[[^\]]+\] )+我的极简模板 — 你是极简写作助手。/)
-
-    const styleRows = outputLines((await runWrp(['styles', 'list'], { stub: server })).stdout).filter((line) =>
-      line.startsWith('formal'),
-    )
-    expect(styleRows[0]).toMatch(/^formal (\[[^\]]+\] )+正式$/)
+    const styles = await runWrp(['styles', 'list'], { stub: server })
+    expect(styles.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(styles.stdout).not.toContain('style(s)')
   })
 
-  it('law 3: every failure is exactly one ✗ line on stderr with a → fix hint', async () => {
+  it('law 3: every failure is exactly one JSON error envelope on stderr with a fix hint', async () => {
     const server = await stub()
     const failures = [
       ['templates', 'list', '--kind', 'bogus'],
@@ -693,10 +686,14 @@ describe('format laws', () => {
 
     for (const args of failures) {
       const result = await runWrp(args, { stub: server })
-      expect(result.code, `${args.join(' ')} should exit non-zero`).not.toBe(0)
-      expect(errorLines(result.stderr), `${args.join(' ')} prints one ✗ line`).toHaveLength(1)
-      expect(result.stderr, `${args.join(' ')} carries a fix hint`).toContain('→')
-      expect(result.stdout, `${args.join(' ')} keeps stdout free of ✗`).not.toContain('✗')
+      const label = args.join(' ')
+      expect(result.code, `${label} should exit non-zero`).not.toBe(0)
+      expect(result.stderr.trimEnd().split('\n'), `${label} prints one envelope`).toHaveLength(1)
+      const { error } = errorEnvelope(result)
+      expect(error.status, `${label} is a client-side fault`).toBeNull()
+      expect(error.message, `${label} carries the cause`).toBeTruthy()
+      expect(error.fix, `${label} carries a fix hint`).toBeTruthy()
+      expect(result.stdout, `${label} keeps stdout empty`).toBe('')
     }
   })
 
@@ -710,19 +707,14 @@ describe('format laws', () => {
     expect(result.stderr).toBe('')
   })
 
-  it('law 5: template content and style prompts print only under show', async () => {
+  it('law 5 is dead: list output carries the full body text inside the JSON', async () => {
     const server = await stub()
 
     const list = await runWrp(['templates', 'list'], { stub: server })
-    expect(list.stdout).not.toContain('只写结论，不写背景。')
-
-    const show = await runWrp(['templates', 'show', 'user-3'], { stub: server })
-    expect(show.stdout).toContain('只写结论，不写背景。')
+    expect(JSON.parse(list.stdout).user[0].content).toContain('只写结论，不写背景。')
 
     const styleList = await runWrp(['styles', 'list'], { stub: server })
-    expect(styleList.stdout).not.toContain('你是技术专家，突出工程细节和风险。')
-
-    const styleShow = await runWrp(['styles', 'show', 'technical'], { stub: server })
-    expect(styleShow.stdout).toContain('你是技术专家，突出工程细节和风险。')
+    const technical = JSON.parse(styleList.stdout).styles.find((style) => style.key === 'technical')
+    expect(technical.systemPrompt).toContain('你是技术专家，突出工程细节和风险。')
   })
 })

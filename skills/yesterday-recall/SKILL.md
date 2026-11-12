@@ -31,7 +31,7 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
    node <weekly-reporter>/scripts/wrp.mjs events list --date <D> --source manual --limit 200
    ```
 
-   输出每行以 `#<id>` 开头，含时间、来源、内容。若尾部出现 `next page: --cursor …` 分页提示，说明当天超过 200 条——按现有输出继续（锚点是提示，不必是完整日志），并在给用户的说明里提一句当天事件特别密集。
+   输出是一条紧凑 JSON：`JSON.parse` 后读 `events[]`（每条含 `id`、`eventTime`、`source`、`content`、`metadata`）。若 `hasMore` 为 `true`，说明当天超过 200 条——按现有输出继续（锚点是提示，不必是完整日志），并在给用户的说明里提一句当天事件特别密集；需要翻页时把 body 里的 `nextCursorToken` 原样传给 `--cursor`。空结果是 `{"events":[]}` 且退出 0，不是错误。
 
 2. **`.remember` 记忆文件。** 回忆日的记忆文件可能是 `today-<D>.md`（当天还在进行）或 `today-<D>.done.md`（已归档）。读取两处：
 
@@ -49,7 +49,7 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
      node <weekly-reporter>/scripts/wrp.mjs sources show <ref>
      ```
 
-     `wrp sources show <ref>` 输出中 `config:` 标头下缩进的那行 `owner:` 就是该 git-local 源的绝对本地路径；据此检查 `<owner>/.remember/today-<D>.md` 与 `today-<D>.done.md`。`unavailable` 的源、路径不存在的源、没有该文件的源都**优雅跳过**，不要报错、不要中断流程，也不要因此去修采集源。
+     `wrp sources show <ref>` 输出是一条紧凑 JSON，`config.owner` 字段就是该 git-local 源的绝对本地路径；据此检查 `<owner>/.remember/today-<D>.md` 与 `today-<D>.done.md`。`unavailable` 的源、路径不存在的源、没有该文件的源都**优雅跳过**，不要报错、不要中断流程，也不要因此去修采集源。
 
    记忆文件是自由格式，常见形态是 `HH:MM | 分支` 后跟一段叙述，或 `HH:MM-HH:MM | ...` 的单行记录，也有 `## HH:MM-...` 小标题。取行内第一个 `HH:MM` 作为锚点时间，其余作为文本；无法解析时间的记录归为「其他」锚点组，供蒸馏时参考。
 
@@ -60,7 +60,7 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
    node <weekly-reporter>/scripts/wrp.mjs plans list --scope month --date <D>
    ```
 
-   保留 `planned` / `in_progress` 的开放条目用于阶段 3 的自动关联；`done` 已完成、`cancelled` 不关联；`deferred` 的活条目是它下一周期的后继，用后继而不是原条目。
+   两个查询各打印一条紧凑 JSON；解析后读 `items[]` 的 `id`、`status`、`text`（以及 `deferredFromItemId`）。保留 `planned` / `in_progress` 的开放条目用于阶段 3 的自动关联；`done` 已完成、`cancelled` 不关联；`deferred` 的活条目是它下一周期的后继，用后继而不是原条目。
 
 4. **归一化为锚点。** 自动时间线事件 → `{ time: "HH:MM", src: "git", text: 内容 }`（页面标签「提交」）；手动时间线事件 → `{ time: "HH:MM", src: "manual", text: 内容 }`（页面标签「手动」）；`.remember` 记录 → `{ time: "HH:MM", src: "mem", text: 文本 }`（标签「记忆」）。所有时间线事件（自动 + 手动）同时保留为确认页的「已有事件」（只读）。无法解析时间的记录归为「其他」锚点组，供蒸馏时参考。
 
@@ -158,16 +158,16 @@ node <weekly-reporter>/scripts/wrp.mjs events create "<content>" --time "<D>T<HH
 - 一条草稿一次 `events create`，确认几条就创建几条，不多不少；记录每条返回的 `✓ event created: #<ID>`。
 - 内容用 `confirmed[i].content`，时间用 `confirmed[i].time`。
 - 确认页的提交即 `events create` 所要求的 preview 确认：用户在确认页逐条裁决后，无需再问一遍。
-- 回填失败（例如 401）按 wrp 的错误处理（`✗ … → <fix>`）排查，不要把失败当成已落库。
+- 回填失败（例如 `status: 401`）按 wrp 的错误处理（stderr 的 JSON envelope：读 `message`，照 `fix` 重试）排查，不要把失败当成已落库。
 
 最后在聊天里输出**「昨日全貌」合并视图**：已有的自动/手动事件 + 本次新落库的事件，按时间顺序合并，标注新增事件的 id。这个全貌**只在聊天里展示，绝不作为事件再落库**，也不写进时间线。
 
 ## 错误处理
 
-| 现象 | 原因 | 处理 |
+| 现象（stderr 的 JSON envelope） | 原因 | 处理 |
 |---|---|---|
-| `unauthorized (HTTP 401)` | PAT 缺失、失效或撤销 | 让用户在会话里运行 `! node <weekly-reporter>/scripts/wrp.mjs init` 配置 PAT，再重试 |
-| `Cannot reach weekly-reporter` | 服务未启动 | 提示用户启动（开发用 `make dev`，已安装服务用 `make start`）或检查 base URL |
+| `status: 401` | PAT 缺失、失效或撤销 | 让用户在会话里运行 `! node <weekly-reporter>/scripts/wrp.mjs init` 配置 PAT，再重试（`fix` 里就是这条命令） |
+| `status: null`、`message` 以 `Cannot reach weekly-reporter at` 开头 | 服务未启动 | 提示用户启动（开发用 `make dev`，已安装服务用 `make start`）或检查 base URL |
 | board 输出 `submission already received` / 409 | 该页面已提交过 | 一次性页面正常收敛；读取已写出的答案文件即可 |
 | 端口 19950 被占用 | 其它一次性页面在跑 | 脚本自动向上找端口，用 stdout 里的实际地址 |
 | 时间线某天为空但明显在写代码 | 采集源没同步 | 提示用户可用 **collect-git-source** 同步；不要阻塞回忆，`.remember` 仍可提供锚点 |

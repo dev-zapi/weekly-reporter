@@ -2,8 +2,9 @@
 //
 // Ported from the pre-merge plans scripts. The semantics — flags, API
 // calls, payload shapes, client-side validation, ordering and chain
-// aggregation — are kept verbatim; only the output lines follow the wrp
-// format laws. Domain rules live in references/plans.md.
+// aggregation — are kept verbatim. Read verbs print the API body verbatim as
+// one compact JSON line; write verbs keep their ✓ feedback. Domain rules live
+// in references/plans.md.
 //
 // Entity grammar: plan items are `%<id>` (the same token timeline events use
 // for `%id` citations), comments are `#<id>` here (not timeline tags — the
@@ -11,8 +12,8 @@
 
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
-import { formatInstant, localDateToOffsetInstant } from '../lib/time.mjs'
+import { emitJson, feedback } from '../lib/output.mjs'
+import { localDateToOffsetInstant } from '../lib/time.mjs'
 
 // ---------------------------------------------------------------------------
 // Shared validation (ported from the pre-merge plans client).
@@ -30,7 +31,7 @@ function usage(text) {
 }
 
 /**
- * A numeric id from a positional argument, or one ✗ line. Strict digits: the
+ * A numeric id from a positional argument, or one error envelope. Strict digits: the
  * list tokens are accepted by stripping one prefix (`%<id>` for plan items,
  * `#<id>` for comments), but the retired script's `parseInt` tolerated suffixes
  * such as `12abc`; wrp does not.
@@ -111,7 +112,7 @@ function requireBoolean(value, flag) {
   fail(`invalid ${flag}`, `must be 'true' or 'false', got '${value ?? ''}'`)
 }
 
-/** A numeric flag value (ids and positions), or one ✗ line. */
+/** A numeric flag value (ids and positions), or one error envelope. */
 function requireInteger(value, flag) {
   const number = Number.parseInt(value, 10)
   if (!Number.isInteger(number)) {
@@ -121,17 +122,12 @@ function requireInteger(value, flag) {
 }
 
 // ---------------------------------------------------------------------------
-// Comment formatting (ported from the pre-merge plans comments module).
+// Comment attribution (ported from the pre-merge plans comments module).
 // ---------------------------------------------------------------------------
 
 /** Browser comments carry no author; the UI (and this client) render them as the user. */
 function authorLabel(author) {
   return author ?? 'user'
-}
-
-/** ISO timestamp → `2026-10-13T17:00:00+08:00` in the system zone. */
-function formatCommentTime(createdAt) {
-  return formatInstant(createdAt) ?? String(createdAt ?? '')
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +165,7 @@ function requirePeriod(flags, scope) {
   return { month: monthInstant(requireMonth(flags.month)) }
 }
 
-/** `wrp plans list --scope week|month …` — the plan header plus its items. */
+/** `wrp plans list --scope week|month …` — the plan body verbatim as one JSON line. */
 export async function list({ flags }) {
   if (flags.scope === undefined || String(flags.scope).trim() === '') {
     fail('missing --scope', 'every plan query names a period scope', usage(LIST_USAGE))
@@ -197,42 +193,7 @@ export async function list({ flags }) {
   const { status, body } = await api(`/api/plans?${params}`)
   if (status !== 200) failResponse(status, body, 'check the period flags, then re-run')
 
-  const plan = body?.plan
-  const items = body?.items ?? []
-  if (!plan) {
-    emptyState('No plan found for this period.')
-    return
-  }
-
-  // The header is itself a list line: the plan id is the identity an agent
-  // needs to address the plan, and the period is its metadata.
-  listLine(`plan ${plan.id}`, [plan.scope, `${plan.periodStart} → ${plan.periodEnd}`])
-
-  if (items.length === 0) {
-    emptyState('No items in this plan.')
-    return
-  }
-  for (const item of items) {
-    listLine(`%${item.id}`, itemMetadata(item), item.text)
-  }
-  listFooter(items.length, 'item')
-}
-
-/**
- * The item's bracketed metadata. Every marker is printed even when false, so
- * the quadrant position is always readable; the API already ordered the rows
- * by priority group and manual position.
- */
-function itemMetadata(item) {
-  return [
-    item.status,
-    item.projectScope,
-    `priority=${item.priority}`,
-    `important=${item.isImportant}`,
-    `urgent=${item.isUrgent}`,
-    item.parentItemId ? `parent=%${item.parentItemId}` : null,
-    item.deferredFromItemId ? `deferred-from=%${item.deferredFromItemId}` : null,
-  ]
+  emitJson(body)
 }
 
 /** `wrp plans add …` — the API creates the period plan when it does not exist yet. */
@@ -337,10 +298,11 @@ const COMMENTS_ADD_USAGE = 'wrp plans comments add <item-id> --text <text>'
 const COMMENTS_DELETE_USAGE = 'wrp plans comments delete <item-id> <comment-id>'
 
 /**
- * `wrp plans comments list <item-id>` — the item's own comments plus its
- * deferral-chain ancestors' comments, oldest-first. The `%<itemId>` on each
- * line is the item the comment is pinned to (that is the pair delete needs),
- * which is not necessarily the item being viewed.
+ * `wrp plans comments list <item-id>` — the API's aggregated chain body
+ * (the item's own comments plus its deferral-chain ancestors', oldest-first),
+ * printed verbatim. Each comment carries the item it is pinned to
+ * (`planItemId`), which is the pair `comments delete` needs and is not
+ * necessarily the item being viewed.
  */
 export async function commentsList({ positional }) {
   const itemId = requireId(positional[0], 'item', COMMENTS_LIST_USAGE)
@@ -349,25 +311,7 @@ export async function commentsList({ positional }) {
     failResponse(status, body, 'check the item id with wrp plans list, then re-run')
   }
 
-  const comments = body?.comments ?? []
-  if (comments.length === 0) {
-    emptyState(`No comments on plan item %${itemId}.`)
-    return
-  }
-
-  for (const comment of comments) {
-    listLine(
-      `#${comment.id}`,
-      [
-        `%${comment.planItemId}`,
-        formatCommentTime(comment.createdAt),
-        authorLabel(comment.author),
-        comment.sourcePeriod?.label ?? 'unknown period',
-      ],
-      comment.content,
-    )
-  }
-  listFooter(comments.length, 'comment')
+  emitJson(body)
 }
 
 /** `wrp plans comments add <item-id> --text <text>` — append-only, never into the timeline. */

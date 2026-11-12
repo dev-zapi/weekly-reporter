@@ -8,20 +8,14 @@
 
 import { api } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { block, emptyState, listFooter, listLine } from '../lib/output.mjs'
+import { emitJson } from '../lib/output.mjs'
 import { requireArg } from '../lib/args.mjs'
 
 const SHOW_USAGE = 'wrp styles show <key>'
 
-/** `wrp styles list` — the style keys with the fields needed to pick one. */
+/** `wrp styles list` — the `/api/prompts/styles` body verbatim. */
 export async function list() {
-  const styles = await fetchStyles()
-  if (styles.length === 0) {
-    emptyState('No AI styles are configured — add one on the /prompts page.')
-    return
-  }
-  for (const style of styles) listLine(style.key, metadata(style), style.label)
-  listFooter(styles.length, 'style')
+  emitJson(await fetchStyleInventory())
 }
 
 /**
@@ -60,23 +54,19 @@ export async function show({ positional }) {
     fail('unknown AI style', `no AI style matches '${ref}'`, `available: ${available}`)
   }
 
-  listLine(match.key, metadata(match), match.label)
-  if (match.detailLevel) console.log(`detailLevel: ${match.detailLevel}`)
-  if (match.resultOriented) console.log(`resultOriented: ${match.resultOriented}`)
-  block('prompt', match.systemPrompt ?? '')
+  emitJson(match)
+}
+
+/** The inventory body exactly as the API returns it (styles live under `body.styles`). */
+async function fetchStyleInventory() {
+  const { status, body } = await api('/api/prompts/styles')
+  if (status !== 200) failResponse(status, body, 'read the AI style list again')
+  return body
 }
 
 async function fetchStyles() {
-  const { status, body } = await api('/api/prompts/styles')
-  if (status !== 200) failResponse(status, body, 'read the AI style list again')
+  const body = await fetchStyleInventory()
   return Array.isArray(body?.styles) ? body.styles : []
-}
-
-function metadata(style) {
-  const bits = [`temp ${style.temperature ?? '?'}`]
-  if (style.isDefault) bits.push('default')
-  bits.push(`${(style.systemPrompt ?? '').length} chars of prompt`)
-  return bits
 }
 
 function styleList(styles) {

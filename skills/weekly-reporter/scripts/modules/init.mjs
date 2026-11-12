@@ -110,7 +110,8 @@ function readStartupPassword() {
     }
     // ctrl-C (SIGINT, either typed at a TTY or delivered as a signal) and
     // ctrl-D / a closed pipe (close) must not hang forever. An interrupt is
-    // reported as `✗ cancelled`, an empty answer as a missing password.
+    // reported as the `cancelled` error envelope, an empty answer as a
+    // missing-password envelope.
     onSignal = () => settle(INTERRUPTED)
     process.once('SIGINT', onSignal)
     rl.once('SIGINT', onSignal)
@@ -146,9 +147,10 @@ async function createPatViaApi(baseUrl, name) {
   }
   if (!response.ok) {
     fail(
-      body?.code || `failed to create PAT (HTTP ${response.status})`,
+      'failed to create PAT',
       body?.error || 'the startup password may be wrong',
       're-run wrp init --base-url <url> with the current startup password',
+      { status: response.status, code: body?.code },
     )
   }
   if (!body?.token) fail('failed to create PAT', 'the API returned no token', 'create one in the web UI and store it with wrp init --pat <token>')

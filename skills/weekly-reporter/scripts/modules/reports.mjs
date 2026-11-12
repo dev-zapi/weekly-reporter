@@ -1,5 +1,5 @@
 // The reports module (周报): the ported semantics of the pre-merge weekly-report
-// verbs, reformatted to the five format laws.
+// verbs, printing under the JSON output laws.
 //
 // The data model every verb here assumes (see references/reports.md):
 //   - a report covers a date range and holds an immutable event snapshot taken
@@ -10,23 +10,36 @@
 //     truth) and a final (终版, `finalStatus` none|current|stale; `stale` means
 //     the draft was regenerated after the final was adopted).
 //
-// Multi-line payloads (drafts, finals) are only ever printed by `show`, under an
-// explicit `--part` mode - law 5. `preview` prints heads because that is its
-// whole purpose, and it creates nothing.
+// The read verbs (`list`, `show`, `preview`) print the API response body
+// verbatim as one compact JSON line - law 2. `--variant` narrows the variants
+// array and `--part` drops the payload sub-objects (`sourceDraft`/
+// `finalContent`) the caller did not ask for; everything else passes through
+// untouched. `preview` is a read verb: it computes a snapshot and creates
+// nothing, so its drafts are always complete - there is no `--full`.
 
 import { readFile } from 'node:fs/promises'
 
 import { api } from '../lib/api.mjs'
 import { requireArg, requireFlag } from '../lib/args.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { block, emptyState, feedback, listFooter, listLine, preview as previewPlan } from '../lib/output.mjs'
-import { formatInstant, naiveInstantWithOffset } from '../lib/time.mjs'
+import { emitJson, feedback, preview as previewPlan } from '../lib/output.mjs'
+import { naiveInstantWithOffset } from '../lib/time.mjs'
 
 const VARIANTS = ['leadership', 'personal']
 
 // `draft` is the name in the help text; `source` is the name the ported scripts
-// used, kept as an alias so both spellings work.
+// used, kept as an alias so both spellings work. `both` (the default) prints the
+// whole body; the other parts drop the payload sub-objects the caller did not
+// ask for.
 const PARTS = { meta: 'meta', source: 'draft', draft: 'draft', final: 'final', both: 'both' }
+
+/** Which payload fields each `--part` removes from a variant (key order kept). */
+const PART_OMISSIONS = {
+  meta: ['sourceDraft', 'finalContent'],
+  draft: ['finalContent'],
+  final: ['sourceDraft'],
+  both: [],
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -63,8 +76,8 @@ function wireDate(dateString) {
 }
 
 /**
- * A report id from a positional argument, or one ✗ line. Strict digits: the
- * `#<id>` token every list line emits is accepted by stripping the prefix, but
+ * A report id from a positional argument, or one error envelope. Strict digits:
+ * a leading `#` is tolerated for callers holding the old list-line token, but
  * the retired script's `parseInt` tolerated suffixes such as `12abc`; wrp does
  * not.
  */
@@ -83,15 +96,14 @@ function requireVariant(raw) {
   return raw
 }
 
-/** ISO instant → `2026-02-15T18:00:00+08:00` in the system zone. */
-function formatDate(value) {
-  if (value == null) return '?'
-  return formatInstant(value) ?? String(value)
+/** A variant with the named fields removed, preserving the remaining key order. */
+function withoutFields(variant, fields) {
+  return Object.fromEntries(Object.entries(variant).filter(([key]) => !fields.includes(key)))
 }
 
-/** `[leadership:current] [personal:none]` metadata, one entry per variant. */
-function variantStatus(variants) {
-  return (variants ?? []).map((variant) => `${variant.variant}:${variant.finalStatus ?? 'none'}`)
+/** The variant as `--part` selects it: payload fields not asked for are dropped. */
+function selectPart(variant, part) {
+  return withoutFields(variant, PART_OMISSIONS[part])
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +113,9 @@ function variantStatus(variants) {
 /**
  * `wrp reports list` — paged, or unpaginated search mode when any of
  * --query/--start/--end is given (newest first either way).
+ *
+ * The body prints verbatim, so the paging state (`page`/`pageSize`/`total`) and
+ * every report field reach the caller without hint lines or a count footer.
  */
 export async function list({ flags }) {
   const isSearch = flags.query != null || flags.start != null || flags.end != null
@@ -122,30 +137,8 @@ export async function list({ flags }) {
   const { status, body } = await api(path)
   if (status !== 200) failResponse(status, body, 'read the report list again')
 
-  const reports = body?.reports ?? []
-  if (reports.length === 0) {
-    emptyState(
-      isSearch
-        ? 'No reports matched — widen the date range or change the --query text.'
-        : 'No reports yet — wrp reports preview verifies a range before you create one.',
-    )
-    return
-  }
-  for (const report of reports) {
-    listLine(`#${report.id}`, [`${report.weekStart}~${report.weekEnd}`, ...variantStatus(report.variants)], report.title)
-  }
-  listFooter(reports.length, 'report')
-
-  if (isSearch) {
-    console.log('search mode: unpaginated, newest first')
-    return
-  }
-  const page = Number(body?.page ?? flags.page ?? 1)
-  const pageSize = Number(body?.pageSize ?? flags.pageSize ?? 10)
-  const total = Number(body?.total ?? reports.length)
-  const pages = Math.max(1, Math.ceil(total / (pageSize || 1)))
-  console.log(`page ${page}/${pages} of ${total} reports, newest first`)
-  if (page < pages) console.log(`next: --page ${page + 1}`)
+  // Law 2: one compact JSON line, the API body untouched.
+  emitJson(body)
 }
 
 // ---------------------------------------------------------------------------
@@ -153,19 +146,21 @@ export async function list({ flags }) {
 // ---------------------------------------------------------------------------
 
 /**
- * `wrp reports show <id>` — metadata only by default; the drafts and finals are
- * large (a source draft runs to thousands of characters), so they print only
- * under an explicit --part mode, and --variant halves the read.
+ * `wrp reports show <id>` — the whole body by default. `--variant` narrows the
+ * variants array and `--part` drops the payload sub-objects (meta: neither,
+ * draft: only `sourceDraft`, final: only `finalContent`), so an agent can skip
+ * a thousand-character draft it does not need without the output changing
+ * shape. Everything selected prints verbatim.
  */
 export async function show({ flags, positional }) {
   const reportId = requireReportId(requireArg(positional, 0, 'report id', 'wrp reports show <id> [--variant] [--part]'))
   const variantFilter = flags.variant ? requireVariant(flags.variant) : null
-  const part = PARTS[flags.part ?? 'meta']
+  const part = PARTS[flags.part ?? 'both']
   if (!part) {
     fail(
       `--part must be one of meta, source, draft, final, both`,
       `got '${flags.part}'`,
-      'source is an alias for draft; meta (default) is enough to decide what to read, and --part draft --variant leadership prints the text',
+      'source is an alias for draft; both (default) prints the whole body, meta drops both payloads',
     )
   }
 
@@ -179,32 +174,23 @@ export async function show({ flags, positional }) {
     fail(`report #${reportId} has no ${variantFilter} variant`, '', 'run wrp reports show <id> without --variant to see both')
   }
 
-  listLine(`#${body.id}`, [`${body.weekStart}~${body.weekEnd}`], body.title)
-  console.log(`updated: ${formatDate(body.updatedAt)}   snapshots: ${(body.snapshots ?? []).length} event(s)`)
-
-  for (const variant of variants) {
-    const draft = variant.sourceDraft ?? ''
-    const final = variant.finalContent ?? ''
-    const status_ = variant.finalStatus ?? 'none'
-    console.log(`── ${variant.variant} ──`)
-    console.log(
-      `final: ${status_}${status_ === 'stale' ? ' (adopted before the latest source draft — regenerate before reuse)' : ''}`,
-    )
-    console.log(
-      `template: ${variant.templateName ?? '—'}   style: ${variant.aiStyle ?? '—'}   sourceRevision: ${variant.sourceRevision}`,
-    )
-    console.log(`source draft: ${draft.length} chars   final: ${final.length} chars`)
-
-    if (part === 'draft' || part === 'both') block('source draft', draft || '(empty)')
-    if (part === 'final' || part === 'both') block('final', final || '(no adopted final)')
+  // No filter asked for means the body is already the answer: emit it untouched.
+  if (!variantFilter && part === 'both') {
+    emitJson(body)
+    return
   }
+  emitJson({ ...body, variants: variants.map((variant) => selectPart(variant, part)) })
 }
 
 // ---------------------------------------------------------------------------
 // preview
 // ---------------------------------------------------------------------------
 
-/** `wrp reports preview` — what a range would capture. Creates nothing. */
+/**
+ * `wrp reports preview` — what a range would capture. Creates nothing, so it is
+ * a read verb: the body prints verbatim, drafts complete (the old 12-line head
+ * truncation and its `--full` escape hatch are gone).
+ */
 export async function preview({ flags }) {
   const weekStart = requireDate(
     requireFlag(flags, 'start', 'period start', 'wrp reports preview --start <date> --end <date>'),
@@ -223,24 +209,12 @@ export async function preview({ flags }) {
   })
   if (status !== 200) failResponse(status, body, 'check --start/--end and retry')
 
-  const variants = (body?.variants ?? []).filter(
-    (variant) => !variantFilter || variant.variant === variantFilter,
-  )
-  console.log(`preview ${weekStart} ~ ${weekEnd} — no report is created`)
-
-  for (const variant of variants) {
-    const draft = variant.sourceDraft ?? ''
-    const lines = draft.split('\n').filter(Boolean)
-    console.log(`── ${variant.variant} ── ${lines.length} line(s), ${draft.length} chars${isEmptyDraft(draft) ? ' (EMPTY)' : ''}`)
-    if (flags.full) {
-      console.log(draft || '(empty)')
-    } else {
-      // Head-only by default: the usual question is only "does this range hold
-      // the right events?", and a full draft can run thousands of characters.
-      console.log(lines.slice(0, 12).join('\n') || '(empty)')
-      if (lines.length > 12) console.log(`... ${lines.length - 12} more line(s) — rerun with --full`)
-    }
+  if (!variantFilter) {
+    emitJson(body)
+    return
   }
+  const variants = (body?.variants ?? []).filter((variant) => variant.variant === variantFilter)
+  emitJson({ ...body, variants })
 }
 
 // ---------------------------------------------------------------------------

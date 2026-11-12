@@ -11,7 +11,13 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
-import { errorLines, makeHome, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { makeHome, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -212,11 +218,11 @@ describe('wrp init --base-url (interactive)', () => {
     const result = await runWrp(['init', '--base-url', server.url], { home, input: 'wrong-pw\n' })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
     expect(result.stderr).toContain('Enter startup password: \n')
-    expect(result.stderr).toContain('✗')
-    expect(result.stderr).toContain('401')
-    expect(result.stderr).toContain('→')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(401)
+    expect(error.message).toContain('failed to create PAT')
+    expect(error.fix).toContain('re-run wrp init')
     expect(result.stdout).not.toContain('✓')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
@@ -255,14 +261,15 @@ describe('wrp init mode handling', () => {
     })
   })
 
-  it('rejects conflicting modes with one ✗ line and no write', async () => {
+  it('rejects conflicting modes with one envelope and no write', async () => {
     const home = await makeHome()
 
     const result = await runWrp(['init', '--pat', 'wrp_1234567890abcdef', '--show'], { home })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ conflicting init modes')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('conflicting init modes')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
 
@@ -272,8 +279,9 @@ describe('wrp init mode handling', () => {
     const result = await runWrp(['init', '--pat', ''], { home })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing PAT')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing PAT')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
 
@@ -283,8 +291,9 @@ describe('wrp init mode handling', () => {
     const result = await runWrp(['init', 'foo'], { home, input: 'pw\n' })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unknown verb: wrp init foo')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unknown verb: wrp init foo')
     await expect(readConfigIn(home)).rejects.toThrow()
   })
 
@@ -300,9 +309,10 @@ describe('wrp init mode handling', () => {
     })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ cancelled')
-    expect(result.stderr).not.toContain('missing startup password')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('cancelled')
+    expect(error.message).not.toContain('missing startup password')
     expect(server.requests).toHaveLength(0)
     await expect(readConfigIn(home)).rejects.toThrow()
   })
@@ -323,7 +333,7 @@ describe('provisioning lifecycle', () => {
     // No env vars: the command must authenticate from the stored credential.
     const listed = await runWrp(['tags', 'list'], { home })
     expect(listed.code).toBe(0)
-    expect(listed.stdout).toContain('— 1 tag(s)')
+    expect(JSON.parse(listed.stdout)).toEqual({ tags: [{ name: 'x', count: 1 }] })
     expect(server.requests.at(-1).headers.authorization).toBe(`Bearer ${token}`)
 
     expect((await runWrp(['init', '--clear'], { home })).code).toBe(0)
@@ -331,7 +341,9 @@ describe('provisioning lifecycle', () => {
     // Decommissioned: the API answers 401 and the handoff points at `wrp init`.
     const afterClear = await runWrp(['tags', 'list'], { home, stub: server })
     expect(afterClear.code).not.toBe(0)
-    expect(afterClear.stderr).toContain('✗ unauthorized (HTTP 401)')
-    expect(afterClear.stderr).toContain('wrp.mjs" init')
+    const { error } = errorEnvelope(afterClear)
+    expect(error.status).toBe(401)
+    expect(error.message).toContain('PAT missing, invalid, expired, or revoked')
+    expect(error.fix).toContain('wrp.mjs" init')
   })
 })

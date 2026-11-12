@@ -37,8 +37,8 @@ Every `wrp templates` verb takes a flexible `<ref>` and resolves it for you:
 - a bare numeric user ID — `3`
 - a case-insensitive **name substring** — `极简`
 
-A ref that matches several names fails with the candidate list (`✗ ambiguous …`)
-instead of picking one arbitrarily; re-run with one of the printed selection IDs.
+A ref that matches several names fails with the candidate list instead of picking
+one arbitrarily; re-run with one of the printed selection IDs.
 Always report the **selection ID** back to the user: it is the form the report
 generation API expects.
 
@@ -53,25 +53,42 @@ need to. A template edit affects generation sessions started from now on only.
 ## Reading
 
 `wrp templates list` is the right first call for almost anything, including "which
-template should I use". It prints both kinds with selection IDs, AI style, size,
-tags, and the opening line.
+template should I use". It prints the `/api/templates` response body **verbatim**
+as one line of compact JSON: the `official` and `user` arrays, every row complete
+— including each template's full `content`. Parse the line with `JSON.parse`; do
+not scrape text out of it.
 
 ```bash
 wrp templates list [--kind official|user|all] [--query <text>]
 ```
 
+```json
+{"official":[{"id":"official-general","name":"通用正式周报模板","description":"适用于大多数场景的正式周报","tags":["正式","通用"],"content":"你是通用正式写作助手。\n请按正式格式总结风险与进展。","aiStyle":"formal"}],"user":[{"id":3,"name":"我的极简模板","content":"你是极简写作助手。\n只写结论，不写背景。","description":"个人用的极简模板","tags":"个人,极简","sourceTemplateId":"official-minimal","aiStyle":"concise","createdAt":"2026-10-01T08:00:00.000Z","updatedAt":"2026-10-02T09:30:00.000Z"}]}
+```
+
 `--query` matches name, content, tags and description, so it finds "the template
 that mentions 风险" without the user remembering which field it lived in. `--kind`
-defaults to `all`.
+defaults to `all`. Both flags select rows client-side: the body keeps the same
+`{official, user}` shape (the unselected collection is `[]`) and every emitted row
+is the API row untouched. With neither flag the response is passed through
+unchanged. Zero matches is a successful empty body — `{"official":[],"user":[]}` —
+not a prose message.
 
 ```bash
 wrp templates show <ref> [--part meta|content|both]
 ```
 
-Defaults to `both`; templates run a few hundred characters, so printing the full
-text is usually fine. `--part meta` is the cheap read when you only need the style,
-the ID or the timestamps. The full multi-line body is printed **only** here — never
-reconstruct it from a list line.
+The output is the resolved row from the list response, verbatim:
+
+```json
+{"id":3,"name":"我的极简模板","content":"你是极简写作助手。\n只写结论，不写背景。","description":"个人用的极简模板","tags":"个人,极简","sourceTemplateId":"official-minimal","aiStyle":"concise","createdAt":"2026-10-01T08:00:00.000Z","updatedAt":"2026-10-02T09:30:00.000Z"}
+```
+
+`--part` selects a sub-object of that row: `both` (default) is the whole row,
+`content` is just the JSON string of its `content`, and `meta` is the row without
+`content`. Templates run a few hundred characters, so `both` is usually fine;
+`meta` is the cheap read when you only need the style, the ID or the timestamps.
+Timestamps stay exactly as the API sent them — no timezone reformatting.
 
 ## Writing
 
@@ -141,12 +158,23 @@ wrp styles list
 wrp styles show <key>
 ```
 
-`styles list` prints every key with its label, temperature, default marker and
-prompt size. `styles show <key>` prints the full prompt (the multi-line payload law
-applies: `show` only). The key lookup accepts an exact key or a unique
-case-insensitive substring of the key **or label** — callers naturally say "the
-technical one". Ambiguous substrings and unknown keys fail with the valid keys
-listed.
+Both are read verbs: each prints its API response body **verbatim** as one line of
+compact JSON. `styles list` returns `{"styles":[…]}` with every configured style:
+
+```json
+{"styles":[{"key":"technical","label":"技术研发","systemPrompt":"你是技术专家，突出工程细节和风险。","temperature":"0.4","detailLevel":"detailed","resultOriented":"true","isDefault":false}]}
+```
+
+`styles show <key>` prints the one matching style row on its own — not the list
+wrapper:
+
+```json
+{"key":"technical","label":"技术研发","systemPrompt":"你是技术专家，突出工程细节和风险。","temperature":"0.4","detailLevel":"detailed","resultOriented":"true","isDefault":false}
+```
+
+The key lookup accepts an exact key or a unique case-insensitive substring of the
+key **or label** — callers naturally say "the technical one". Ambiguous substrings
+and unknown keys fail with the valid keys listed.
 
 Styles are referenced by **key** (`formal`, `technical`, `concise`, `detailed` by
 default), not by numeric ID. A style change on the `/prompts` page edits that
@@ -164,7 +192,8 @@ styles and system prompts belongs to the `/prompts` page.
 ## Errors
 
 All verbs exit `0` on success and non-zero on failure. Every failure is one
-`✗ <cause>: <message> → <fix>` stderr line; read the fix hint and retry.
+compact JSON line on stderr: `{"error":{"status":…,"code":…,"message":…,"fix":…}}`.
+Read `message` for the cause, then run the `fix` hint.
 
 | Message | Cause | What to do |
 |---|---|---|

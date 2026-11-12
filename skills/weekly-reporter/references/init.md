@@ -14,9 +14,10 @@ wrp init                                      interactive, against the resolved 
 
 The flags are **mode switches, not modifiers**: exactly one mode per invocation.
 `--pat` with `--base-url` is one mode (store both); any other combination is a
-`✗ conflicting init modes` error, so a half-typed command can never silently pick
-a mode. `--base-url` alone is the interactive mode, and a bare `wrp init` is the
-same mode against the base URL that is already configured.
+client-side error — one JSON error envelope on stderr with `status: null` and a
+`conflicting init modes: …` message — so a half-typed command can never silently
+pick a mode. `--base-url` alone is the interactive mode, and a bare `wrp init` is
+the same mode against the base URL that is already configured.
 
 ## Mode 1 — `--pat` (token from the web UI)
 
@@ -40,8 +41,10 @@ The prompt is written to **stderr** and reads one line from stdin, so it must be
 run in a session where the user can type. When stderr is a TTY the typed input is
 echoed back (inherited verbatim from the retired script; raw-mode hiding is out
 of scope); piped input is not echoed. An interrupt at the prompt (ctrl-C) exits
-non-zero with `✗ cancelled` and writes nothing; so does an empty answer, which
-reports `✗ missing startup password`. The token is created via
+non-zero with one JSON error envelope on stderr (`status: null`, message
+`cancelled: the startup-password prompt was interrupted`) and writes nothing; so
+does an empty answer, whose envelope's message is `missing startup password`. The
+token is created via
 `POST /api/auth/pats` with the password as a `Bearer` token, and the returned
 plaintext token is only ever returned by that one response (ADR-0020) — it is
 stored immediately.
@@ -97,13 +100,15 @@ the file — check `env | grep WEEKLY_REPORTER` before re-provisioning.
 
 ## Agent handoff on 401
 
-Any command that gets a `401` prints a single `✗` line whose fix hint is:
+Any command that gets a `401` prints one JSON error envelope on stderr
+(`status: 401`, message starting `unauthorized (HTTP 401) …`); its `fix` field
+carries this command:
 
 ```
 ! node "{baseDir}/scripts/wrp.mjs" init
 ```
 
-Give the user that line **verbatim**: the `!` prefix makes the agent host run it
+Give the user that `fix` command **verbatim**: the `!` prefix makes the agent host run it
 in the current session, where the interactive prompt can reach the user's
 terminal. Do not ask them to run `wrp init` themselves in another shell, and do
 not hand-edit `auth.json` on their behalf — the password prompt is the whole
@@ -111,9 +116,10 @@ point of the handoff.
 
 Recovery flow:
 
-1. The command fails with `✗ unauthorized (HTTP 401) …`.
-2. Hand the user the `!` line above (add `--base-url <url>` if the deployment is
-   not on the default port).
+1. The command fails with the envelope's `status: 401` and a message starting
+   `unauthorized (HTTP 401) …`.
+2. Hand the user the `fix` command above (add `--base-url <url>` if the deployment
+   is not on the default port).
 3. After they run it, re-run the original command — the new credential is picked
    up with no restart.
 

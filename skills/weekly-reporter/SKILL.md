@@ -38,22 +38,38 @@ web UI), `--show` (verify, token masked) and `--clear` (decommission the machine
 ## Common contract
 
 Every command obeys one output contract; agents parse it, so treat it as an interface.
+stdout carries only data (or a write verb's feedback), stderr only errors.
 
 - **Exit codes**: `0` success; `1` failure or an unconfirmed preview; `3` `sources lookup`
-  found no source — a clean "not onboarded" signal, branch on it without parsing text.
-- **Feedback** (stdout): `✓ <entity> <past-tense>: <identity>`, e.g. `✓ event created: #6991`.
-- **Lists** (stdout): `<id-token> [<metadata>] <body>` per item, then a `— N <entity>(s)`
-  footer, plus a pagination hint naming the flag that continues the walk (`--cursor`
-  for events, `--page` for reports) when more results exist.
-- **Errors** (stderr, non-zero exit): one line, `✗ <cause|API code>: <message> → <fix>`.
-  Read the fix hint and retry; do not re-read this document instead.
+  found no source — a clean "not onboarded" signal, branch on it without parsing output.
+- **Feedback** (stdout, write verbs): `✓ <entity> <past-tense>: <identity>`, e.g.
+  `✓ event created: #6991`. `sources sync` also prints its per-source/per-branch
+  summary lines. This is the one surviving human-styled format.
+- **Read verbs** (stdout): the API response body **verbatim** as one line of compact
+  JSON — `JSON.stringify(body)`. There is no wrapper, no field curation, no renaming:
+  every field arrives, including fields the API adds later. `JSON.parse` that one line
+  and read the fields directly. Empty results are the raw body (e.g. `{"events":[]}`)
+  with exit `0`, so zero results is distinguishable from failure by the exit code
+  alone. There are no list lines, count footers, pagination hint lines or prose
+  empty-states. `--part`/`--variant` remain sub-object/array filters on the verbs that
+  take them (template/report `show`): the filtered selection prints verbatim; with no
+  filter the whole body is printed.
+- **Additive keys** (stdout): the client may add a key only when it *reassembles*
+  information already present in the body into flag-ready form — never new
+  information, and only when its material exists. Sole member: `nextCursorToken` on
+  `events list` (`"<id>@<epoch-millis>"`), present only while `hasMore` and
+  `nextCursor` exist; pass it straight back as `--cursor`. Any future additive key is
+  held to the same three-part rule.
+- **Errors** (stderr, non-zero exit): one compact JSON envelope,
+  `{"error":{"status":…,"code":…,"message":…,"fix":…}}`. `status` is the HTTP status,
+  or `null` for a client-side fault (bad flags, unreachable server); `code` appears
+  only when the API or the client supplies one; `message` distills cause and detail;
+  `fix` is the actionable next step, often the exact command to re-run. Branch on
+  `status`/`code` and follow `fix`; never pattern-match prose.
 - **Previews** (stdout): `PLAN:` header, affected counts and warnings, then
   `NOT EXECUTED — re-run with --confirm`. Destructive verbs (tag rename/remove, source,
   template and report delete) **print the plan and exit `1` without `--confirm`** — show
   the plan to the user, get approval, then re-run the same command with `--confirm`.
-- **Payloads**: multi-line content (template bodies, report drafts and finals) is only
-  printed by `show`, under an explicit `--part`/`--variant` mode. Never reconstruct it
-  from a list line.
 
 ## Modules
 

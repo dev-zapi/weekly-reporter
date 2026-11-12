@@ -4,11 +4,17 @@
 // stub HTTP server, so each test observes what an agent actually gets - the
 // request the client sends and the lines it prints.
 //
-// Expected lines are written out as literals (the format laws of spec #119),
-// never recomputed from the implementation.
+// Expected output is written out as literals (the verbatim-JSON contract of
+// spec #153), never recomputed from the implementation.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 const stubs = []
 
@@ -106,9 +112,11 @@ describe('wrp events list', () => {
     const result = await run(['events', 'list', '--date', '2026-11-31'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid --date: 2026-11-31')
-    expect(result.stderr).toContain('YYYY-MM-DD')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --date: 2026-11-31')
+    expect(error.fix).toContain('YYYY-MM-DD')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -120,66 +128,71 @@ describe('wrp events list', () => {
     expect(server.requests[0].url).toBe('/api/events')
   })
 
-  it('prints one id-first line per event plus the count footer', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        events: [
-          event(),
-          event({
-            id: 6992,
-            eventTime: '2026-11-09T15:30:00.000Z',
-            source: 'auto',
-            content: 'chore: cutover to the Go single binary',
-            metadata: null,
-            isImportant: true,
-          }),
-        ],
-        hasMore: false,
-      },
-    }))
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = {
+      events: [
+        event(),
+        event({
+          id: 6992,
+          eventTime: '2026-11-09T15:30:00.000Z',
+          source: 'auto',
+          content: 'chore: cutover to the Go single binary',
+          metadata: null,
+          isImportant: true,
+        }),
+      ],
+      hasMore: false,
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout.split('\n').filter(Boolean)).toEqual([
-      '#6991 [2026-11-09T14:02:00+00:00] [manual] fixed login timeout and added regression tests #工作 #个人',
-      '#6992 [2026-11-09T15:30:00+00:00] [auto] ★ chore: cutover to the Go single binary',
-      '— 2 event(s)',
-    ])
+    // Exact string: one line of compact JSON, no footer, no count line, no
+    // reordering, and no additive key when there is no next page.
+    expect(result.stdout).toBe(JSON.stringify(body) + '\n')
   })
 
-  it('renders event times in the system zone with an explicit offset', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: { events: [event()], hasMore: false },
-    }))
-
-    const result = await run(['events', 'list', '--date', '2026-11-09'], server, {
-      TZ: 'Asia/Shanghai',
-    })
-
-    expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#6991 [2026-11-09T22:02:00+08:00] [manual] fixed login timeout and added regression tests #工作 #个人',
-    )
-  })
-
-  it('appends the cursor hint when more pages exist', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        events: [event()],
-        hasMore: true,
-        nextCursor: { id: 6991, eventTime: Date.parse('2026-11-09T14:02:00.000Z') },
-      },
-    }))
+  it('adds nextCursorToken when hasMore and nextCursor are present', async () => {
+    const body = {
+      events: [event()],
+      hasMore: true,
+      nextCursor: { id: 6991, eventTime: Date.parse('2026-11-09T14:02:00.000Z') },
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await run(['events', 'list', '--limit', '1'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('— 1 event(s)')
-    expect(result.stdout).toContain('next page: --cursor 6991@1794232920000')
+    expect(result.stdout).toBe(
+      JSON.stringify({ ...body, nextCursorToken: '6991@1794232920000' }) + '\n',
+    )
+  })
+
+  it('adds no nextCursorToken when hasMore has no cursor to reassemble', async () => {
+    const body = { events: [event()], hasMore: true }
+    const server = await stub(() => ({ status: 200, body }))
+
+    const result = await run(['events', 'list', '--limit', '1'], server)
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(JSON.parse(result.stdout)).not.toHaveProperty('nextCursorToken')
+  })
+
+  it('adds no nextCursorToken when there is no next page despite a cursor', async () => {
+    const body = {
+      events: [event()],
+      hasMore: false,
+      nextCursor: { id: 6991, eventTime: 1794232920000 },
+    }
+    const server = await stub(() => ({ status: 200, body }))
+
+    const result = await run(['events', 'list'], server)
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(JSON.parse(result.stdout)).not.toHaveProperty('nextCursorToken')
   })
 
   it('sends the cursor back as cursorId and cursorTime', async () => {
@@ -199,31 +212,34 @@ describe('wrp events list', () => {
     const result = await run(['events', 'list', '--cursor', 'nonsense'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid cursor: nonsense')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid cursor: nonsense')
     expect(server.requests).toHaveLength(0)
   })
 
-  it('prints an explicit empty state without a footer', async () => {
-    const server = await stub(() => ({ status: 200, body: { events: [], hasMore: false } }))
+  it('prints the raw body for an empty result with no prose empty-state', async () => {
+    const server = await stub(() => ({ status: 200, body: { events: [] } }))
 
     const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe(
-      'No events found — widen the filters (--date, --week-start/--week-end, --tags).',
-    )
+    expect(result.stdout).toBe('{"events":[]}\n')
   })
 
-  it('surfaces an API failure as one ✗ line with a fix hint', async () => {
+  it('surfaces an API failure as one envelope with a fix hint', async () => {
     const server = await stub(() => ({ status: 400, body: { error: '无效的日期格式' } }))
 
     const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ request failed (HTTP 400): 无效的日期格式 → ')
-    expect(result.stderr).toContain('--date')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error).not.toHaveProperty('code')
+    expect(error.message).toBe('无效的日期格式')
+    expect(error.fix).toContain('--date')
   })
 })
 
@@ -283,11 +299,13 @@ describe('wrp events create', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid --time: 2026-11-10T09:00')
-    expect(result.stderr).toContain('Asia/Shanghai')
-    expect(result.stderr).toContain('2026-11-10T09:00:00+08:00')
-    expect(result.stderr).toContain('2026-11-10T09:00:00Z')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --time: 2026-11-10T09:00')
+    expect(error.message).toContain('Asia/Shanghai')
+    expect(error.fix).toContain('2026-11-10T09:00:00+08:00')
+    expect(error.fix).toContain('2026-11-10T09:00:00Z')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -300,8 +318,10 @@ describe('wrp events create', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid --time: 2026-11-31T09:00:00Z')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --time: 2026-11-31T09:00:00Z')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -311,9 +331,11 @@ describe('wrp events create', () => {
     const result = await run(['events', 'create'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing content')
-    expect(result.stderr).toContain('wrp events create')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing content')
+    expect(error.fix).toContain('wrp events create')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -323,20 +345,24 @@ describe('wrp events create', () => {
     const result = await run(['events', 'create', 'one', 'two'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ unexpected argument: two')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('unexpected argument: two')
     expect(server.requests).toHaveLength(0)
   })
 
-  it('surfaces a rejected payload as one ✗ line with a fix hint', async () => {
+  it('surfaces a rejected payload as one envelope with a fix hint', async () => {
     const server = await stub(() => ({ status: 400, body: { error: 'content 不能为空' } }))
 
     const result = await run(['events', 'create', 'x'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ request failed (HTTP 400): content 不能为空 → ')
-    expect(result.stderr).toContain('single-line')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error.message).toBe('content 不能为空')
+    expect(error.fix).toContain('single-line')
   })
 })
 
@@ -388,8 +414,10 @@ describe('wrp events update', () => {
     const result = await run(['events', 'update', '6991'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing change (--content | --time | --important)')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing change (--content | --time | --important)')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -399,9 +427,11 @@ describe('wrp events update', () => {
     const result = await run(['events', 'update', '6991', '--important', 'yes'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("✗ invalid --important: yes")
-    expect(result.stderr).toContain('true|false')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --important: yes')
+    expect(error.fix).toContain('true|false')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -415,9 +445,11 @@ describe('wrp events update', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid --time: 2026-11-10T09:00')
-    expect(result.stderr).toContain('Asia/Shanghai')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --time: 2026-11-10T09:00')
+    expect(error.message).toContain('Asia/Shanghai')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -427,8 +459,10 @@ describe('wrp events update', () => {
     const result = await run(['events', 'update', '6991', '--time', ''], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing value for --time')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing value for --time')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -438,20 +472,24 @@ describe('wrp events update', () => {
     const result = await run(['events', 'update', 'abc', '--important', 'true'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ invalid event id: abc')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid event id: abc')
     expect(server.requests).toHaveLength(0)
   })
 
-  it('surfaces a 404 as one ✗ line pointing at the list verb', async () => {
+  it('surfaces a 404 as one envelope pointing at the list verb', async () => {
     const server = await stub(() => ({ status: 404, body: { error: 'Event not found' } }))
 
     const result = await run(['events', 'update', '999999', '--important', 'true'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ event not found (HTTP 404): Event not found')
-    expect(result.stderr).toContain('wrp events list')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toBe('event not found: Event not found')
+    expect(error.fix).toContain('wrp events list')
   })
 })
 
@@ -476,22 +514,24 @@ describe('wrp events delete', () => {
     const result = await run(['events', 'delete', '6992'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain(
-      '✗ delete refused (HTTP 403): Cannot delete non-manual event → ',
-    )
-    expect(result.stderr).toContain('git history')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(403)
+    expect(error.message).toBe('delete refused: Cannot delete non-manual event')
+    expect(error.fix).toContain('git history')
   })
 
-  it('surfaces a 404 as one ✗ line pointing at the list verb', async () => {
+  it('surfaces a 404 as one envelope pointing at the list verb', async () => {
     const server = await stub(() => ({ status: 404, body: { error: 'Event not found' } }))
 
     const result = await run(['events', 'delete', '999999'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ event not found (HTTP 404): Event not found')
-    expect(result.stderr).toContain('wrp events list')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toBe('event not found: Event not found')
+    expect(error.fix).toContain('wrp events list')
   })
 
   it('requires an id and never calls the API without it', async () => {
@@ -500,8 +540,10 @@ describe('wrp events delete', () => {
     const result = await run(['events', 'delete'], server)
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing event id')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing event id')
     expect(server.requests).toHaveLength(0)
   })
 })

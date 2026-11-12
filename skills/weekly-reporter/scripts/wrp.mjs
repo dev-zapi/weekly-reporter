@@ -5,8 +5,9 @@
 //
 // Everything goes through the command registry in `lib/registry.mjs`: it drives
 // `--help` and flag validation, so a verb cannot exist without being documented.
-// A verb that is registered but not built yet dispatches to a ✗ "not
-// implemented" line, keeping the surface complete while module tickets land.
+// A verb that is registered but not built yet dispatches to a clear
+// "not implemented" error envelope, keeping the surface complete while module
+// tickets land.
 
 import { flagSpec, parseArgs } from './lib/args.mjs'
 import { fail, failNotImplemented } from './lib/errors.mjs'

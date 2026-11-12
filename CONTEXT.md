@@ -78,8 +78,12 @@ _Avoid_: API Key（会与 AI 配置里的 `api_key` 混淆）、访问 token（�
 _Avoid_: 全局配置、环境配置（这两个说法都不区分「凭据」与「设置」）
 
 ### 系统客户端 (wrp Client)
-weekly-reporter skill 内的单入口、零依赖 Node.js 客户端，形态是 `wrp <module> <verb>`（`node scripts/wrp.mjs …`），也是 skill 与 agent 通过 HTTP API 读写各实体的**唯一**通道。凭据按 env → 机器级凭据 → dev 默认地址的顺序解析；输出遵守五条格式定律（反馈行、列表行、错误行、预览块、多行载荷只在 show 出现），因此格式本身是接口。
+weekly-reporter skill 内的单入口、零依赖 Node.js 客户端，形态是 `wrp <module> <verb>`（`node scripts/wrp.mjs …`），也是 skill 与 agent 通过 HTTP API 读写各实体的**唯一**通道。凭据按 env → 机器级凭据 → dev 默认地址的顺序解析；输出遵守四条格式定律（反馈行、原样 JSON body、JSON 错误 envelope、预览块；ADR-0034），因此格式本身是接口。
 _Avoid_: skill 集合、脚本目录（它的身份是一个客户端，不是一个技能族）
+
+### 读动词 (Read Verb)
+wrp 中只读、把 API 响应体原样输出到 stdout 的命令族：一条紧凑 JSON（`JSON.stringify(body)`），无包装对象、无字段裁剪或改名，空结果是原始 body（如 `{"events":[]}`、`{"plan":null,"items":[]}`）且退出 0。`--part`/`--variant` 只是子对象/数组过滤器，选中的投影仍原样输出；不带过滤器时输出完整 body。唯一允许的附加键是 `events list` 的 `nextCursorToken`（`"<id>@<epoch-millis>"`，仅当 `hasMore` 与 `nextCursor` 同时存在），准入规则是：只把 body 已有信息重组成 flag-ready 形态、不新增信息、有料才出现。与之相对的是写动词：保留 `✓` 反馈行（`sources sync` 另带逐源/逐分支摘要）；所有失败都在 stderr 打一条 JSON 错误 envelope `{"error":{"status":…,"code":…,"message":…,"fix":…}}`（`status` 为 HTTP 状态或客户端故障时的 `null`，`code` 仅在 API 或客户端提供时出现），退出码 0/1/3 不变。
+_Avoid_: 查询命令（不区分输出契约）、列表行（已废弃的旧格式）、只读命令（只描述权限，不描述输出形态）
 
 ### 审计记录 (Audit Record)
 一次经 PAT 鉴权的 API 调用留下的痕迹，存于数据库表 `api_audit_log`，全量保留不清理。字段中三个易混概念：

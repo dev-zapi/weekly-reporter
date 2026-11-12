@@ -4,14 +4,31 @@
 // HTTP server. What is asserted is what an agent sees - the requests that reach
 // the API, the lines printed, the exit code.
 //
-// The expectations come from the pre-merge weekly-report scripts and the
-// output contract (five format laws), not from the module's own code.
+// The expectations come from the pre-merge weekly-report scripts and the output
+// contract: read verbs print the API body verbatim (one compact JSON line), write
+// verbs keep their feedback/preview formats, errors are the JSON envelope.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { errorLines, runWrp, startStubServer } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
+
+/** Law 2: a read verb prints exactly one line - the compact JSON body. */
+function expectOneJsonLine(result) {
+  expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+}
+
+/** The JSON body a read verb printed (everything on stdout parses as one value). */
+function outputJson(result) {
+  return JSON.parse(result.stdout)
+}
 
 const stubs = []
 
@@ -68,7 +85,7 @@ const PAGED_REPORTS = {
 }
 
 describe('wrp reports list', () => {
-  it('pages through reports and prints each variant final status', async () => {
+  it('prints the paged body verbatim, paging state included', async () => {
     const server = await stub(() => ({ status: 200, body: PAGED_REPORTS }))
 
     const result = await runWrp(['reports', 'list'], { stub: server })
@@ -78,29 +95,33 @@ describe('wrp reports list', () => {
     expect(path).toBe('/api/reports')
     expect(params).toEqual({ page: '1', pageSize: '10' })
 
-    // Law 2: id token, bracketed metadata, then the body - one line per report.
-    const lines = result.stdout.split('\n')
-    expect(lines[0]).toBe('#12 [2026-02-09~2026-02-15] [leadership:current] [personal:stale] 第 7 周周报')
-    expect(lines[1]).toBe('#9 [2026-02-02~2026-02-08] [leadership:none] [personal:none] 第 6 周周报')
-    expect(result.stdout).toContain('— 2 report(s)')
-    // Page 1 of 2 of 12 total, and the command to reach the next page.
-    expect(result.stdout).toContain('page 1/2')
-    expect(result.stdout).toContain('next: --page 2')
+    // Law 2: one compact JSON line deep-equal to the API body. The list lines,
+    // count footer and pagination hints are dead; paging state comes from the
+    // body's `page`/`pageSize`/`total`.
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(PAGED_REPORTS)
+    expect(result.stdout).not.toContain('[leadership:current]')
+    expect(result.stdout).not.toContain('— 2 report(s)')
+    expect(result.stdout).not.toContain('page 1/2')
+    expect(result.stdout).not.toContain('next: --page')
   })
 
-  it('says how many pages are left on the last page', async () => {
-    const server = await stub(() => ({ status: 200, body: { ...PAGED_REPORTS, page: 2 } }))
+  it('keeps the body verbatim on later pages', async () => {
+    const body = { ...PAGED_REPORTS, page: 2 }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['reports', 'list', '--page', '2'], { stub: server })
 
     expect(result.code).toBe(0)
     expect(parseRequest(server.requests[0]).params).toEqual({ page: '2', pageSize: '10' })
-    expect(result.stdout).toContain('page 2/2')
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(body)
     expect(result.stdout).not.toContain('next: --page')
   })
 
-  it('switches to unpaginated search mode when --query is given', async () => {
-    const server = await stub(() => ({ status: 200, body: { reports: [PAGED_REPORTS.reports[0]] } }))
+  it('prints the search-mode body verbatim when --query is given', async () => {
+    const body = { reports: [PAGED_REPORTS.reports[0]] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['reports', 'list', '--query', 'Nexus'], { stub: server })
 
@@ -108,13 +129,15 @@ describe('wrp reports list', () => {
     const { path, params } = parseRequest(server.requests[0])
     expect(path).toBe('/api/reports/search')
     expect(params).toEqual({ q: 'Nexus' })
-    expect(result.stdout).toContain('[leadership:current] [personal:stale] 第 7 周周报')
-    expect(result.stdout).toContain('— 1 report(s)')
-    expect(result.stdout).toContain('newest first')
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(body)
+    expect(result.stdout).not.toContain('newest first')
+    expect(result.stdout).not.toContain('— 1 report(s)')
   })
 
-  it('switches to search mode on a date range alone', async () => {
-    const server = await stub(() => ({ status: 200, body: { reports: [] } }))
+  it('prints an empty search body verbatim instead of an empty-state line', async () => {
+    const body = { reports: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(
       ['reports', 'list', '--start', '2026-02-01', '--end', '2026-02-28'],
@@ -129,20 +152,21 @@ describe('wrp reports list', () => {
       endDate: '2026-02-28T00:00:00+08:00',
     })
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('No reports matched')
-    // The empty state is the whole answer: no count footer and no page hint.
-    expect(result.stdout).not.toContain('— 0 report(s)')
-    expect(result.stdout).not.toContain('page 1/1 of 0 reports')
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(body)
+    expect(result.stdout).not.toContain('No reports matched')
   })
 
-  it('rejects a malformed date with one ✗ line and no request', async () => {
+  it('rejects a malformed date with one envelope and no request', async () => {
     const server = await stub()
 
     const result = await runWrp(['reports', 'list', '--start', '2026/02/01'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ --start must be a YYYY-MM-DD date')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--start must be a YYYY-MM-DD date')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -177,78 +201,123 @@ const REPORT_DETAIL = {
 }
 
 describe('wrp reports show', () => {
-  it('prints metadata and per-variant sizes only, by default', async () => {
+  /** `variant` with the named payload fields removed, key order preserved. */
+  function without(variant, keys) {
+    return Object.fromEntries(Object.entries(variant).filter(([key]) => !keys.includes(key)))
+  }
+
+  it('prints the whole body verbatim, including both drafts and finals', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
-    const result = await runWrp(['reports', 'show', '12'], { stub: server, env: { TZ: 'UTC' } })
+    const result = await runWrp(['reports', 'show', '12'], { stub: server })
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/reports/12')
-    const lines = result.stdout.split('\n')
-    expect(lines[0]).toBe('#12 [2026-02-09~2026-02-15] 第 7 周周报')
-    expect(result.stdout).toContain('updated: 2026-02-15T10:00:00+00:00')
-    expect(result.stdout).toContain('snapshots: 3 event(s)')
-    expect(result.stdout).toContain('final: current')
-    expect(result.stdout).toContain('template: 周报模板   style: concise   sourceRevision: 4')
-    expect(result.stdout).toContain('source draft: 37 chars   final: 18 chars')
-    // Law 5: no multi-line payload escapes without an explicit --part.
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(REPORT_DETAIL)
+    // The payloads-in-show-only law is dead: both variants' texts ride along.
+    expect(result.stdout).toContain('Nexus 上线')
+    expect(result.stdout).toContain('交付 Nexus')
+  })
+
+  it('filters the variants array under --variant and prints the rest verbatim', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: [REPORT_DETAIL.variants[0]],
+    })
+  })
+
+  it('drops both payload sub-objects under --part meta', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '12', '--part', 'meta'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: REPORT_DETAIL.variants.map((variant) =>
+        without(variant, ['sourceDraft', 'finalContent']),
+      ),
+    })
+    // The metadata that decides the next read survives, only the texts go.
+    expect(result.stdout).toContain('"sourceRevision":4')
     expect(result.stdout).not.toContain('Nexus 上线')
     expect(result.stdout).not.toContain('交付 Nexus')
   })
 
-  it('renders the updated timestamp in the system zone with an offset', async () => {
+  it('keeps only the draft payload under --part draft', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
-    const result = await runWrp(['reports', 'show', '12'], { stub: server, env: { TZ: 'Asia/Shanghai' } })
+    const result = await runWrp(['reports', 'show', '12', '--part', 'draft'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('updated: 2026-02-15T18:00:00+08:00')
-    // The period key stays date-only; only the instant carries an offset.
-    expect(result.stdout).toContain('#12 [2026-02-09~2026-02-15]')
-  })
-
-  it('prints one variant draft under --variant --part draft', async () => {
-    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
-
-    const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership', '--part', 'draft'], {
-      stub: server,
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: REPORT_DETAIL.variants.map((variant) => without(variant, ['finalContent'])),
     })
-
-    expect(result.code).toBe(0)
-    expect(result.stdout).toContain('── leadership ──')
-    expect(result.stdout).not.toContain('── personal ──')
-    expect(result.stdout).toContain('source draft:')
-    expect(result.stdout).toContain('2026-02-10 Nexus 上线')
+    expect(result.stdout).toContain('Nexus 上线')
     expect(result.stdout).not.toContain('交付 Nexus')
-    expect(result.stdout).not.toContain('调休')
   })
 
-  it('prints both parts under --part both', async () => {
+  it('keeps only the final payload under --part final', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
-    const result = await runWrp(['reports', 'show', '12', '--variant', 'personal', '--part', 'both'], {
-      stub: server,
-    })
+    const result = await runWrp(['reports', 'show', '12', '--part', 'final'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('(no adopted final)')
-    expect(result.stdout).toContain('调休')
-    expect(result.stdout).toContain('final: stale')
-    expect(result.stdout).toContain('adopted before the latest source draft')
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: REPORT_DETAIL.variants.map((variant) => without(variant, ['sourceDraft'])),
+    })
+    expect(result.stdout).toContain('交付 Nexus')
+    expect(result.stdout).not.toContain('Nexus 上线')
+  })
+
+  it('prints the whole body under --part both', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(['reports', 'show', '12', '--part', 'both'], { stub: server })
+
+    expect(result.code).toBe(0)
+    expect(outputJson(result)).toEqual(REPORT_DETAIL)
   })
 
   it('accepts --part source as an alias for draft', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
-    const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership', '--part', 'source'], {
-      stub: server,
-    })
+    const result = await runWrp(['reports', 'show', '12', '--part', 'source'], { stub: server })
 
     expect(result.code).toBe(0)
-    // `source` maps to the draft part: the draft body prints, the final body does not.
-    expect(result.stdout).toContain('source draft:')
-    expect(result.stdout).toContain('2026-02-10 Nexus 上线')
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: REPORT_DETAIL.variants.map((variant) => without(variant, ['finalContent'])),
+    })
     expect(result.stdout).not.toContain('交付 Nexus')
+  })
+
+  it('combines --variant and --part filters', async () => {
+    const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
+
+    const result = await runWrp(
+      ['reports', 'show', '12', '--variant', 'personal', '--part', 'final'],
+      { stub: server },
+    )
+
+    expect(result.code).toBe(0)
+    expect(outputJson(result)).toEqual({
+      ...REPORT_DETAIL,
+      variants: [without(REPORT_DETAIL.variants[1], ['sourceDraft'])],
+    })
+    expect(result.stdout).toContain('"finalStatus":"stale"')
+    expect(result.stdout).not.toContain('调休')
   })
 
   it('rejects an unknown --part with the allowed values', async () => {
@@ -257,8 +326,10 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12', '--part', 'everything'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ --part must be one of meta, source, draft, final, both')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--part must be one of meta, source, draft, final, both')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -268,7 +339,10 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12', '--variant', 'leadership'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('✗ report #12 has no leadership variant')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('report #12 has no leadership variant')
   })
 
   it('rejects a non-numeric id (no parseInt truncation) before calling the API', async () => {
@@ -277,28 +351,34 @@ describe('wrp reports show', () => {
     const result = await runWrp(['reports', 'show', '12abc'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('a numeric report id is required')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('a numeric report id is required')
     expect(server.requests).toHaveLength(0)
   })
 
-  it('accepts the #id token printed by wrp reports list', async () => {
+  it('accepts the #id token the old list line printed', async () => {
     const server = await stub(() => ({ status: 200, body: REPORT_DETAIL }))
 
     const result = await runWrp(['reports', 'show', '#12'], { stub: server })
 
     expect(result.code).toBe(0)
     expect(server.requests[0].url).toBe('/api/reports/12')
+    expect(outputJson(result)).toEqual(REPORT_DETAIL)
   })
 })
 
 describe('wrp reports preview', () => {
-  it('prints the first 12 lines per variant with counts and creates nothing', async () => {
+  it('prints the preview body verbatim with complete drafts and creates nothing', async () => {
     const longDraft = Array.from({ length: 15 }, (_, index) => `- event ${index + 1}`).join('\n')
-    const server = await stub(() => ({
-      status: 200,
-      body: { variants: [{ variant: 'leadership', sourceDraft: longDraft }, { variant: 'personal', sourceDraft: '' }] },
-    }))
+    const body = {
+      variants: [
+        { variant: 'leadership', sourceDraft: longDraft },
+        { variant: 'personal', sourceDraft: '' },
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['reports', 'preview', '--start', '2026-02-09', '--end', '2026-02-15'], {
       stub: server,
@@ -314,41 +394,47 @@ describe('wrp reports preview', () => {
       weekEnd: '2026-02-15T00:00:00+08:00',
     })
 
-    expect(result.stdout).toContain('── leadership ── 15 line(s),')
-    expect(result.stdout).toContain('- event 12')
-    expect(result.stdout).not.toContain('- event 13')
-    expect(result.stdout).toContain('... 3 more line(s) — rerun with --full')
-    expect(result.stdout).toContain('── personal ── 0 line(s), 0 chars (EMPTY)')
-  })
-
-  it('prints everything under --full', async () => {
-    const longDraft = Array.from({ length: 15 }, (_, index) => `- event ${index + 1}`).join('\n')
-    const server = await stub(() => ({ status: 200, body: { variants: [{ variant: 'leadership', sourceDraft: longDraft }] } }))
-
-    const result = await runWrp(
-      ['reports', 'preview', '--start', '2026-02-09', '--end', '2026-02-15', '--full'],
-      { stub: server },
-    )
-
-    expect(result.code).toBe(0)
+    // Law 2: the whole body, one line; the 12-line head truncation is dead, so
+    // even a long draft arrives complete and `--full` has nothing left to add.
+    expectOneJsonLine(result)
+    expect(outputJson(result)).toEqual(body)
     expect(result.stdout).toContain('- event 15')
     expect(result.stdout).not.toContain('more line(s)')
+    expect(result.stdout).not.toContain('--full')
   })
 
-  it('filters to one variant and requires both dates', async () => {
-    const server = await stub(() => ({ status: 200, body: { variants: REPORT_DETAIL.variants } }))
+  it('filters the variants array under --variant and requires both dates', async () => {
+    const body = { variants: REPORT_DETAIL.variants }
+    const server = await stub(() => ({ status: 200, body }))
 
     const filtered = await runWrp(
       ['reports', 'preview', '--start', '2026-02-09', '--end', '2026-02-15', '--variant', 'personal'],
       { stub: server },
     )
     expect(filtered.code).toBe(0)
-    expect(filtered.stdout).toContain('── personal ──')
-    expect(filtered.stdout).not.toContain('── leadership ──')
+    expectOneJsonLine(filtered)
+    expect(outputJson(filtered)).toEqual({ variants: [REPORT_DETAIL.variants[1]] })
 
     const missing = await runWrp(['reports', 'preview', '--start', '2026-02-09'], { stub: server })
     expect(missing.code).not.toBe(0)
-    expect(missing.stderr).toContain('✗ missing period end (--end)')
+    expect(errorEnvelope(missing).error.message).toContain('missing period end (--end)')
+  })
+
+  it('rejects the retired --full flag as unknown, without calling the API', async () => {
+    const server = await stub()
+
+    const result = await runWrp(
+      ['reports', 'preview', '--start', '2026-02-09', '--end', '2026-02-15', '--full'],
+      { stub: server },
+    )
+
+    expect(result.code).not.toBe(0)
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toBe('unknown flag: --full')
+    expect(error.fix).toBe('run wrp reports --help to see the flags this command takes')
+    expect(server.requests).toHaveLength(0)
   })
 })
 
@@ -419,8 +505,10 @@ describe('wrp reports create', () => {
     })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ missing report title (--title)')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('missing report title (--title)')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -485,7 +573,7 @@ describe('wrp reports save-final', () => {
     expect(result.stdout.trim()).toBe('✓ final saved: #31 (leadership) — 18 chars, status current')
   })
 
-  it('turns revision drift into one loud ✗ line carrying the API 409 code', async () => {
+  it('turns revision drift into one loud envelope carrying the API 409 code', async () => {
     const server = await stub(() => ({
       status: 409,
       body: {
@@ -500,10 +588,12 @@ describe('wrp reports save-final', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ SOURCE_REVISION_CONFLICT: The source draft has changed.')
-    expect(result.stderr).toContain('→ re-read with wrp reports show 31 --part meta')
     expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('SOURCE_REVISION_CONFLICT')
+    expect(error.message).toContain('The source draft has changed.')
+    expect(error.fix).toContain('re-read with wrp reports show 31 --part meta')
   })
 
   it('requires exactly one of --content/--file and an integer revision', async () => {
@@ -511,21 +601,21 @@ describe('wrp reports save-final', () => {
 
     const neither = await runWrp(['reports', 'save-final', '31', '--variant', 'leadership'], { stub: server })
     expect(neither.code).not.toBe(0)
-    expect(neither.stderr).toContain('✗ provide exactly one of --content or --file')
+    expect(errorEnvelope(neither).error.message).toContain('provide exactly one of --content or --file')
 
     const badRevision = await runWrp(
       ['reports', 'save-final', '31', '--variant', 'leadership', '--content', 'x', '--source-revision', 'abc'],
       { stub: server },
     )
     expect(badRevision.code).not.toBe(0)
-    expect(badRevision.stderr).toContain('✗ --source-revision must be an integer')
+    expect(errorEnvelope(badRevision).error.message).toContain('--source-revision must be an integer')
 
     const badVariant = await runWrp(
       ['reports', 'save-final', '31', '--variant', 'boss', '--content', 'x'],
       { stub: server },
     )
     expect(badVariant.code).not.toBe(0)
-    expect(badVariant.stderr).toContain('✗ --variant must be leadership or personal')
+    expect(errorEnvelope(badVariant).error.message).toContain('--variant must be leadership or personal')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -577,10 +667,12 @@ describe('wrp reports delete', () => {
     const result = await runWrp(['reports', 'delete', '31', '--confirm'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('✗ AUDIT_RECORD_REQUIRED: This report contains generation audit records')
-    expect(result.stderr).toContain('→ keep this report')
     expect(result.stdout).not.toContain('✓')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('AUDIT_RECORD_REQUIRED')
+    expect(error.message).toContain('This report contains generation audit records')
+    expect(error.fix).toContain('keep this report')
   })
 
   it('deletes with --confirm and prints the feedback line', async () => {

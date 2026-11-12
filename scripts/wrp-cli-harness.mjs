@@ -156,8 +156,3 @@ async function buildEnv({ stub, env, home }) {
   }
   return childEnv
 }
-
-/** The `✗ …` lines a run printed, in order. */
-export function errorLines(stderr) {
-  return stderr.split('\n').filter((line) => line.startsWith('✗ '))
-}

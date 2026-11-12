@@ -9,7 +9,13 @@
 // shape and output laws.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import { runWrp, startStubServer, errorLines } from './wrp-cli-harness.mjs'
+import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
+
+/** Decode the one JSON error envelope a failing run printed on stderr. */
+function errorEnvelope(result) {
+  const lines = result.stderr.trimEnd().split('\n')
+  return JSON.parse(lines.at(-1))
+}
 
 // The plans wire now carries RFC3339 instants in the caller's own offset. These
 // helpers spell the system-zone form the client must emit under TZ=Asia/Shanghai.
@@ -55,30 +61,28 @@ function chainComment(overrides) {
 }
 
 describe('wrp plans comments list', () => {
-  it('lists the chain with id/item/time/author/period/content and a footer', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        commentCount: 2,
-        comments: [
-          chainComment(),
-          chainComment({
-            id: 8,
-            planItemId: 12,
-            content: 'Successor follow-up',
-            author: null,
-            createdAt: '2026-10-20T09:00:00.000Z',
-            sourcePeriod: {
-              scope: 'week',
-              periodStart: '2026-10-19',
-              periodEnd: '2026-10-25',
-              monthKey: null,
-              label: 'Week 2026-10-19 - 2026-10-25',
-            },
-          }),
-        ],
-      },
-    }))
+  it('prints the aggregated chain body verbatim as one compact JSON line', async () => {
+    const body = {
+      commentCount: 2,
+      comments: [
+        chainComment(),
+        chainComment({
+          id: 8,
+          planItemId: 12,
+          content: 'Successor follow-up',
+          author: null,
+          createdAt: '2026-10-20T09:00:00.000Z',
+          sourcePeriod: {
+            scope: 'week',
+            periodStart: '2026-10-19',
+            periodEnd: '2026-10-25',
+            monthKey: null,
+            label: 'Week 2026-10-19 - 2026-10-25',
+          },
+        }),
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], {
       stub: server,
@@ -86,13 +90,9 @@ describe('wrp plans comments list', () => {
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13T09:00:00+00:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
-    )
-    expect(result.stdout).toContain(
-      '#8 [%12] [2026-10-20T09:00:00+00:00] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up',
-    )
-    expect(result.stdout).toContain('— 2 comment(s)')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe('/api/plan-items/12/comments')
@@ -100,11 +100,9 @@ describe('wrp plans comments list', () => {
     expect(server.requests[0].headers['x-weekly-reporter-agent']).toMatch(/^weekly-reporter\//)
   })
 
-  it('renders comment times in the system zone, without the old UTC suffix', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: { commentCount: 1, comments: [chainComment()] },
-    }))
+  it('leaves API timestamps and period labels unformatted, whatever TZ says', async () => {
+    const body = { commentCount: 1, comments: [chainComment()] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], {
       stub: server,
@@ -112,30 +110,34 @@ describe('wrp plans comments list', () => {
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#7 [%9] [2026-10-13T17:00:00+08:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker',
-    )
-    expect(result.stdout).not.toContain(' UTC]')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('2026-10-13T17:00:00+08:00')
+    expect(result.stdout).not.toContain('comment(s)')
   })
 
-  it('prints an explicit empty state', async () => {
-    const server = await stub(() => ({ status: 200, body: { commentCount: 0, comments: [] } }))
+  it('prints the empty comment body verbatim, with no prose', async () => {
+    const body = { commentCount: 0, comments: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'comments', 'list', '12'], { stub: server })
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe('No comments on plan item %12.')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No comments')
   })
 
-  it('reports a missing plan item as a ✗ line and exits non-zero', async () => {
+  it('reports a missing plan item as an envelope and exits non-zero', async () => {
     const server = await stub(() => ({ status: 404, body: { error: 'Plan item not found' } }))
 
     const result = await runWrp(['plans', 'comments', 'list', '999'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Plan item not found')
-    expect(result.stderr).toContain('→')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Plan item not found')
+    expect(error.fix).toBeTruthy()
   })
 
   it('rejects a missing item id before calling the API', async () => {
@@ -143,8 +145,9 @@ describe('wrp plans comments list', () => {
     const result = await runWrp(['plans', 'comments', 'list'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('item id')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('item id')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -186,8 +189,9 @@ describe('wrp plans comments add', () => {
     const result = await runWrp(['plans', 'comments', 'add', '12'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('--text')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--text')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -196,8 +200,9 @@ describe('wrp plans comments add', () => {
     const result = await runWrp(['plans', 'comments', 'add', '12', '--text', '   '], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('--text')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('--text')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -207,8 +212,9 @@ describe('wrp plans comments add', () => {
     const result = await runWrp(['plans', 'comments', 'add', '999', '--text', 'note'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Plan item not found')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Plan item not found')
   })
 })
 
@@ -231,8 +237,9 @@ describe('wrp plans comments delete', () => {
     const result = await runWrp(['plans', 'comments', 'delete', '12', '7'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Comment not found')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Comment not found')
   })
 
   it('rejects a missing comment id before calling the API', async () => {
@@ -240,8 +247,9 @@ describe('wrp plans comments delete', () => {
     const result = await runWrp(['plans', 'comments', 'delete', '12'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('comment id')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('comment id')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -272,18 +280,16 @@ function planItem(overrides) {
 const WEEK_PLAN = { id: 3, scope: 'week', periodStart: '2026-10-12', periodEnd: '2026-10-18', monthKey: null }
 
 describe('wrp plans list', () => {
-  it('prints the plan header and items with every marker, even when false', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        plan: WEEK_PLAN,
-        items: [
-          planItem({ id: 5, text: 'High and flagged', priority: 'high', isImportant: true }),
-          planItem({ id: 6, text: 'Normal unflagged', priority: 'normal' }),
-          planItem({ id: 7, text: 'Deferred follow-up', priority: 'low', parentItemId: 9, deferredFromItemId: 2 }),
-        ],
-      },
-    }))
+  it('prints the plan body verbatim as one compact JSON line', async () => {
+    const body = {
+      plan: WEEK_PLAN,
+      items: [
+        planItem({ id: 5, text: 'High and flagged', priority: 'high', isImportant: true }),
+        planItem({ id: 6, text: 'Normal unflagged', priority: 'normal' }),
+        planItem({ id: 7, text: 'Deferred follow-up', priority: 'low', parentItemId: 9, deferredFromItemId: 2 }),
+      ],
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
@@ -291,28 +297,17 @@ describe('wrp plans list', () => {
     })
 
     expect(result.code).toBe(0)
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stderr).toBe('')
     expect(server.requests).toHaveLength(1)
     expect(server.requests[0].method).toBe('GET')
     expect(server.requests[0].url).toBe(plansUrl({ scope: 'week', date: wireDate('2026-10-15') }))
-
-    expect(result.stdout).toContain('plan 3 [week] [2026-10-12 → 2026-10-18]')
-    // Order is the API's (priority group, then position); the client prints it.
-    expect(result.stdout).toContain(
-      '%5 [planned] [work] [priority=high] [important=true] [urgent=false] High and flagged',
-    )
-    expect(result.stdout).toContain(
-      '%6 [planned] [work] [priority=normal] [important=false] [urgent=false] Normal unflagged',
-    )
-    expect(result.stdout).toContain(
-      '%7 [planned] [work] [priority=low] [important=false] [urgent=false] [parent=%9] [deferred-from=%2] Deferred follow-up',
-    )
-    expect(result.stdout.indexOf('%5')).toBeLessThan(result.stdout.indexOf('%6'))
-    expect(result.stdout.indexOf('%6')).toBeLessThan(result.stdout.indexOf('%7'))
-    expect(result.stdout).toContain('— 3 item(s)')
   })
 
   it('sends the week pair when week-start and week-end are given', async () => {
-    const server = await stub(() => ({ status: 200, body: { plan: WEEK_PLAN, items: [] } }))
+    const body = { plan: WEEK_PLAN, items: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(
       ['plans', 'list', '--scope', 'week', '--week-start', '2026-10-12', '--week-end', '2026-10-18'],
@@ -325,7 +320,8 @@ describe('wrp plans list', () => {
       weekStart: wireDate('2026-10-12'),
       weekEnd: wireDate('2026-10-18'),
     }))
-    expect(result.stdout).toContain('No items in this plan.')
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No items')
   })
 
   it('sends the month key or a date for month scope', async () => {
@@ -353,15 +349,18 @@ describe('wrp plans list', () => {
     )
   })
 
-  it('prints an explicit empty state when no plan exists', async () => {
-    const server = await stub(() => ({ status: 200, body: { plan: null, items: [] } }))
+  it('prints the null-plan body verbatim, with no prose', async () => {
+    const body = { plan: null, items: [] }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-10-15'], {
       stub: server,
     })
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe('No plan found for this period.')
+    expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(result.stdout).not.toContain('No plan found')
   })
 
   it('rejects missing or incomplete period flags before calling the API', async () => {
@@ -374,15 +373,15 @@ describe('wrp plans list', () => {
     })
 
     expect(noScope.code).not.toBe(0)
-    expect(noScope.stderr).toContain('scope')
+    expect(errorEnvelope(noScope).error.message).toContain('scope')
     expect(noPeriod.code).not.toBe(0)
-    expect(noPeriod.stderr).toContain('--date')
+    expect(errorEnvelope(noPeriod).error.message).toContain('--date')
     expect(badScope.code).not.toBe(0)
-    expect(badScope.stderr).toContain("'week' or 'month'")
+    expect(errorEnvelope(badScope).error.message).toContain("'week' or 'month'")
     expect(server.requests).toHaveLength(0)
   })
 
-  it('surfaces an API 400 as one ✗ line', async () => {
+  it('surfaces an API 400 as one envelope', async () => {
     const server = await stub(() => ({
       status: 400,
       body: { error: 'Invalid date format. Use an RFC3339 timestamp with offset, e.g. 2026-11-03T00:00:00+08:00' },
@@ -394,8 +393,11 @@ describe('wrp plans list', () => {
     })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Invalid date format. Use an RFC3339 timestamp with offset')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('Invalid date format. Use an RFC3339 timestamp with offset')
+    expect(error.fix).toBeTruthy()
   })
 
   it('rejects an impossible calendar date before calling the API', async () => {
@@ -404,7 +406,11 @@ describe('wrp plans list', () => {
     const result = await runWrp(['plans', 'list', '--scope', 'week', '--date', '2026-13-01'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('invalid --date')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('invalid --date')
+    // This validation has no actionable next step, so the envelope omits `fix`.
+    expect(error).not.toHaveProperty('fix')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -500,15 +506,15 @@ describe('wrp plans add', () => {
     )
 
     expect(priority.code).not.toBe(0)
-    expect(priority.stderr).toContain('high, normal, low')
+    expect(errorEnvelope(priority).error.message).toContain('high, normal, low')
     expect(important.code).not.toBe(0)
-    expect(important.stderr).toContain("'true' or 'false'")
+    expect(errorEnvelope(important).error.message).toContain("'true' or 'false'")
     expect(urgent.code).not.toBe(0)
-    expect(urgent.stderr).toContain("'true' or 'false'")
+    expect(errorEnvelope(urgent).error.message).toContain("'true' or 'false'")
     expect(emptyProject.code).not.toBe(0)
-    expect(emptyProject.stderr).toContain('✗ invalid --project')
+    expect(errorEnvelope(emptyProject).error.message).toContain('invalid --project')
     expect(blankText.code).not.toBe(0)
-    expect(blankText.stderr).toContain('✗ missing item text (--text)')
+    expect(errorEnvelope(blankText).error.message).toContain('missing item text (--text)')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -523,11 +529,11 @@ describe('wrp plans add', () => {
     const noMonth = await runWrp(['plans', 'add', '--scope', 'month', '--text', 'x'], { stub: server })
 
     expect(noText.code).not.toBe(0)
-    expect(noText.stderr).toContain('--text')
+    expect(errorEnvelope(noText).error.message).toContain('--text')
     expect(noWeekEnd.code).not.toBe(0)
-    expect(noWeekEnd.stderr).toContain('--week-end')
+    expect(errorEnvelope(noWeekEnd).error.message).toContain('--week-end')
     expect(noMonth.code).not.toBe(0)
-    expect(noMonth.stderr).toContain('--month')
+    expect(errorEnvelope(noMonth).error.message).toContain('--month')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -543,9 +549,11 @@ describe('wrp plans add', () => {
     )
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain("Parent item's month does not contain the week start date")
-    expect(result.stderr).toContain('→')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error.message).toContain("Parent item's month does not contain the week start date")
+    expect(error.fix).toBeTruthy()
   })
 })
 
@@ -608,8 +616,9 @@ describe('wrp plans update', () => {
     const result = await runWrp(['plans', 'update', '12'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('at least one')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBeNull()
+    expect(error.message).toContain('at least one')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -620,9 +629,9 @@ describe('wrp plans update', () => {
     const priority = await runWrp(['plans', 'update', '12', '--priority', 'urgent'], { stub: server })
 
     expect(status.code).not.toBe(0)
-    expect(status.stderr).toContain('planned, in_progress, done, cancelled, deferred')
+    expect(errorEnvelope(status).error.message).toContain('planned, in_progress, done, cancelled, deferred')
     expect(priority.code).not.toBe(0)
-    expect(priority.stderr).toContain('high, normal, low')
+    expect(errorEnvelope(priority).error.message).toContain('high, normal, low')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -637,9 +646,11 @@ describe('wrp plans update', () => {
     const missing = await runWrp(['plans', 'update', '999', '--text', 'x'], { stub: server })
 
     expect(invalid.code).not.toBe(0)
-    expect(invalid.stderr).toContain('Invalid parent item')
+    expect(errorEnvelope(invalid).error.status).toBe(400)
+    expect(errorEnvelope(invalid).error.message).toContain('Invalid parent item')
     expect(missing.code).not.toBe(0)
-    expect(missing.stderr).toContain('Plan item not found')
+    expect(errorEnvelope(missing).error.status).toBe(404)
+    expect(errorEnvelope(missing).error.message).toContain('Plan item not found')
   })
 
   it('rejects a non-numeric item id before calling the API', async () => {
@@ -647,7 +658,7 @@ describe('wrp plans update', () => {
     const result = await runWrp(['plans', 'update', 'abc', '--text', 'x'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('item id')
+    expect(errorEnvelope(result).error.message).toContain('item id')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -656,7 +667,7 @@ describe('wrp plans update', () => {
     const result = await runWrp(['plans', 'update', '12abc', '--text', 'x'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('invalid item id')
+    expect(errorEnvelope(result).error.message).toContain('invalid item id')
     expect(server.requests).toHaveLength(0)
   })
 
@@ -695,8 +706,10 @@ describe('wrp plans defer', () => {
     const result = await runWrp(['plans', 'defer', '42'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Only planned or in_progress items can be deferred')
+    expect(result.stdout).toBe('')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(400)
+    expect(error.message).toContain('Only planned or in_progress items can be deferred')
   })
 
   it('surfaces a 404 for a missing item', async () => {
@@ -705,7 +718,9 @@ describe('wrp plans defer', () => {
     const result = await runWrp(['plans', 'defer', '999'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('Plan item not found')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Plan item not found')
   })
 
   it('rejects a missing item id before calling the API', async () => {
@@ -713,7 +728,7 @@ describe('wrp plans defer', () => {
     const result = await runWrp(['plans', 'defer'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('item id')
+    expect(errorEnvelope(result).error.message).toContain('item id')
     expect(server.requests).toHaveLength(0)
   })
 })
@@ -746,8 +761,9 @@ describe('wrp plans delete', () => {
     const result = await runWrp(['plans', 'delete', '999'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(errorLines(result.stderr)).toHaveLength(1)
-    expect(result.stderr).toContain('Plan item not found')
+    const { error } = errorEnvelope(result)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Plan item not found')
   })
 
   it('rejects a missing item id before calling the API', async () => {
@@ -755,7 +771,7 @@ describe('wrp plans delete', () => {
     const result = await runWrp(['plans', 'delete'], { stub: server })
 
     expect(result.code).not.toBe(0)
-    expect(result.stderr).toContain('item id')
+    expect(errorEnvelope(result).error.message).toContain('item id')
     expect(server.requests).toHaveLength(0)
   })
 })

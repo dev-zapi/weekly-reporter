@@ -56,20 +56,16 @@ wrp plans list --scope month --date <YYYY-MM-DD>
 
 Output:
 
-```
-plan 3 [week] [2026-10-12 → 2026-10-18]
-%5 [planned] [work] [priority=high] [important=true] [urgent=false] Ship the feature
-%6 [planned] [work] [priority=normal] [important=false] [urgent=false] [parent=%9] Review design
-%7 [planned] [work] [priority=low] [important=false] [urgent=false] [deferred-from=%2] Follow up
-— 3 item(s)
+```json
+{"plan":{"id":3,"scope":"week","periodStart":"2026-10-12","periodEnd":"2026-10-18","monthKey":null},"items":[{"id":5,"periodPlanId":3,"text":"Ship the feature","status":"planned","priority":"high","isImportant":true,"isUrgent":false,"projectScope":"work","parentItemId":null,"deferredFromItemId":null,"position":1,"createdAt":"2026-10-12T00:00:00.000Z","updatedAt":"2026-10-12T00:00:00.000Z"},{"id":6,"periodPlanId":3,"text":"Review design","status":"planned","priority":"normal","isImportant":false,"isUrgent":false,"projectScope":"work","parentItemId":9,"deferredFromItemId":null,"position":2,"createdAt":"2026-10-12T00:00:00.000Z","updatedAt":"2026-10-12T00:00:00.000Z"}]}
 ```
 
-Status, project scope, priority and **both markers are printed for every item,
-including `false`**, so the quadrant position is always visible. Parent and
-deferral links appear as extra bracketed metadata. No plan for the period prints
-`No plan found for this period.` and exits 0 — that is an empty answer, not an
-error. A plan that exists but holds no items prints the header followed by
-`No items in this plan.`
+The API response body is printed verbatim as one line of compact JSON — every
+field, with no curation. The API's ordering survives (priority group, then manual
+position), and every marker is present including `false`; parent and deferral
+links are just fields (`parentItemId`, `deferredFromItemId`). A period with no
+plan prints `{"plan":null,"items":[]}` and a plan with no items has `"items":[]`
+— both are empty answers with exit 0, not errors.
 
 ## add
 
@@ -114,8 +110,8 @@ Success: `✓ plan item updated: %<id>`.
 
 Ids are **strict digits**: pass the numeric id exactly as printed after `%`
 (plan items) or `#` (comments) — either prefix is tolerated. The retired
-script's `parseInt` tolerated suffixes such as `12abc`; wrp does not, so
-`✗ invalid item id: …` is a typo, not an id to truncate.
+script's `parseInt` tolerated suffixes such as `12abc`; wrp does not, so an
+`invalid item id` in the JSON error envelope means a typo, not an id to truncate.
 
 ## defer (顺延)
 
@@ -132,8 +128,8 @@ containment for the new week (otherwise it is dropped silently, so the deferral
 itself still succeeds).
 
 Only `planned` or `in_progress` items can be deferred; `done`, `cancelled` and
-`deferred` items are refused by the API with HTTP 400, surfaced as a `✗` line.
-Confirm with the user first: a deferral changes two items.
+`deferred` items are refused by the API with HTTP 400, carried in the JSON error
+envelope. Confirm with the user first: a deferral changes two items.
 
 Success: `✓ plan item deferred: %<newId> (from %<originalId>)`.
 
@@ -153,7 +149,8 @@ deleted item remain as stale historical references. Mention both facts when
 confirming. There is no `--confirm` gate here (matching the pre-wrp behavior);
 ask the user before running it.
 
-Success: `✓ plan item deleted: %<id>`. A missing item is a 404 `✗` line.
+Success: `✓ plan item deleted: %<id>`. A missing item is a 404 in the JSON
+error envelope.
 
 Server drift note: the retired TypeScript route answered `204 No Content`; the
 Go server answers `200 {deleted:true}`. The client accepts both, so the success
@@ -187,26 +184,23 @@ wrp plans comments list <item-id>
 ```
 
 List the item's own comments **plus its deferral-chain ancestors' comments**,
-oldest-first (the API aggregates them; `createdAt`, then id). Each line carries
-the comment id, the item it is pinned to, a system-zone time with an explicit
-offset, author, source-period label and the content:
+oldest-first (the API aggregates them; `createdAt`, then id). The response body is
+printed verbatim as one line of compact JSON:
 
-```
-#7 [%9] [2026-10-13T17:00:00+08:00] [weekly-reporter/claude-code] [Week 2026-10-12 - 2026-10-18] Original blocker
-#8 [%12] [2026-10-20T17:00:00+08:00] [user] [Week 2026-10-19 - 2026-10-25] Successor follow-up
-— 2 comment(s)
+```json
+{"commentCount":2,"comments":[{"id":7,"planItemId":9,"content":"Original blocker","author":"weekly-reporter/claude-code","createdAt":"2026-10-13T09:00:00.000Z","sourcePeriod":{"scope":"week","periodStart":"2026-10-12","periodEnd":"2026-10-18","monthKey":null,"label":"Week 2026-10-12 - 2026-10-18"}},{"id":8,"planItemId":12,"content":"Successor follow-up","author":null,"createdAt":"2026-10-20T09:00:00.000Z","sourcePeriod":{"scope":"week","periodStart":"2026-10-19","periodEnd":"2026-10-25","monthKey":null,"label":"Week 2026-10-19 - 2026-10-25"}}]}
 ```
 
-Times render in the **system time zone** as ISO 8601 with an explicit offset and
-seconds; `TZ` overrides the zone. The old ` UTC` suffix is gone. The period
-labels stay date-only (`Week 2026-10-12 - 2026-10-18`).
+Timestamps stay in the API's wire form (`createdAt`); the client does no
+system-zone formatting, so `TZ` has no effect on this verb. `author: null` means a
+browser comment; render it as `user`.
 
-The `%<itemId>` on a line is the item the comment is **pinned to**, which is not
+Each comment's `planItemId` is the item it is **pinned to**, which is not
 necessarily the item you queried — that pair is what `comments delete` needs.
-Note that here `#<id>` is the **comment** id, not a timeline tag or an event id:
+Here `id` is the **comment** id, not a timeline tag or an event id:
 `references/events.md` uses `#<id>` as the event token, so read the enclosing
-section to know which entity a `#` token names. With no comments the client
-prints `No comments on plan item %<itemId>.`
+section to know which entity a `#` token names. With no comments the body is
+`{"commentCount":0,"comments":[]}`, exit 0 — an empty answer, not an error.
 
 ### comments add
 
@@ -227,16 +221,18 @@ the id and the API-stamped authorship, so attribution is observable.
 wrp plans comments delete <item-id> <comment-id>
 ```
 
-`<item-id>` is the item the comment is **pinned to** (the `%<itemId>` on its
-list line), not the item you are viewing. Deletion is permanent and also removes
-the comment's `@id` citation index rows. Confirm with the user first.
+`<item-id>` is the item the comment is **pinned to** (the `planItemId` field
+of the comment in the JSON body), not the item you are viewing. Deletion is
+permanent and also removes the comment's `@id` citation index rows. Confirm with
+the user first.
 
 Success: `✓ comment deleted: #<commentId> on %<itemId>`.
 
 ## Error handling
 
-One `✗` line on stderr and a non-zero exit for every failure; the `→` fix hint
-names the next command. Common cases: invalid `--priority`/`--important`/
-`--urgent` (client-side, no request sent), missing period flags, a 400 for
-parent containment or a non-deferrable status, a 404 for a missing item/plan/
-comment, and 401 (provision credentials with `wrp init`).
+One JSON error envelope on stderr and a non-zero exit for every failure:
+`{"error":{"status":…,"code":…,"message":…,"fix":…}}`. The `fix` field names the
+next command. Common cases: invalid `--priority`/`--important`/`--urgent`
+(client-side, no request sent), missing period flags, a 400 for parent
+containment or a non-deferrable status, a 404 for a missing item/plan/comment,
+and 401 (provision credentials with `wrp init`).
