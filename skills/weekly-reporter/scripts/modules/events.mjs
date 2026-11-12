@@ -1,8 +1,10 @@
 // The events module (时间线事件) — the timeline's work log.
 //
-// Ported from the pre-merge timeline scripts with
-// the semantics kept verbatim (same filters, payloads, validations and API
-// calls) and only the output reformatted to the five format laws of spec #119.
+// Ported from the pre-merge timeline scripts with the semantics kept verbatim
+// (same filters, payloads, validations and API calls). `events list` is a read
+// verb: it prints the API body verbatim as one compact JSON line (spec #153)
+// plus the whitelisted `nextCursorToken`, which reassembles the body's
+// `nextCursor` into `--cursor`-ready form.
 //
 // Domain knowledge that the commands rely on (single-line content, #tag/@id/%id
 // token boundaries, dangling references, auto-collected events being
@@ -10,8 +12,8 @@
 
 import { api, json } from '../lib/api.mjs'
 import { fail, failResponse } from '../lib/errors.mjs'
-import { emptyState, feedback, listFooter, listLine } from '../lib/output.mjs'
-import { detectSystemTimeZone, formatInstant, localDateToOffsetInstant, naiveInstantWithOffset, parseStrictInstant } from '../lib/time.mjs'
+import { emitJson, feedback } from '../lib/output.mjs'
+import { detectSystemTimeZone, localDateToOffsetInstant, naiveInstantWithOffset, parseStrictInstant } from '../lib/time.mjs'
 
 const USAGE = {
   list:
@@ -22,7 +24,7 @@ const USAGE = {
   delete: 'wrp events delete <id>',
 }
 
-/** `#<id>` list token, or one ✗ line. Strict digits: no parseInt prefix games. */
+/** Event id from list output, or one JSON error envelope. Strict digits: no parseInt prefix games. */
 function parseEventId(value, usage) {
   if (value === undefined || value.trim() === '') {
     fail('missing event id', '', `usage: ${usage}`)
@@ -31,15 +33,10 @@ function parseEventId(value, usage) {
     fail(
       `invalid event id: ${value}`,
       '',
-      'pass the numeric id printed after # by wrp events list',
+      "pass the numeric id from the event's `id` field in wrp events list output",
     )
   }
   return Number(value)
-}
-
-/** ISO instant → `2026-11-09T22:02:00+08:00` in the system zone. */
-function formatEventTime(value) {
-  return formatInstant(value) ?? '?'
 }
 
 /**
@@ -89,7 +86,7 @@ function requireLocalDate(value, flag) {
   return instant
 }
 
-/** `wrp events list` — filters first, id-first lines and the count footer after. */
+/** `wrp events list` — filters, then the API body verbatim plus `nextCursorToken`. */
 export async function list({ flags }) {
   const params = new URLSearchParams()
   if (flags.date !== undefined) params.set('date', requireLocalDate(flags.date, '--date'))
@@ -99,14 +96,14 @@ export async function list({ flags }) {
   if (flags.source !== undefined) params.set('source', flags.source)
   if (flags.limit !== undefined) params.set('limit', flags.limit)
   if (flags.cursor !== undefined) {
-    // The cursor is the API's `{id, eventTime}` pair; it is printed as one
+    // The cursor is the API's `{id, eventTime}` pair; it is accepted as one
     // copy-pasteable token so `--cursor <token>` continues the walk.
     const match = /^(\d+)@(\d+)$/.exec(flags.cursor)
     if (!match) {
       fail(
         `invalid cursor: ${flags.cursor}`,
         '',
-        'the cursor looks like <id>@<epoch-millis>, as printed in the next-page hint',
+        'the cursor looks like <id>@<epoch-millis>: pass nextCursorToken from the previous response body',
       )
     }
     params.set('cursorId', match[1])
@@ -123,31 +120,17 @@ export async function list({ flags }) {
     failResponse(status, body, 'widen the filters (--date, --week-start/--week-end, --tags)')
   }
 
-  const events = body?.events ?? []
-  const hasMore = body?.hasMore ?? false
+  // Additive-key whitelist: `nextCursorToken` only reassembles the body's own
+  // `{id, eventTime}` cursor into `--cursor`-ready form, and only when both the
+  // next page and its cursor exist. Nothing else is added; the body is emitted
+  // verbatim, empty pages included.
   const nextCursor = body?.nextCursor
-
-  if (events.length === 0) {
-    emptyState('No events found — widen the filters (--date, --week-start/--week-end, --tags).')
+  const hasCursor = nextCursor?.id != null && nextCursor?.eventTime != null
+  if (body?.hasMore && hasCursor) {
+    emitJson({ ...body, nextCursorToken: `${nextCursor.id}@${nextCursor.eventTime}` })
     return
   }
-
-  for (const event of events) {
-    const metadata = [formatEventTime(event.eventTime), event.source || '?']
-    const important = event.isImportant ? '★ ' : ''
-    // The content is single-line by rule; a stray newline is shown, not split.
-    const content = String(event.content ?? '').replace(/\n/g, ' ↵ ')
-    const tags = (event.metadata?.tags ?? []).map((tag) => `#${tag}`).join(' ')
-    listLine(`#${event.id}`, metadata, `${important}${content}${tags ? ` ${tags}` : ''}`)
-  }
-
-  // events paginates with `--cursor`, so that is the flag the hint advertises.
-  listFooter(events.length, 'event', {
-    hint:
-      hasMore && nextCursor
-        ? `next page: --cursor ${nextCursor.id}@${nextCursor.eventTime}`
-        : undefined,
-  })
+  emitJson(body)
 }
 
 /** `wrp events create` — one manual entry; `#tag`/`@id`/`%id` parse server-side. */

@@ -4,8 +4,8 @@
 // stub HTTP server, so each test observes what an agent actually gets - the
 // request the client sends and the lines it prints.
 //
-// Expected lines are written out as literals (the format laws of spec #119),
-// never recomputed from the implementation.
+// Expected output is written out as literals (the verbatim-JSON contract of
+// spec #153), never recomputed from the implementation.
 
 import { describe, it, expect, afterEach } from 'vitest'
 import { runWrp, startStubServer } from './wrp-cli-harness.mjs'
@@ -128,66 +128,71 @@ describe('wrp events list', () => {
     expect(server.requests[0].url).toBe('/api/events')
   })
 
-  it('prints one id-first line per event plus the count footer', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        events: [
-          event(),
-          event({
-            id: 6992,
-            eventTime: '2026-11-09T15:30:00.000Z',
-            source: 'auto',
-            content: 'chore: cutover to the Go single binary',
-            metadata: null,
-            isImportant: true,
-          }),
-        ],
-        hasMore: false,
-      },
-    }))
+  it('prints the API body verbatim as one compact JSON line', async () => {
+    const body = {
+      events: [
+        event(),
+        event({
+          id: 6992,
+          eventTime: '2026-11-09T15:30:00.000Z',
+          source: 'auto',
+          content: 'chore: cutover to the Go single binary',
+          metadata: null,
+          isImportant: true,
+        }),
+      ],
+      hasMore: false,
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout.split('\n').filter(Boolean)).toEqual([
-      '#6991 [2026-11-09T14:02:00+00:00] [manual] fixed login timeout and added regression tests #工作 #个人',
-      '#6992 [2026-11-09T15:30:00+00:00] [auto] ★ chore: cutover to the Go single binary',
-      '— 2 event(s)',
-    ])
+    // Exact string: one line of compact JSON, no footer, no count line, no
+    // reordering, and no additive key when there is no next page.
+    expect(result.stdout).toBe(JSON.stringify(body) + '\n')
   })
 
-  it('renders event times in the system zone with an explicit offset', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: { events: [event()], hasMore: false },
-    }))
-
-    const result = await run(['events', 'list', '--date', '2026-11-09'], server, {
-      TZ: 'Asia/Shanghai',
-    })
-
-    expect(result.code).toBe(0)
-    expect(result.stdout).toContain(
-      '#6991 [2026-11-09T22:02:00+08:00] [manual] fixed login timeout and added regression tests #工作 #个人',
-    )
-  })
-
-  it('appends the cursor hint when more pages exist', async () => {
-    const server = await stub(() => ({
-      status: 200,
-      body: {
-        events: [event()],
-        hasMore: true,
-        nextCursor: { id: 6991, eventTime: Date.parse('2026-11-09T14:02:00.000Z') },
-      },
-    }))
+  it('adds nextCursorToken when hasMore and nextCursor are present', async () => {
+    const body = {
+      events: [event()],
+      hasMore: true,
+      nextCursor: { id: 6991, eventTime: Date.parse('2026-11-09T14:02:00.000Z') },
+    }
+    const server = await stub(() => ({ status: 200, body }))
 
     const result = await run(['events', 'list', '--limit', '1'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout).toContain('— 1 event(s)')
-    expect(result.stdout).toContain('next page: --cursor 6991@1794232920000')
+    expect(result.stdout).toBe(
+      JSON.stringify({ ...body, nextCursorToken: '6991@1794232920000' }) + '\n',
+    )
+  })
+
+  it('adds no nextCursorToken when hasMore has no cursor to reassemble', async () => {
+    const body = { events: [event()], hasMore: true }
+    const server = await stub(() => ({ status: 200, body }))
+
+    const result = await run(['events', 'list', '--limit', '1'], server)
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(JSON.parse(result.stdout)).not.toHaveProperty('nextCursorToken')
+  })
+
+  it('adds no nextCursorToken when there is no next page despite a cursor', async () => {
+    const body = {
+      events: [event()],
+      hasMore: false,
+      nextCursor: { id: 6991, eventTime: 1794232920000 },
+    }
+    const server = await stub(() => ({ status: 200, body }))
+
+    const result = await run(['events', 'list'], server)
+
+    expect(result.code).toBe(0)
+    expect(JSON.parse(result.stdout)).toEqual(body)
+    expect(JSON.parse(result.stdout)).not.toHaveProperty('nextCursorToken')
   })
 
   it('sends the cursor back as cursorId and cursorTime', async () => {
@@ -214,15 +219,13 @@ describe('wrp events list', () => {
     expect(server.requests).toHaveLength(0)
   })
 
-  it('prints an explicit empty state without a footer', async () => {
-    const server = await stub(() => ({ status: 200, body: { events: [], hasMore: false } }))
+  it('prints the raw body for an empty result with no prose empty-state', async () => {
+    const server = await stub(() => ({ status: 200, body: { events: [] } }))
 
     const result = await run(['events', 'list', '--date', '2026-11-09'], server)
 
     expect(result.code).toBe(0)
-    expect(result.stdout.trim()).toBe(
-      'No events found — widen the filters (--date, --week-start/--week-end, --tags).',
-    )
+    expect(result.stdout).toBe('{"events":[]}\n')
   })
 
   it('surfaces an API failure as one envelope with a fix hint', async () => {
