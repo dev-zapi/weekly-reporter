@@ -54,7 +54,9 @@ main() {
 
   sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null) || return 0
   [ -n "$sid" ] || return 0
-  case "$sid" in */*) return 0 ;; esac
+  # Strict whitelist: the sid becomes a filename under the state dir; reject
+  # anything beyond UUID-safe characters rather than just slashes.
+  case "$sid" in *[!A-Za-z0-9_-]*) return 0 ;; esac
 
   cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null) || cwd=""
   now=$(date +%s 2>/dev/null) || return 0

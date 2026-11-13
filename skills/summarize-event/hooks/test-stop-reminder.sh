@@ -318,6 +318,13 @@ printf '%s\n' '{ this is not valid json' >"$(state_path case11)"
 run_hook "$(input_for case11 "$REPO")" "$TMP/events-ok.sh" "$EVENT_OLD"
 assert_silent_pass "11. corrupt state file passes"
 
+# 11b. A session id outside the UUID-safe whitelist is rejected outright
+# (traversal, spaces, metacharacters) — no state file, no reminder.
+input=$(jq -cn --arg sid 'a b;$(id)' --arg cwd "$REPO" \
+  '{session_id:$sid,cwd:$cwd,stop_hook_active:false,background_tasks:[],session_crons:[]}')
+run_hook "$input" "$TMP/events-ok.sh" "$EVENT_OLD"
+assert_silent_pass "11b. metacharacter session id passes silently"
+
 # ---------------------------------------------------------------------------
 # 12. remind-state + SessionEnd cleanup behaviors
 # ---------------------------------------------------------------------------
@@ -436,6 +443,24 @@ if [ "$ua12h" = "0" ]; then
 else
   fail "12h. remind-state answer resets unanswered" "unanswered=$(printf %q "$ua12h")"
 fi
+
+# 12i. Path traversal and metacharacter sids are refused by remind-state
+# (whitelist) and by the SessionEnd cleanup (which must not delete anything).
+for bad_sid in '../evil' 'a b' 'x;y'; do
+  if WRP_REMIND_STATE_DIR="$STATE_DIR" bash "$REMIND" "$bad_sid" now >/dev/null 2>&1; then
+    fail "12i. remind-state rejects unsafe sid '$bad_sid'" "exit was 0"
+  else
+    pass "12i. remind-state rejects unsafe sid '$bad_sid'"
+  fi
+done
+printf '%s\n' '{}' >"$(state_path 'x*y')"
+WRP_REMIND_STATE_DIR="$STATE_DIR" bash "$CLEANUP" <<<"$(jq -cn '{session_id:"x*y"}')" >/dev/null 2>&1
+if [ -f "$(state_path 'x*y')" ]; then
+  pass "12j. cleanup ignores unsafe sid and deletes nothing"
+else
+  fail "12j. cleanup ignores unsafe sid and deletes nothing"
+fi
+rm -f "$(state_path 'x*y')"
 
 # ---------------------------------------------------------------------------
 # Summary

@@ -10,7 +10,9 @@ main() {
   [ -n "$input" ] || return 0
   sid=$(printf '%s' "$input" | jq -r '(.session_id // empty) | tostring' 2>/dev/null) || return 0
   [ -n "$sid" ] || return 0
-  case "$sid" in */*) return 0 ;; esac
+  # Strict whitelist: the sid becomes a filename under the state dir; reject
+  # anything beyond UUID-safe characters rather than just slashes.
+  case "$sid" in *[!A-Za-z0-9_-]*) return 0 ;; esac
   state_dir=${WRP_REMIND_STATE_DIR:-"$HOME/.cache/wrp-remind"}
   rm -f "$state_dir/$sid.json" 2>/dev/null
   return 0

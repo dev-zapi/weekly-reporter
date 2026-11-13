@@ -47,7 +47,9 @@ ensure_state() {
 main() {
   [ $# -eq 2 ] || usage
   local sid=$1 action=$2
-  case "$sid" in ''|*/*) usage ;; esac
+  # Strict whitelist: the sid becomes a filename under the state dir; reject
+  # anything beyond UUID-safe characters rather than just slashes.
+  case "$sid" in ''|*[!A-Za-z0-9_-]*) usage ;; esac
   case "$action" in now|notyet|skip|end|show) ;; *) usage ;; esac
 
   state_file="$STATE_DIR/$sid.json"
