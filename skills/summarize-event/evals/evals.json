@@ -5,50 +5,287 @@
       "id": 0,
       "eval_name": "week-plan-clear-match",
       "prompt": "帮我把刚做完的这段工作总结记录到时间线：在 retail-platform 项目里完成了支付渠道沙箱环境的对接，联调和回归测试都过了。",
-      "expected_output": "Queries the current week plan (and month plan) via `wrp plans list` before composing, matches the work to the open '对接支付渠道沙箱环境' item, previews, and creates one manual event whose content carries a whitespace-bounded %id of that item. Distractor and done items are not referenced.",
+      "expected_output": "Queries the covering week and month plans, resolves the open sandbox-integration item from returned data, and previews one single-line event with a whitespace-bounded %id. It waits for preview approval before creating anything. A matching week item takes precedence over its month parent.",
       "files": [],
       "assertions": [
-        "event_created: exactly one new manual event exists on the server",
-        "plan_queried_first: a `wrp plans list` (or GET /api/plans) ran before the event create",
-        "correct_item_referenced: the created event contains a whitespace-bounded %1 reference to the sandbox-integration item",
-        "distractors_untouched: the created event contains no %2 or %3 reference"
+        "preview_before_write: no events create runs before the user approves the draft",
+        "plans_queried: the segment's week and month plans are queried before the preview",
+        "correct_link: the preview contains the returned sandbox-integration item's %id with whitespace boundaries",
+        "specific_link: unrelated/done items and the matching week item's month parent are not linked"
       ]
     },
     {
       "id": 1,
       "eval_name": "user-named-month-item",
       "prompt": "总结记录一下：月度计划里“上线灰度发布能力”这条总算做完了，retail-platform 的灰度发布今天全量放开了。帮我记一条。",
-      "expected_output": "The user names a month-plan item by text, not id. The run queries the month plan (no week plan exists), resolves the named item to its %id from the list output only, and creates one manual event carrying a whitespace-bounded %id of the named item.",
+      "expected_output": "Resolves the user-named month item from plans list output and includes its %id in the preview, even when automatic matching would otherwise exclude it. Waits for approval rather than assuming '帮我记一条' is direct-send.",
       "files": [],
       "assertions": [
-        "event_created: exactly one new manual event exists on the server",
-        "month_plan_queried: the month plan list (`wrp plans list --scope month` or GET /api/plans?scope=month) ran before the create",
-        "named_item_referenced: the created event contains a whitespace-bounded %1 reference to the 灰度发布 item"
+        "month_plan_queried: a month plan lookup precedes the preview",
+        "named_item_referenced: the preview uses the returned id of the named month item",
+        "user_choice_wins: the named item is retained rather than replaced by an automatically chosen item",
+        "preview_before_write: no event is created without preview approval"
       ]
     },
     {
       "id": 2,
       "eval_name": "no-plan-skip",
-      "prompt": "帮我把这段工作总结一下记到时间线：把本地开发环境的依赖脚本重写了，从 yarn 切到 pnpm，构建时间快了一半。",
-      "expected_output": "No plans exist for the period. The plan lookup quietly finds nothing and the flow is unaffected: one manual event is created, with no %id token in it and no plan-related blocker or error derailing the run.",
+      "prompt": "帮我把这段工作总结一下记到时间线：weekly-reporter 的本地开发依赖脚本从 yarn 切到 pnpm，构建时间快了一半。",
+      "expected_output": "With no covering plans, previews a project-named event without %id and without a plan-related question. The missing plan does not block drafting; creation still waits for approval.",
       "files": [],
       "assertions": [
-        "event_created: exactly one new manual event exists on the server",
-        "no_plan_reference: the created event contains no %<digits> token",
-        "no_plan_derail: result.md shows no unresolved plan-related blocker (the summary completed normally)"
+        "preview_ready: a single-line draft names weekly-reporter and the observed build-time improvement",
+        "no_plan_reference: no %<digits> token is invented",
+        "no_plan_blocker: no plan needs to be created or selected to proceed",
+        "preview_before_write: no event is created before approval"
       ]
     },
     {
       "id": 3,
       "eval_name": "ambiguous-ask",
-      "prompt": "总结一下记录：支付渠道那边收尾了，联调通过，回归也全绿。",
-      "expected_output": "The week plan holds two competing open items (联调 and 回归测试) that both plausibly match. The run surfaces the ambiguity — states the question it would ask the user with both candidates listed — rather than silently guessing; whatever it proceeds with, any %id in the created event is one of the two candidates, whitespace-bounded.",
+      "prompt": "总结一下记录：retail-platform 的支付渠道那边收尾了，联调通过，回归也全绿。",
+      "expected_output": "When two returned open plan items plausibly compete, shows both ids/texts with the draft and asks which, if any, to associate. Combines the plan and tag choices with preview approval and does not create yet.",
       "files": [],
       "assertions": [
-        "event_created: exactly one new manual event exists on the server",
-        "ambiguity_surfaced: result.md presents both competing plan items (ids or texts) as candidates for the user to choose",
-        "no_wrong_guess: any %id in the created event is %1 or %2, whitespace-bounded",
-        "plan_queried_first: a plan list ran before the event create"
+        "ambiguity_surfaced: both plausible returned plan items appear as candidates",
+        "no_silent_guess: no unresolved competing plan id is presented as a settled association",
+        "combined_preview: the draft, tag recommendation and plan question are presented together",
+        "preview_before_write: no event is created before approval"
+      ]
+    },
+    {
+      "id": 4,
+      "eval_name": "first-outcome-offer-only",
+      "prompt": "会话上下文：用户让你修复 retail-platform 支付回调重复扣款；实现和回归验证已经完成。这是本会话首个完整成果，无记录、无提议。请按技能决定下一步并给出要发给用户的回复。",
+      "expected_output": "Reports completion and offers once with log now / not yet / skip session / remind at end. This is only an offer: no recording reference, wrp lookup, collection, or create.",
+      "files": [],
+      "assertions": [
+        "first_outcome_offer: exactly one work-recording offer is present",
+        "four_choices: the offer exposes the four reminder/recording choices in the user's language",
+        "no_recording_work: no recording reference is loaded and no Git collection or wrp command is run"
+      ]
+    },
+    {
+      "id": 5,
+      "eval_name": "unfinished-work-not-an-outcome",
+      "prompt": "会话上下文：用户要你交付支付回调幂等修复和回归验证。你只完成第一轮实现，做了两个提交，单测已过，但约定的集成回归还没做。当前没有独立完成的其他成果。继续处理任务。",
+      "expected_output": "Continues the requested integration regression work. Commits and passing unit tests do not turn this unfinished task into multiple completed outcomes or justify an offer.",
+      "files": [],
+      "assertions": [
+        "continues_task: the next action advances the remaining regression work",
+        "no_premature_offer: no recording offer is made for the unfinished task",
+        "no_recording_tools: no wrp command or recording reference is used"
+      ]
+    },
+    {
+      "id": 6,
+      "eval_name": "not-yet-without-new-outcome",
+      "prompt": "会话上下文：先前已有待记录成果，你提议记录，用户选了“稍后”。之后没有新增完成的任务，只继续做了两次测试和两个提交。现在汇报测试结果；用户没有收尾或换项目。",
+      "expected_output": "Reports the result without another offer. Tests and commits are evidence, not new completed outcomes, so the previous offer is not repeated.",
+      "files": [],
+      "assertions": [
+        "no_repeat_offer: the result contains no new recording offer",
+        "no_recording_tools: no recording reference, collection or wrp call is used"
+      ]
+    },
+    {
+      "id": 7,
+      "eval_name": "one-new-outcome-reoffer",
+      "prompt": "会话上下文：你在首个成果后提议记录，用户说“稍后”。之后只新增一件完整完成且未记录的事：retail-platform 支付回调幂等修复与回归验证通过。现在处于该成果的完成边界。按技能决定下一步。",
+      "expected_output": "Offers once again at this boundary using the four choices, without starting collection or record creation.",
+      "files": [],
+      "assertions": [
+        "cadence_reached: a single renewed offer is made after one new completed outcome",
+        "no_implicit_write: no recording flow or external command runs before acceptance"
+      ]
+    },
+    {
+      "id": 8,
+      "eval_name": "session-mute-beats-wrap-up",
+      "prompt": "会话上下文：上次提议时用户选了“本会话跳过”。之后又完成四个未记录成果。用户现在说：“今天先这样，收工。”",
+      "expected_output": "Acknowledges wrap-up without another offer, reminder, collection, or event. The mute overrides both completed-outcome and wrap-up triggers.",
+      "files": [],
+      "assertions": [
+        "mute_respected: no recording offer or session-end reminder is shown",
+        "no_recording_tools: no recording reference, collection or wrp call runs"
+      ]
+    },
+    {
+      "id": 9,
+      "eval_name": "end-only-suppresses-interim-offers",
+      "prompt": "会话上下文：用户选择了“结束时提醒”。之后又完整完成一个任务。你现在汇报该任务的完成结果，用户没有收尾，也没有换项目。",
+      "expected_output": "Reports the task result without an offer. A normal final answer and a new completed outcome do not override end-only mode.",
+      "files": [],
+      "assertions": [
+        "end_only_respected: no interim recording offer is made",
+        "ordinary_final_not_end: the response boundary is not treated as session wrap-up",
+        "no_recording_tools: no recording reference or external command runs"
+      ]
+    },
+    {
+      "id": 10,
+      "eval_name": "end-only-wrap-up-reminder",
+      "prompt": "会话上下文：用户选了“结束时提醒”；有未记录成果，从未选择“本会话跳过”。用户现在说：“今天先这样，收工。”",
+      "expected_output": "Makes one session-end offer with the four choices. Wrap-up triggers a reminder, not collection or record creation.",
+      "files": [],
+      "assertions": [
+        "closing_offer: a single recording reminder appears",
+        "four_choices: the reminder includes now, later, skip, and end choices",
+        "no_recording_tools: no recording reference, collection or wrp command runs before acceptance"
+      ]
+    },
+    {
+      "id": 11,
+      "eval_name": "unanswered-offer-is-not-consent",
+      "prompt": "会话上下文：你刚提议记录一个已完成成果，用户没有回答四个选项，此后也没有新成果。用户现在只说：“明白了。”",
+      "expected_output": "Does not repeat the same offer and does not interpret the acknowledgment as recording consent.",
+      "files": [],
+      "assertions": [
+        "no_duplicate_offer: no second offer is made for the same pending work",
+        "no_consent_inference: no collection, lookup or create runs"
+      ]
+    },
+    {
+      "id": 12,
+      "eval_name": "already-recorded-no-first-offer",
+      "prompt": "会话上下文：本会话首个完整成果已经按用户显式要求成功记录为事件 #805，尚未发过自动提议。此后没有任何新成果。请决定下一步是否需要提议记录。",
+      "expected_output": "Makes no automatic offer because no completed work remains unrecorded. The first-outcome trigger does not re-log an already recorded result.",
+      "files": [],
+      "assertions": [
+        "empty_pending_guard: no automatic recording offer is made",
+        "no_duplicate: no new event is created or prepared"
+      ]
+    },
+    {
+      "id": 13,
+      "eval_name": "direct-send-skips-decisions",
+      "prompt": "直接记录刚才 retail-platform 的支付联调进展，不用确认，不加标签。已有会话事实：支付沙箱联调与回归验证均通过。隔离评测返回：Git 根为 /tmp/retail-platform；source lookup 为 {\"id\":12,\"status\":\"disabled\",\"enabled\":false}；周计划 items 为 [{\"id\":51,\"text\":\"retail-platform 支付渠道联调\",\"status\":\"in_progress\"},{\"id\":52,\"text\":\"retail-platform 支付渠道回归\",\"status\":\"planned\"}]，没有明确胜出的条目；月计划为空；相关事件为空。create 如被调用则返回 ✓ event created: #804。所有工具使用模拟，不接触真实服务。",
+      "expected_output": "Skips source enabling/collection decisions, ambiguous plan links, tag lookup and preview stops. Creates exactly one plain-text event with no tags or guessed plan links, then reports #804.",
+      "files": [],
+      "assertions": [
+        "single_create: exactly one events create is invoked and its returned id is reported",
+        "source_unchanged: no source create, enable or sync --enable is invoked",
+        "explicit_no_tags: no tags list runs and no #tag is appended",
+        "no_guess: no ambiguous %51 or %52 link is included",
+        "no_interactive_stop: no preview approval or candidate-selection question blocks this run"
+      ]
+    },
+    {
+      "id": 14,
+      "eval_name": "end-only-project-switch-is-not-wrap-up",
+      "prompt": "会话上下文：用户选了“结束时提醒”，还没记录旧成果。用户现在说：“继续，换到另一个项目做下一项工作。”没有表示结束会话。",
+      "expected_output": "Continues into the next project without a recording offer. End-only mode suppresses the normal project-switch trigger until an actual wrap-up signal.",
+      "files": [],
+      "assertions": [
+        "mode_precedes_trigger: no project-switch recording offer is made in end-only mode",
+        "no_recording_tools: no recording reference, collection or wrp call runs"
+      ]
+    },
+    {
+      "id": 15,
+      "eval_name": "explicit-request-during-mute",
+      "prompt": "会话上下文：用户先选了“本会话跳过”。已经完成的事实是 weekly-reporter 的重复鉴权读取逻辑合并进 wrp 客户端，各 CLI 模块现在共用同一凭据读取入口。用户现在又明确说：“还是把刚才的脚本优化总结记一条，先让我看看内容。”本轮用模拟空计划和标签数据，工作目录不在 Git 仓库。",
+      "expected_output": "Handles this explicit request despite session mute, prepares a preview, and waits for approval. It does not treat the request as direct-send or globally re-enable automatic offers.",
+      "files": [],
+      "assertions": [
+        "explicit_request_works: a project-named preview is prepared",
+        "approval_required: no create runs yet",
+        "mute_scope_preserved: the one explicit request does not re-enable future automatic offers"
+      ]
+    },
+    {
+      "id": 16,
+      "eval_name": "uncertain-create-reconciles",
+      "prompt": "会话上下文：用户已批准预览，wrp events create 已发出，但连接中断，没有收到成功反馈。隔离模拟 events list 返回一条与本次内容、时间一致的新手动事件 id=806。请继续处理这一轮记录，不接触真实服务。",
+      "expected_output": "Looks up the submitted record before any retry, verifies #806, reports that id and clears only the covered outcomes. It does not create a duplicate.",
+      "files": [],
+      "assertions": [
+        "reconcile_before_retry: an events lookup precedes any decision to resend",
+        "no_duplicate_create: no second create is issued after finding the matching event",
+        "verified_success: success is tied to the returned id 806"
+      ]
+    },
+    {
+      "id": 17,
+      "eval_name": "direct-send-with-missing-facts",
+      "prompt": "直接把支付联调进展记录下来，不用确认。当前对话没有说明具体改动、决定或结果。",
+      "expected_output": "Asks one focused question for a concrete action/result and does not collect, query plans/tags, or create an event until there is enough evidence to write a faithful summary. Direct-send does not authorize inventing facts.",
+      "files": [],
+      "assertions": [
+        "factual_clarification: asks only for the missing concrete outcome",
+        "no_invention: no specific completion, feature, or test result is fabricated",
+        "no_write: no Git collection, API lookup, or event create runs before clarification"
+      ]
+    },
+    {
+      "id": 18,
+      "eval_name": "end-reminder-selected-at-wrap-up",
+      "prompt": "会话上下文：用户说“今天先这样”，你在收尾处发了记录提议；用户再次选择“结束时提醒”。仍有未记录工作，请处理这个回答。",
+      "expected_output": "Acknowledges that this is already the wrap-up reminder and ends the offer without writing, immediately asking again, or creating a reminder in another session.",
+      "files": [],
+      "assertions": [
+        "no_loop: the four-choice question is not asked again at this boundary",
+        "no_record: no collection, API query, or create is authorized by this choice",
+        "session_scope: no cross-session reminder or persisted task is created"
+      ]
+    },
+    {
+      "id": 19,
+      "eval_name": "normal-mode-project-switch-offer",
+      "prompt": "会话上下文：上个提议后用户选“稍后”，此后没有新的完整成果，旧成果仍未记录。用户现在明确要切换到另一个无关项目继续工作，尚未在这个项目边界提醒过，没有选择会末提醒或跳过。",
+      "expected_output": "Offers once before switching projects while deferred work remains unrecorded. It keeps the offer separate from recording authorization and continues independent work.",
+      "files": [],
+      "assertions": [
+        "project_boundary_offer: one offer is made before the unrelated project switch",
+        "no_implicit_write: no recording reference, collection or wrp call runs before acceptance"
+      ]
+    },
+    {
+      "id": 20,
+      "eval_name": "tag-choice-is-not-preview-approval",
+      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿、推荐标签 #工作 #支付、周计划关联 %41，并提供 A 无标签 / B 推荐标签 / C 自填标签。用户只回复“B”。相关 lookups 已完成。",
+      "expected_output": "Applies B to the draft but does not create yet; asks for explicit approval of the updated line.",
+      "files": [],
+      "assertions": [
+        "tag_choice_applied: the updated preview carries the recommended tags",
+        "no_implicit_approval: no event create runs from B alone",
+        "approval_requested: explicitly asks the user to approve the resulting line"
+      ]
+    },
+    {
+      "id": 21,
+      "eval_name": "tag-choice-and-approval",
+      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿、推荐标签 #工作 #支付、周计划关联 %41，并提供 A 无标签 / B 推荐标签 / C 自填标签。用户回复“B，确认记录”。本轮 create 模拟返回 ✓ event created: #807。相关 lookups 已完成。",
+      "expected_output": "Treats the combined tag choice and explicit approval as authorization, reuses completed lookups, creates once with the previously shown draft plus recommended tags, then reports #807.",
+      "files": [],
+      "assertions": [
+        "combined_choice_and_approval: both the tag selection and explicit approval are honored",
+        "single_create: exactly one event create runs without repeating lookups",
+        "verified_success: returned event id #807 is reported"
+      ]
+    },
+    {
+      "id": 22,
+      "eval_name": "small-complete-task-qualifies",
+      "prompt": "会话上下文：用户只要求修正 weekly-reporter 的空列表提示文案。文案已修正并完成约定验证，这个小任务已完整交付，没有记录或提议过，也没有选择跳过或会末提醒。现在汇报结果。",
+      "expected_output": "Reports completion and makes one four-choice recording offer. The small size of this fully delivered task does not disqualify it; no collection, lookup or create runs before acceptance.",
+      "files": [],
+      "assertions": [
+        "small_task_qualifies: one recording offer is made for the complete small task",
+        "four_choices: the offer exposes log now, not yet, skip session and remind at end",
+        "no_implicit_write: no recording reference, collection or wrp call runs"
+      ]
+    },
+    {
+      "id": 23,
+      "eval_name": "one-outcome-after-successful-record",
+      "prompt": "会话上下文：本会话前一件工作已成功记录为事件 #808，所有当时成果都已覆盖。之后又完整完成 weekly-reporter 的时区显示修复及约定验证，这一成果尚未记录或提议过，没有跳过或会末提醒设置。现在汇报修复结果。",
+      "expected_output": "Offers once for the newly completed task using the four choices. A successful earlier record does not impose a multi-outcome waiting period. No recording flow runs before acceptance.",
+      "files": [],
+      "assertions": [
+        "new_outcome_offer: one offer is made at the new task's completion boundary",
+        "scope_clear: the offer concerns the new unrecorded work rather than re-logging #808",
+        "no_implicit_write: no recording reference, collection or wrp call runs"
       ]
     }
   ]

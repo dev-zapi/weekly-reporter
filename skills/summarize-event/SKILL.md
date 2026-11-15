@@ -1,22 +1,59 @@
 ---
 name: summarize-event
-description: "Summarize a segment of work and log it to the weekly-reporter timeline. Use when the user asks to summarize or record recent work, and also proactively on your own: after finishing a coherent, nameable accomplishment that isn't logged yet, offer to summarize the segment — and once about three accomplishments have piled up un-logged, or before a session ends with un-logged work remaining, offer rather than wait, so no single summary grows too long or dense."
+description: >-
+  Summarize/log recent work to the weekly-reporter timeline. Offer after each
+  completed outcome or wrap-up/project switch while work remains unlogged. Honor
+  reminder choices; offers never authorize writes.
 ---
 
-Summarize the work done since the last summary or session start into one single-line plain-text event. Distill rather than transcribe: the timeline's reader needs the business core, not a blow-by-blow, so keep what shipped, what got fixed, or what was decided and its result. Simplify the rest — drop routine process steps, dead ends, and side observations, and group related minor items into one accomplishment instead of enumerating each. Name the project or repo the work happened in — the timeline spans many projects.
+# Summarize event
 
-Offer this summary proactively as work proceeds, not only when asked. The unit is a *nameable accomplishment* — something shipped, fixed, or decided that you could title in one line. There is no timer, so anchor the offer to work boundaries you can observe. Do not offer mid-task, for trivial single edits, or twice without new meaningful work since the last offer; wait for a clean boundary (a sub-task done, tests green, or a commit made) and offer only once at least one accomplishment is un-logged. Guard the top end against density: once about three accomplishments have accumulated un-logged, offer rather than keep working, and always offer before the session ends or before switching to an unrelated project while un-logged work remains — this keeps any one event from ballooning into an overlong, high-density recap. Make the offer a single short question with four choices: summarize and log now; not yet; skip for this session; or remind at session end. On *now*, run the flow below. On *not yet*, keep accumulating but raise the bar so you do not nag, and leave the session-end reminder active. On *skip for this session*, stop all further offers this session, including the session-end reminder, until the user re-enables them or explicitly asks. The session-end reminder is the default safety net: it fires at session end when un-logged work remains unless the user skipped.
+Distill the requested work segment, or work since the last successful summary,
+into one single-line plain-text event. Name the project/repo and what shipped,
+was fixed, or was decided, with its result. Group related minor changes; omit
+routine steps and dead ends. Use conversation evidence, not invented outcomes.
 
-Tag the event by default. Query the existing timeline tags with `wrp tags list` (the weekly-reporter skill's tags module); its stdout is one JSON line — read `tags[].name` — and reuse tags that already exist rather than coining new ones where possible. Alongside the preview, list the tags you recommend (outside the event content) and ask the user to choose: A — no tags, B — the recommended tags (the default), C — tags they type in. Add the recommended tags unless the user picks A; on a C choice use the tags they type in. When tags are added, place them inline at the end of the line, separated by whitespace.
+For a whole day's reconstruction use **yesterday-recall**; for reading a day's
+timeline use **daily-review**; for a weekly report use **writing-weekly-report**.
 
-The flow starts with collection when the work happened in a git repository. Resolve the repo root with `git rev-parse --show-toplevel` in the current directory; if it resolves, invoke the collect-git-source skill before composing the summary, so the segment's commits land on the timeline as git events ahead of the manual record. Git events are the authoritative record of what changed, so lean on what the sync produced: carry the decisions and context around those commits in the summary line and reference the synced events with @id under the reference rules below, instead of re-describing commits the events already show. If the collect-git-source flow reaches a user decision — the repo is not registered as a source yet, or the source is disabled — present that choice as the skill prescribes, but keep a skip option so the user can always still get their summary without collection. If the directory is not a git repository, start straight at summarizing.
+## Automatic offers
 
-Note the app's parsing rules: it recognizes `#word` tokens only at the start of the line or after whitespace, and only before whitespace or end-of-line, so a tag glued to preceding punctuation (e.g. 。#tag) is silently lost, and conversely any incidental `#word` in the text becomes a tag unless quoted ("#tag"). Event references use `@` plus a pure numeric id (`@6991`) with the same boundaries — `@6991，` or `（见@6991）` is silently plain text. Plan-item references use `%` plus a pure numeric plan-item id (`%42`) with the same whitespace-boundary rule — `50%42` is plain text, `%42，` is silently plain text, and a dangling `%id` (item no longer exists) writes fine and rides along verbatim on rewrites.
+Use completed, nameable tasks as offer boundaries. A task qualifies even when it
+is small; tests, commits, and intermediate edits are evidence, not separate
+outcomes. Partial work and routine Q&A do not count. Track pending outcomes, the
+last offer/record, and the user's reminder choice in conversation context.
 
-When a summarized item continues, fixes, or verifies an event already on the timeline, prefer `@id` over vague prose, taking the id from a `wrp events list` query (the weekly-reporter skill's events module; parse the JSON body and read `events[].id`) and using only ids that appeared in its output. References are ordinary content, not an attachment: they ride the normal preview and need no separate A/B/C choice.
+Apply the user's reminder choice before checking any automatic trigger:
 
-Associate the work with the plan items it fulfills — the plans page counts these `%id` references as each item's fulfillment, so an unlinked summary leaves the plan blind to work that actually happened. Before composing, query the covering plans with the weekly-reporter skill's `wrp plans list`: `--scope week --date <date>` for the week plan of the summarized segment's week (usually the current week; use the segment's own dates when it clearly falls in an earlier one), plus `--scope month --month <YYYY-MM>` for the overlapping month plan. Each call prints one JSON line; parse it and read `items[]` (`id`, `text`, `status`, `parentItemId`, `deferredFromItemId`). Match each accomplishment against open items — `planned` or `in_progress`; a `deferred` item's live copy is its next-period successor; skip `done`, whose fulfillment is already recorded — judging by substance: same project or repo plus the same feature, fix, or topic means the work advances that item. Embed a matched `%id` beside the accomplishment it fulfills; when a week item and its month parent both match, the week item wins. Judge clear matches yourself; when no match is clear but a candidate or two are plausible, or several compete, list the candidates (`id` and `text` from the body only) with the preview and ask which, if any, to associate. A user who names an item — at the trigger, mid-flow, or at the preview — settles the question and overrides your read. When no plan exists for the period or nothing is even plausible, skip the subject without asking; and if the plan query itself errors, summarize without the association rather than halting.
+| User's choice | Next action |
+| --- | --- |
+| Log now | Enter the recording flow; preview approval still applies. |
+| Not yet | Wait for one **new** completed outcome after this offer, or wrap-up/project switch. |
+| Skip this session | Mute every automatic offer, including wrap-up, until re-enabled. Explicit requests still work. |
+| Remind at session end | Defer every automatic offer until wrap-up. |
 
-A direct-send request — the user says "直接发送", "不用确认", or similar when triggering this skill or accepting the offer — overrides the interactive stops for that one run: apply the recommended tags without the A/B/C question, take the skip-collection option when the collect-git-source flow reaches a user decision, keep the plan associations you judged clear while dropping the which-item question, and submit the composed line immediately rather than waiting for preview approval. The override covers that run only. Otherwise, preview the line for user confirmation and submit only after approval. Either way, create the event with `wrp events create` (the weekly-reporter skill), passing `--time` as an ISO 8601 instant with an explicit offset (e.g. `2026-11-10T14:30:00+08:00`, taking the offset from the system time zone via `date +%:z`) when the segment's time is not now. A naive time without an offset is refused by the client.
+Offer only while completed work remains unrecorded. In normal mode, offer at the
+first clean boundary after each completed outcome not covered by a later offer
+or successful record. Wrap-up or an unrelated-project switch also qualifies
+when work remains unrecorded. Wrap-up requires an observable signal such as
+“今天先这样”; an ordinary final answer is not itself session end.
 
-The flows this skill invokes — collect-git-source and the weekly-reporter skill's wrp client (`wrp tags`, `wrp plans`, `wrp events`) — reach the API with the machine credential at `~/.config/weekly-reporter/auth.json` (`WEEKLY_REPORTER_PAT` for the token; `WEEKLY_REPORTER_BASE_URL`, alias `WEEKLY_REPORTER_URL`, for the base URL). A stderr JSON error envelope with `status: 401` from any of them means the PAT is missing, expired, or revoked — run `wrp init` (the weekly-reporter skill; its envelope's `fix` field names the exact command) before retrying.
+Offer once at a clean work boundary with the four choices above, phrased in the
+user's language. An unanswered offer is not consent: continue the user's task
+and avoid repeating the offer for the same work. At wrap-up, selecting the
+session-end reminder again ends this offer without recording or carrying it to
+another session. An explicit recording request bypasses the offer.
+
+**Offering ends here.** Until the user accepts or requests a record, use only
+conversation context: no collection, API queries, or recording-reference reads.
+
+## Record a segment
+
+For an explicit request or an accepted offer, read
+[the recording flow](references/recording.md). It covers collection, tags, event
+and plan links, preview, and submission. “直接发送 / 不用确认” or an explicit
+**summarize-event-quick** invocation selects direct-send for this run only.
+
+Confirm the created event id (`✓ event created: #<id>`, or a verified record
+after an uncertain create); report it and clear only the outcomes it covers.
+On cancellation or failure, retain pending work without claiming it was logged.
