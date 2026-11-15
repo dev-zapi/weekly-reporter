@@ -20,6 +20,15 @@ log. When continuing/fixing/verifying earlier work or citing synced commits,
 query `wrp events list` for the relevant dates after collection. Use only
 `events[].id` from returned data as `@id` links.
 
+## Event wording
+
+Use concrete wording; remove empty preambles, repetition, and generic praise.
+Preserve facts, completion status, conditions, uncertainty, and the user's
+language. Before preview or direct-send, polish with **humanizer-zh** for Chinese
+when available, otherwise **humanizer** if available. If neither is available,
+continue with these built-in rules. Polish prose only: keep project names,
+`#tags`, `@id`, `%id`, and the single-line plain-text format intact.
+
 ## Plan links and tags
 
 Query the segment's week and month (its own dates for earlier work):
