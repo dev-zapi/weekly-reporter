@@ -53,11 +53,14 @@ relevant existing `tags[].name` before new tags. Append selected tags at line en
 
 ## Approve and submit
 
-**Normal:** show the draft, recommended tags, and any plan ambiguity together.
-Offer A no tags / B recommended tags (default) / C custom tags. Treat the tag
-choice separately from preview approval; create only after explicit approval.
-If a reply combines a tag choice and approval, apply both. Defaults and
-unanswered questions never authorize creation.
+**Normal:** show the draft with recommended tags appended, plus any plan
+ambiguity, together. Carrying the recommended tags is the default: a plain
+approval keeps them; omit tags only when the user explicitly declines them,
+and swap in user-named tags when supplied. Mention tags can be dropped or
+changed on request, but ask no separate tag question. Treat a tag remark
+separately from preview approval; create only after explicit approval. If a
+reply combines a tag remark and approval, apply both. Defaults and unanswered
+questions never authorize creation.
 
 **Direct-send:** “直接发送 / 不用确认” or **summarize-event-quick** authorizes
 this run's create without preview approval. Use recommended tags unless the

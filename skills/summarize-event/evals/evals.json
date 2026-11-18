@@ -44,7 +44,7 @@
       "id": 3,
       "eval_name": "ambiguous-ask",
       "prompt": "总结一下记录：retail-platform 的支付渠道那边收尾了，联调通过，回归也全绿。",
-      "expected_output": "When two returned open plan items plausibly compete, shows both ids/texts with the draft and asks which, if any, to associate. Combines the plan and tag choices with preview approval and does not create yet.",
+      "expected_output": "When two returned open plan items plausibly compete, shows both ids/texts with the draft and asks which, if any, to associate. Presents the plan question together with the preview and its default tags, and does not create yet.",
       "files": [],
       "assertions": [
         "ambiguity_surfaced: both plausible returned plan items appear as candidates",
@@ -242,24 +242,25 @@
     },
     {
       "id": 20,
-      "eval_name": "tag-choice-is-not-preview-approval",
-      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿、推荐标签 #工作 #支付、周计划关联 %41，并提供 A 无标签 / B 推荐标签 / C 自填标签。用户只回复“B”。相关 lookups 已完成。",
-      "expected_output": "Applies B to the draft but does not create yet; asks for explicit approval of the updated line.",
+      "eval_name": "tag-decline-is-not-preview-approval",
+      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户只回复“不要带标签”。相关 lookups 已完成。",
+      "expected_output": "Updates the preview without tags but does not create yet; asks for explicit approval of the updated line.",
       "files": [],
       "assertions": [
-        "tag_choice_applied: the updated preview carries the recommended tags",
-        "no_implicit_approval: no event create runs from B alone",
+        "tag_change_applied: the updated preview drops the recommended tags",
+        "no_implicit_approval: no event create runs from the tag remark alone",
         "approval_requested: explicitly asks the user to approve the resulting line"
       ]
     },
     {
       "id": 21,
-      "eval_name": "tag-choice-and-approval",
-      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿、推荐标签 #工作 #支付、周计划关联 %41，并提供 A 无标签 / B 推荐标签 / C 自填标签。用户回复“B，确认记录”。本轮 create 模拟返回 ✓ event created: #807。相关 lookups 已完成。",
-      "expected_output": "Treats the combined tag choice and explicit approval as authorization, reuses completed lookups, creates once with the previously shown draft plus recommended tags, then reports #807.",
+      "eval_name": "plain-approval-carries-default-tags",
+      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户回复“确认记录”。本轮 create 模拟返回 ✓ event created: #807。相关 lookups 已完成。",
+      "expected_output": "Treats the explicit approval as authorization, keeps the recommended tags by default without asking a separate tag question, reuses completed lookups, creates once, then reports #807.",
       "files": [],
       "assertions": [
-        "combined_choice_and_approval: both the tag selection and explicit approval are honored",
+        "default_tags_kept: the created event carries the recommended tags",
+        "no_extra_tag_question: no separate tag choice is asked before creating",
         "single_create: exactly one event create runs without repeating lookups",
         "verified_success: returned event id #807 is reported"
       ]
