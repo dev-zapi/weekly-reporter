@@ -7,13 +7,22 @@
 //
 // --gaps input:
 //   { "date": "YYYY-MM-DD",
-//     "anchors": [ { "time": "HH:MM", "src": "git" | "manual" | "mem", "text": "…" } ] }
-//   Anchors whose time cannot be parsed are grouped under 其他 instead of 晚上.
+//     "summaries": [ { "time": "HH:MM", "to": "HH:MM", "text": "…" } ],
+//     "anchors": [ { "time": "HH:MM", "src": "git" | "manual" | "mem", "repo": "…", "text": "…" } ] }
+//   repo is optional and rendered as a project badge (git anchors carry the
+//   project, e.g. "retail-cloud/retail-platform"). Each summary entry covers a
+//   contiguous run of anchors (time = run start, to = run end, optional); a
+//   block can carry several summary chunks, each rendered as a note card
+//   spanning the rows of the anchors it covers. Anchors whose time cannot be
+//   parsed are grouped under 其他.
 //
 // --confirm input:
 //   { "date": "YYYY-MM-DD",
-//     "existing": [ { "time": "HH:MM", "src": "auto" | "manual", "text": "…" } ],
+//     "existing": [ { "time": "HH:MM", "src": "auto" | "manual", "repo": "…", "text": "…" } ],
 //     "drafts":   [ { "time": "HH:MM", "text": "…" } ] }
+//   Existing events render as plain rows (no borders/bars), one per grid row;
+//   draft cards are time-anchored to the row of the first existing event at or
+//   after the draft's time (later drafts never overlap).
 //
 // Serves exactly one page, accepts exactly one submission, writes a JSON answers
 // file, then exits. Binds 0.0.0.0 without auth: trusted LAN only, and the input
@@ -25,9 +34,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
 const DEFAULT_PORT = 19950
 const MAX_BODY_BYTES = 1_000_000
 const BLOCKS = [
-  { key: 'morning', name: '上午', range: '00:00–12:00' },
-  { key: 'afternoon', name: '下午', range: '12:00–18:00' },
-  { key: 'evening', name: '晚上', range: '18:00–24:00' },
+  { key: 'dawn', name: '凌晨', range: '00:00–06:00' },
+  { key: 'early', name: '清晨', range: '06:00–09:00' },
+  { key: 'morning', name: '上午', range: '09:00–12:00' },
+  { key: 'noon', name: '午间', range: '12:00–14:00' },
+  { key: 'afternoon', name: '下午', range: '14:00–18:00' },
+  { key: 'dusk', name: '傍晚', range: '18:00–20:00' },
+  { key: 'evening', name: '晚上', range: '20:00–24:00' },
 ]
 
 function fail(message, code = 2) {
@@ -146,8 +159,12 @@ function hourOf(time) {
 function blockKeyOf(time) {
   const hour = hourOf(time)
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) return 'other'
+  if (hour < 6) return 'dawn'
+  if (hour < 9) return 'early'
   if (hour < 12) return 'morning'
+  if (hour < 14) return 'noon'
   if (hour < 18) return 'afternoon'
+  if (hour < 20) return 'dusk'
   return 'evening'
 }
 
@@ -165,15 +182,74 @@ function normalizeAnchors(input) {
     .map((a) => ({
       time: String(a.time ?? ''),
       src: sourceOf(a),
+      repo: String(a.repo ?? '').trim(),
       text: String(a.text ?? ''),
     }))
     .filter((a) => a.time || a.text)
 }
 
-function anchorRow(anchor) {
-  return `<div class="anchor ${anchor.src}"><span class="t">${esc(anchor.time)}</span>`
-    + `<span class="src">${SOURCE_LABELS[anchor.src] ?? '提交'}</span>`
-    + `<span>${esc(anchor.text)}</span></div>`
+// Summaries are time-anchored note cards: each covers a contiguous run of
+// anchors, several chunks may share a block. Unusable entries are dropped.
+function normalizeSummaries(input) {
+  const raw = Array.isArray(input && input.summaries) ? input.summaries : []
+  const out = []
+  for (const s of raw) {
+    if (!s || typeof s !== 'object') continue
+    const time = normalizeTime(s.time)
+    const text = String(s.text ?? '').trim()
+    if (!time || !text) continue
+    out.push({ time, to: normalizeTime(s.to), text, block: blockKeyOf(time) })
+  }
+  return out.sort((a, b) => a.time.localeCompare(b.time))
+}
+
+function minutesOf(time) {
+  const m = String(time ?? '').match(/^(\d{1,2}):(\d{2})$/)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN
+}
+
+// Merges consecutive git anchors of the same repo into one row: texts keeps
+// per-commit lines, literal duplicates counted as ×n. Adjacency is broken by
+// any non-commit row (manual/mem events interleave). "auto" (confirm page)
+// and "git" (gaps page) are the same commit-ish source.
+function mergeRuns(items) {
+  const commit = (s) => s === 'git' || s === 'auto'
+  const out = []
+  for (const it of items) {
+    const prev = out[out.length - 1]
+    if (prev && commit(it.src) && commit(prev.src) && it.repo && it.repo === prev.repo) {
+      const line = prev.texts.find((t) => t.text === it.text)
+      if (line) line.count += 1
+      else prev.texts.push({ text: it.text, count: 1 })
+      continue
+    }
+    out.push({ time: it.time, src: it.src, repo: it.repo, texts: [{ text: it.text, count: 1 }] })
+  }
+  return out
+}
+
+function txtLines(item) {
+  return item.texts.map((line) => `<div class="txt">${esc(line.text)}`
+    + (line.count > 1 ? ` <span class="dup">×${line.count}</span>` : '')
+    + `</div>`).join('')
+}
+
+function anchorRow(item, gridRow) {
+  const total = item.texts.reduce((n, t) => n + t.count, 0)
+  const repo = item.repo ? item.repo.split('/').pop() : ''
+  return `<div class="anchor ${item.src}"${gridRow ? ` style="grid-row:${gridRow}"` : ''}>`
+    + `<span class="t">${esc(item.time)}</span>`
+    + `<div class="body"><div class="chips">`
+    + `<span class="src">${SOURCE_LABELS[item.src] ?? '提交'}${total > 1 ? ` ×${total}` : ''}</span>`
+    + (item.repo ? `<span class="proj" title="${esc(item.repo)}">${esc(repo)}</span>` : '')
+    + `</div>${txtLines(item)}</div></div>`
+}
+
+// A note card spanning the rows of the anchors it covers: gridRow is 1-based.
+function noteCard(note, gridRow, span) {
+  const label = note.to && note.to !== note.time ? `${note.time}–${note.to}` : note.time
+  return `<div class="sum-card" style="grid-row:${gridRow} / span ${span}">`
+    + `<div class="sum-label">${esc(label)}</div>${esc(note.text)}</div>`
 }
 
 // ---------------------------------------------------------------------------
@@ -197,14 +273,15 @@ const THEME_CSS = `
   body { color: var(--ink); background: #fff; }
   input, textarea { color: var(--ink); }
   input::placeholder, textarea::placeholder { color: var(--muted); }
-  .doc { max-width: 54rem; margin: 0 auto; padding: 1.5rem 1.25rem 8rem; }
+  .doc { max-width: 64rem; margin: 0 auto; padding: 1.5rem 1.25rem 8rem; }
   h1 { font-size: 1.45rem; margin: 0 0 0.1rem; }
   .sub { color: var(--muted); font-size: 0.875rem; margin-bottom: 1.25rem; }
   .hint { color: var(--muted); font-size: 0.875rem; }
-  .submit-row { margin-top: 1.6rem; display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .submit-row { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; background: #24292f; color: #fff; border-radius: 62.5rem; padding: 0.45rem 0.9rem; box-shadow: 0 0.3rem 1rem rgba(0,0,0,0.35); z-index: 10; max-width: calc(100vw - 2rem); }
   button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 0.5rem; padding: 0.55rem 1.4rem; font-size: 1.05rem; font-family: serif; cursor: pointer; }
   button.primary:disabled { opacity: 0.65; cursor: wait; }
-  .count-pill { color: var(--muted); font-size: 0.875rem; }
+  .count-pill { color: #c9d1d9; font-size: 0.875rem; }
+  .proj { font-size: 0.78rem; border-radius: 0.25rem; padding: 0 0.3rem; color: var(--accent); background: var(--accent-soft); white-space: nowrap; }
   @media (prefers-color-scheme: dark) {
     :root {
       --ink: #e6edf3; --muted: #9198a1; --line: #3d444d; --bg: #15181d;
@@ -242,8 +319,21 @@ const GAPS_CSS = `
   .blk-h { display: flex; align-items: baseline; gap: 0.6rem; margin: 1.6rem 0 0.5rem; }
   .blk-h h2 { font-size: 1.2rem; margin: 0; }
   .blk-h .range { color: var(--muted); font-size: 0.875rem; }
-  .anchor { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.15rem 0 0.15rem 0.85rem; border-left: 0.125rem solid var(--line); margin-left: 0.25rem; font-size: 0.9rem; color: var(--muted); }
+  .block { margin: 1.8rem 0; }
+  .blk-grid { display: grid; grid-template-columns: 1.8fr 1fr; column-gap: 1.1rem; align-items: start; }
+  .blk-grid .anchor { grid-column: 1; }
+  .blk-grid .sum-card { grid-column: 2; align-self: start; position: relative; }
+  .blk-grid .sum-card::before { content: ''; position: absolute; left: -1.35rem; top: 0.9rem; width: 1.1rem; border-top: 0.125rem dashed var(--accent); }
+  .gapcell { grid-column: 2; }
+  .sum-card { background: var(--bg); border: 0.0625rem solid var(--line); border-left: 0.25rem solid var(--accent); border-radius: 0 0.6rem 0.6rem 0; padding: 0.5rem 0.8rem; font-size: 0.95rem; }
+  .sum-label { color: var(--muted); font-size: 0.78rem; letter-spacing: 0.05em; margin-bottom: 0.15rem; font-variant-numeric: tabular-nums; }
+  @media (max-width: 45rem) { .blk-grid { grid-template-columns: 1fr; } .blk-grid .anchor, .blk-grid .sum-card, .gapcell { grid-column: 1; } .blk-grid .sum-card::before { display: none; } }
+  .anchor { display: grid; grid-template-columns: 3.1rem 1fr; gap: 0 0.55rem; align-items: start; padding: 0.2rem 0 0.2rem 0.85rem; border-left: 0.125rem solid var(--line); margin-left: 0.25rem; font-size: 0.9rem; color: var(--muted); }
   .anchor .t { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .anchor .chips { display: flex; gap: 0.3rem; align-items: baseline; flex-wrap: wrap; }
+  .anchor .txt { line-height: 1.5; }
+  .anchor .txt + .txt { margin-top: 0.1rem; }
+  .dup { opacity: 0.7; }
   .anchor .src { font-size: 0.78rem; border: 0.0625rem solid var(--line); border-radius: 0.25rem; padding: 0 0.25rem; color: var(--muted); white-space: nowrap; }
   .anchor.mem { border-left-color: #bf8700; }
   .anchor.git { border-left-color: var(--accent); }
@@ -259,13 +349,16 @@ const GAPS_CSS = `
 const CONFIRM_CSS = `
   textarea { resize: none; overflow: hidden; min-height: 2.2rem; line-height: 1.55; }
   .draft textarea { width: 100%; font-size: 0.95rem; padding: 0.35rem 0.5rem; border: 0.0625rem solid var(--line); border-radius: 0.4rem; background: #fff; display: block; }
-  .col-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; }
-  @media (max-width: 45rem) { .col-wrap { grid-template-columns: 1fr; } }
-  .col h3 { font-size: 0.95rem; margin: 0 0 0.5rem; color: var(--muted); font-weight: 600; }
-  .exist { border: 0.0625rem solid var(--line); border-radius: 0.5rem; padding: 0.3rem 0.6rem; margin-bottom: 0.35rem; font-size: 0.9rem; display: flex; gap: 0.5rem; align-items: baseline; }
-  .exist .t { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
-  .exist .src { font-size: 0.75rem; border-radius: 0.25rem; padding: 0 0.25rem; border: 0.0625rem solid var(--line); color: var(--muted); }
-  .draft { border: 0.09375rem solid var(--accent); border-radius: 0.6rem; padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; background: #fbfdff; }
+  .cf-grid { display: grid; grid-template-columns: 1.8fr 1fr; column-gap: 1.4rem; align-items: start; }
+  .exist { grid-column: 1; display: grid; grid-template-columns: 3.1rem 1fr; gap: 0 0.55rem; align-items: start; padding: 0.2rem 0; font-size: 0.9rem; color: var(--muted); }
+  .exist:hover { color: var(--ink); }
+  .exist .t { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .exist .chips { display: flex; gap: 0.3rem; align-items: baseline; flex-wrap: wrap; }
+  .exist .txt { line-height: 1.5; }
+  .exist .txt + .txt { margin-top: 0.1rem; }
+  .exist .src { font-size: 0.75rem; border-radius: 0.25rem; padding: 0 0.25rem; border: 0.0625rem solid var(--line); color: var(--muted); white-space: nowrap; }
+  .draft { grid-column: 2; align-self: start; position: relative; border: 0.09375rem solid var(--accent); border-radius: 0.6rem; padding: 0.6rem 0.75rem; margin-bottom: 0.6rem; background: #fbfdff; }
+  .draft::before { content: ''; position: absolute; left: -1.65rem; top: 0.95rem; width: 1.4rem; border-top: 0.125rem dashed var(--accent); }
   .draft.off { border-color: var(--line); background: var(--bg); opacity: 0.6; }
   .draft-top { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.35rem; }
   .draft-top input[type=checkbox] { width: 1rem; height: 1rem; }
@@ -273,6 +366,7 @@ const CONFIRM_CSS = `
   .draft-time { font-size: 0.95rem; padding: 0.15rem 0.3rem; color: var(--ink); background: transparent; border: 0.0625rem solid transparent; border-bottom: 0.0625rem dashed var(--line); border-radius: 0.25rem; }
   .draft-time:hover { border-bottom-color: var(--accent); }
   .draft-time:focus { outline: 0.125rem solid var(--accent-soft); border-color: var(--accent); background: #fff; }
+  @media (max-width: 45rem) { .cf-grid { grid-template-columns: 1fr; } .draft { grid-column: 1; } .draft::before { display: none; } }
   @media (prefers-color-scheme: dark) {
     .draft { background: #10161f; }
     .draft textarea, .draft-time:focus, textarea:focus { background: #0d1117; }
@@ -299,12 +393,15 @@ ${body}
 
 function renderGapsPage(input) {
   const anchors = normalizeAnchors(input)
-  const grouped = { morning: [], afternoon: [], evening: [], other: [] }
+  const summaries = normalizeSummaries(input)
+  const grouped = {}
+  for (const block of BLOCKS) grouped[block.key] = []
+  grouped.other = []
   for (const anchor of anchors) grouped[blockKeyOf(anchor.time)].push(anchor)
 
   let content = `
     <h1>昨日回忆 · ${esc(dateTitle(input.date))}</h1>
-    <div class="sub">--gaps 收集页 · 时间轴分组</div>`
+    <div class="sub">--gaps 收集页 · 七段分块</div>`
 
   if (anchors.length === 0) {
     content += `<div style="border:0.09375rem solid var(--warn);border-radius:0.6rem;padding:1rem 1.2rem">
@@ -313,20 +410,46 @@ function renderGapsPage(input) {
       <textarea data-blk="wholeday" placeholder="昨天……"></textarea></div>`
   } else {
     for (const block of BLOCKS) {
-      const rows = grouped[block.key]
-      content += `<div class="blk-h"><h2>${block.name}</h2>`
-        + `<span class="range">${block.range} · ${rows.length} 条锚点</span></div>`
-      content += rows.length
-        ? rows.map(anchorRow).join('')
-        : '<div class="hint" style="padding-left:1.1rem">（无锚点）</div>'
-      content += `<p class="q">${block.name}这段时间还有什么没记录的？</p>
-        <textarea data-blk="${block.key}" placeholder="例：上午还在跟 XX 对了口径，改了两版文档……"></textarea>`
+      const raw = grouped[block.key]
+      const rows = mergeRuns(raw)
+      const notes = summaries.filter((s) => s.block === block.key)
+      const question = `<p class="q">${block.name}这段时间还有什么没记录的？</p>`
+      const textarea = `<textarea data-blk="${block.key}" placeholder="例：还在跟 XX 对了口径，改了两版文档……"></textarea>`
+      content += `<section class="block"><div class="blk-h"><h2>${block.name}</h2>`
+        + `<span class="range">${block.range} · ${raw.length} 条锚点 · ${rows.length} 行</span></div>`
+      if (rows.length) {
+        content += `<div class="blk-grid">`
+        rows.forEach((a, i) => { content += anchorRow(a, i + 1) })
+        let prevEnd = -1
+        for (const note of notes) {
+          const from = minutesOf(note.time)
+          let start = rows.findIndex((a) => minutesOf(a.time) >= from)
+          if (start === -1) start = rows.length - 1
+          let end = start
+          if (note.to) {
+            const to = minutesOf(note.to)
+            for (let i = rows.length - 1; i >= 0; i--) {
+              if (minutesOf(rows[i].time) <= to) { end = i; break }
+            }
+          }
+          start = Math.max(start, prevEnd + 1)
+          if (start >= rows.length) start = rows.length - 1
+          end = Math.min(Math.max(end, start), rows.length - 1)
+          prevEnd = end
+          content += noteCard(note, start + 1, end - start + 1)
+        }
+        content += `<div class="gapcell" style="grid-row:${rows.length + 1}">${question}${textarea}</div>`
+        content += `</div>`
+      } else {
+        content += `<div class="hint">（无锚点）</div>${question}${textarea}`
+      }
+      content += `</section>`
     }
 
     if (grouped.other.length) {
       content += `<div class="blk-h"><h2>其他</h2>`
         + `<span class="range">无时间锚点 · ${grouped.other.length} 条锚点</span></div>`
-      content += grouped.other.map(anchorRow).join('')
+      content += mergeRuns(grouped.other).map(anchorRow).join('')
     }
 
     content += `<p class="q" style="margin-top:1.5rem">其他 <span class="hint">（不属于上面任何时段的）</span></p>
@@ -376,6 +499,7 @@ function normalizeExisting(input) {
     .map((e) => ({
       time: String(e.time ?? ''),
       src: e.src === 'manual' ? 'manual' : 'auto',
+      repo: String(e.repo ?? '').trim(),
       text: String(e.text ?? ''),
     })) : []
 }
@@ -389,29 +513,48 @@ function normalizeDrafts(input) {
     })) : []
 }
 
-function renderConfirmPage(input) {
-  const existing = normalizeExisting(input)
-  const drafts = normalizeDrafts(input)
+function existRow(item, gridRow) {
+  const total = item.texts.reduce((n, t) => n + t.count, 0)
+  const repo = item.repo ? item.repo.split('/').pop() : ''
+  return `<div class="exist" style="grid-row:${gridRow}">`
+    + `<span class="t">${esc(item.time)}</span>`
+    + `<div class="body"><div class="chips">`
+    + `<span class="src">${SOURCE_LABELS[item.src] ?? '自动'}${total > 1 ? ` ×${total}` : ''}</span>`
+    + (item.repo ? `<span class="proj" title="${esc(item.repo)}">${esc(repo)}</span>` : '')
+    + `</div>${txtLines(item)}</div></div>`
+}
 
-  const existingHtml = existing.map((e) => `<div class="exist">`
-    + `<span class="t">${esc(e.time)}</span><span class="src">${SOURCE_LABELS[e.src] ?? '自动'}</span>`
-    + `<span>${esc(e.text)}</span></div>`).join('')
-
-  const draftHtml = drafts.map((d, index) => `<div class="draft" data-index="${index}">
+function draftCard(d, index, gridRow) {
+  return `<div class="draft" data-index="${index}" style="grid-row:${gridRow}">
       <div class="draft-top"><input type="checkbox" checked>
         <input type="time" value="${esc(d.time)}" class="draft-time">
         <span class="lbl">草稿</span></div>
       <textarea rows="1">${esc(d.text)}</textarea>
-    </div>`).join('')
+    </div>`
+}
+
+function renderConfirmPage(input) {
+  const existing = normalizeExisting(input)
+  const drafts = normalizeDrafts(input)
+
+  let grid = '<div class="cf-grid">'
+  const rows = mergeRuns(existing)
+  rows.forEach((item, i) => { grid += existRow(item, i + 1) })
+  let prevRow = 0
+  drafts.forEach((d, index) => {
+    let row = rows.findIndex((e) => minutesOf(e.time) >= minutesOf(d.time)) + 1
+    if (row === 0) row = rows.length + 1
+    row = Math.max(row, prevRow + 1)
+    prevRow = row
+    grid += draftCard(d, index, row)
+  })
+  grid += '</div>'
 
   const content = `
     <h1>昨日草稿清单 · ${esc(dateTitle(input.date))}</h1>
-    <div class="sub">--confirm 确认页 · 已有事件不可改，草稿逐条裁决</div>
+    <div class="sub">--confirm 确认页 · 已有事件 ${existing.length} 条只读（合并为 ${rows.length} 行） · 新草稿 ${drafts.length} 条可改（按时间锚定）</div>
     <div class="hint" style="margin:-0.9rem 0 1.2rem">勾选＝纳入；时间行内点一下就改；内容多行自适应。%/@ 引用与 #tag 空格隔开，换行提交时折成空格。</div>
-    <div class="col-wrap">
-      <div class="col"><h3>已有事件（${existing.length} 条 · 只读）</h3>${existingHtml}</div>
-      <div class="col"><h3>新草稿（${drafts.length} 条 · 可改）</h3>${draftHtml}</div>
-    </div>
+    ${grid}
     <div class="submit-row"><button class="primary" id="submit">确认落库</button>
       <span class="count-pill">勾选＝纳入；排除的草稿不会出现在结果里</span></div>`
 
@@ -461,7 +604,7 @@ el('submit').addEventListener('click', async () => {
 // Submission normalization (server is the contract boundary)
 // ---------------------------------------------------------------------------
 
-const GAP_BLOCK_KEYS = new Set(['morning', 'afternoon', 'evening', 'other', 'wholeday'])
+const GAP_BLOCK_KEYS = new Set([...BLOCKS.map((b) => b.key), 'other', 'wholeday'])
 
 function normalizeGapsAnswers(input, payload) {
   const blocks = {}

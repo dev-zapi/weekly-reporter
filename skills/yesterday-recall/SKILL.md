@@ -62,21 +62,30 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
 
    两个查询各打印一条紧凑 JSON；解析后读 `items[]` 的 `id`、`status`、`text`（以及 `deferredFromItemId`）。保留 `planned` / `in_progress` 的开放条目用于阶段 3 的自动关联；`done` 已完成、`cancelled` 不关联；`deferred` 的活条目是它下一周期的后继，用后继而不是原条目。
 
-4. **归一化为锚点。** 自动时间线事件 → `{ time: "HH:MM", src: "git", text: 内容 }`（页面标签「提交」）；手动时间线事件 → `{ time: "HH:MM", src: "manual", text: 内容 }`（页面标签「手动」）；`.remember` 记录 → `{ time: "HH:MM", src: "mem", text: 文本 }`（标签「记忆」）。所有时间线事件（自动 + 手动）同时保留为确认页的「已有事件」（只读）。无法解析时间的记录归为「其他」锚点组，供蒸馏时参考。
+4. **归一化为锚点。** 自动时间线事件 → `{ time: "HH:MM", src: "git", repo: 项目, text: 内容 }`（页面标签「提交」）；手动时间线事件 → `{ time: "HH:MM", src: "manual", text: 内容 }`（页面标签「手动」，内容通常自带项目前缀，不加 `repo`）；`.remember` 记录 → `{ time: "HH:MM", src: "mem", text: 文本 }`（标签「记忆」）。`repo` 取自动事件 `metadata.repo`（如 `retail-cloud/retail-platform`），没有时退 `metadata.sourceName`，两者都缺就省略字段——一天常混着多个仓库，锚点不带项目就无从判断归属。所有时间线事件（自动 + 手动）同时保留为确认页的「已有事件」（只读，自动事件同样带 `repo`）。无法解析时间的记录归为「其他」锚点组，供蒸馏时参考。
 
 ### 阶段 2 — 空档收集
 
-把锚点整理成 `--gaps` 输入 JSON（写到 `/tmp` 等临时位置，不写进仓库）：
+页面按七个时段分块：`dawn` 凌晨 00–06、`early` 清晨 06–09、`morning` 上午 09–12、`noon` 午间 12–14、`afternoon` 下午 14–18、`dusk` 傍晚 18–20、`evening` 晚上 20–24。锚点按时间落入对应块；解析不出时间的归「其他」。时间线行是结构化两栏（时间窄列 + 元信息行/正文行），**相邻同仓库的 git 锚点在页面上合并为一行**（组内重复提交显示 ×n，非 git 行会打断合并）。每块是一张两列 grid：左列锚点流（不限高，随页面滚动），右列概述便签——每张便签锚定到它所覆盖锚点的行，卡顶对齐该段起点；补记框在块尾右列。
+
+把锚点整理成 `--gaps` 输入 JSON（写到 `/tmp` 等临时位置，不写进仓库），并给锚点写概述。概述**按连续时段切，不按块切**：一条概述只覆盖一段时间上连续、同一主题的锚点，`time` 是该段起点、`to` 是终点（单条可省略）；一个大块里有几件事就切几条，切多细由 agent 判断，整块只有一件事就一条。概述不跨块——跨界的内容切在块边界上，让便签挂在正确的块里。
 
 ```json
 {
   "date": "2026-11-06",
+  "summaries": [
+    { "time": "10:25", "to": "10:40", "text": "retail-platform 修 collect 模块测试语义，两次提交" },
+    { "time": "11:15", "to": "11:30", "text": "retail-platform 过 PRD，定 CLI 分发站取 D 方案" },
+    { "time": "02:37", "text": "weekly-reporter 迁移 B1 收尾并合并" }
+  ],
   "anchors": [
-    { "time": "10:30", "src": "git", "text": "test(collect): pin JS number and branch ordering semantics" },
+    { "time": "10:30", "src": "git", "repo": "retail-cloud/retail-platform", "text": "test(collect): pin JS number and branch ordering semantics" },
     { "time": "02:37", "src": "mem", "text": "weekly-reporter migration B1 收尾并合并" }
   ]
 }
 ```
+
+概述只依据锚点本身：点名项目、说明这段时间做了什么，让相邻概述之间换了哪个工程一眼可辨。写概述时引用 **humanizer-zh** 技能并按其编辑约束执行——只述锚点里的事实，不堆套话、不拔高、不确定就保持不确定；该技能未安装时按同一标准自行把关。概述只在页面上辅助回忆，不落库。
 
 后台启动收集页并等待用户提交（进程会阻塞到收到唯一一次提交后退出）：
 
@@ -84,16 +93,16 @@ description: Reconstruct one day's work (昨日回忆) across all projects and f
 node {baseDir}/scripts/board.mjs --gaps /tmp/yesterday-recall-gaps-<D>.json --answers /tmp/yesterday-recall-gaps-<D>.answers.json
 ```
 
-从 stdout 解析 `ANSWERS_FILE <路径>` 和若干 `LISTENING http://<ip>:<port>/` 行。把**非 `127.0.0.1`** 的局域网地址给用户（没有局域网地址时退回 `127.0.0.1`），说明这是一次性页面：按上午/下午/晚上分段补空档，可以留空，提交后即关闭。等待进程退出，读取答案文件。
+从 stdout 解析 `ANSWERS_FILE <路径>` 和若干 `LISTENING http://<ip>:<port>/` 行。把**非 `127.0.0.1`** 的局域网地址给用户（没有局域网地址时退回 `127.0.0.1`），说明这是一次性页面：按七个时段分段补空档，可以留空，提交后即关闭。等待进程退出，读取答案文件。
 
 答案契约：
 
 ```json
-{ "date": "2026-11-06", "blocks": { "morning": "…", "afternoon": "…", "evening": "…", "other": "…" } }
+{ "date": "2026-11-06", "blocks": { "dawn": "…", "early": "…", "morning": "…", "noon": "…", "afternoon": "…", "dusk": "…", "evening": "…", "other": "…" } }
 ```
 
-- 只包含用户实际填写的块（服务端丢弃空块），键只可能是 `morning` / `afternoon` / `evening` / `other` / `wholeday`。
-- **当天没有任何锚点时**，页面渲染成单个全天开放式问题，答案只有 `wholeday` 一个键。不要给空态强行造上午/下午/晚上。
+- 只包含用户实际填写的块（服务端丢弃空块），键只可能是七个时段键加 `other` / `wholeday`。
+- **当天没有任何锚点时**，页面渲染成单个全天开放式问题，答案只有 `wholeday` 一个键。不要给空态强行造时段。
 - `blocks` 里的文本可能带换行，蒸馏时自行折叠，不必在这里处理。
 
 ### 阶段 3 — 蒸馏
@@ -105,7 +114,7 @@ node {baseDir}/scripts/board.mjs --gaps /tmp/yesterday-recall-gaps-<D>.json --an
 - **点名项目/仓库**，时间线跨多个项目，不点名读者无法判断归属。
 - **单行纯文本。** 草稿内容不能含换行；提交前把换行替换成空格。
 
-时间归属：上午的补记给一个上午时间，下午给下午时间，晚上给晚上时间；用户明确说了几点就用几点。`wholeday` 的全天回忆按内容大致分布到一天里，给一个可编辑的建议时间即可——确认页允许逐条改时间。
+时间归属：补记落在哪个时段就给该时段内的一个时间（凌晨 00–06、清晨 06–09、上午 09–12、午间 12–14、下午 14–18、傍晚 18–20、晚上 20–24）；用户明确说了几点就用几点。`wholeday` 的全天回忆按内容大致分布到一天里，给一个可编辑的建议时间即可——确认页允许逐条改时间。
 
 **`%id` 自动关联。** 对每条草稿，若与当周/当月计划里某个开放条目明显对得上（同项目/仓库 + 同功能、修复或主题），直接把空格边界完整的 `%<id>` 嵌进该条草稿。判断清楚的自动带，**不要逐条问用户**；判断不清就不带，或留到确认页让用户裁决。周条目与它的月父条目都匹配时用周条目。`done` / `cancelled` 不关联；`deferred` 用其后继。
 
@@ -118,7 +127,7 @@ node {baseDir}/scripts/board.mjs --gaps /tmp/yesterday-recall-gaps-<D>.json --an
 ```json
 {
   "date": "2026-11-06",
-  "existing": [ { "time": "10:30", "src": "auto", "text": "…" } ],
+  "existing": [ { "time": "10:30", "src": "auto", "repo": "retail-cloud/retail-platform", "text": "…" } ],
   "drafts":   [ { "time": "09:30", "text": "把迁移蓝图拆成 22 张工单 %12 #迁移" } ]
 }
 ```
@@ -133,7 +142,7 @@ node {baseDir}/scripts/board.mjs --gaps /tmp/yesterday-recall-gaps-<D>.json --an
 node {baseDir}/scripts/board.mjs --confirm /tmp/yesterday-recall-confirm-<D>.json --answers /tmp/yesterday-recall-confirm-<D>.answers.json
 ```
 
-同样把局域网地址给用户。页面左栏是只读的已有事件，右栏是草稿卡片：每张有纳入勾选框、行内可改的时间、可多行编辑的内容框。告诉用户可以逐条改、逐条排除，也可以全部排除——**全部排除就是零落库**。等待进程退出，读取答案文件。
+同样把局域网地址给用户。页面与收集页同构：左列已有事件（只读、纯文本行、无边框无色条），右列草稿卡片**按时间锚定**到对应位置——每张有纳入勾选框、行内可改的时间、可多行编辑的内容框。告诉用户可以逐条改、逐条排除，也可以全部排除——**全部排除就是零落库**。等待进程退出，读取答案文件。
 
 答案契约：
 
