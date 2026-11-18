@@ -134,7 +134,7 @@ async function readAnswers(answersPath) {
 
 describe('yesterday-recall board', () => {
   describe('--gaps', () => {
-    it('renders 上午/下午/晚上 blocks plus 其他 and writes the blocks contract', { timeout: TEST_TIMEOUT }, async () => {
+    it('renders the seven time blocks plus 其他 and writes the blocks contract', { timeout: TEST_TIMEOUT }, async () => {
       const input = {
         date: '2026-11-06',
         anchors: [
@@ -154,12 +154,20 @@ describe('yesterday-recall board', () => {
           expect(stdout()).toMatch(/LISTENING http:\/\/127\.0\.0\.1:\d+\/ mode=gaps/)
           const html = await fetchPage(base)
           for (const needle of [
+            '<h2>凌晨</h2>',
+            '<h2>清晨</h2>',
             '<h2>上午</h2>',
+            '<h2>午间</h2>',
             '<h2>下午</h2>',
+            '<h2>傍晚</h2>',
             '<h2>晚上</h2>',
             '其他',
+            'data-blk="dawn"',
+            'data-blk="early"',
             'data-blk="morning"',
+            'data-blk="noon"',
             'data-blk="afternoon"',
+            'data-blk="dusk"',
             'data-blk="evening"',
             'data-blk="other"',
             '迁移 B1 收尾',
@@ -171,8 +179,10 @@ describe('yesterday-recall board', () => {
 
           const res = await submit(base, {
             blocks: {
+              dawn: '凌晨补充',
+              noon: '午间补充',
+              dusk: '傍晚补充',
               morning: '补充 A\n第二行',
-              afternoon: '补充 B',
               other: '零碎',
             },
           })
@@ -181,12 +191,73 @@ describe('yesterday-recall board', () => {
           expect(await readAnswers(answersPath)).toEqual({
             date: '2026-11-06',
             blocks: {
+              dawn: '凌晨补充',
+              noon: '午间补充',
+              dusk: '傍晚补充',
               morning: '补充 A\n第二行',
-              afternoon: '补充 B',
               other: '零碎',
             },
           })
           expect(await waitForExit(child)).toBe(0)
+        },
+      })
+    })
+
+    it('renders project badges (short form, full name on hover) and row-anchored summary note cards', { timeout: TEST_TIMEOUT }, async () => {
+      const input = {
+        date: '2026-11-06',
+        summaries: [
+          { time: '10:25', to: '10:40', text: 'retail-platform 修 collect 测试语义' },
+          { time: '10:50', text: '单锚点概述' },
+          { time: '25:99', text: '非法时间应被丢弃' },
+        ],
+        anchors: [
+          { time: '10:30', src: 'git', repo: 'retail-cloud/retail-platform', text: 'test(collect): pin JS number' },
+          { time: '10:35', src: 'git', repo: 'retail-cloud/retail-platform', text: 'test(collect): branch ordering' },
+          { time: '10:40', src: 'git', repo: 'retail-cloud/retail-platform', text: 'chore: touch' },
+          { time: '10:50', src: 'git', text: '无项目提交不渲染徽标' },
+        ],
+      }
+
+      await withBoard({
+        mode: 'gaps',
+        input,
+        fn: async ({ base }) => {
+          const html = await fetchPage(base)
+          expect(html).toContain('<span class="proj" title="retail-cloud/retail-platform">retail-platform</span>')
+          expect((html.match(/class="proj"/g) || []).length).toBe(1) // same-repo run merged: one badge row
+          expect((html.match(/class="sum-card"/g) || []).length).toBe(2)
+          expect(html).toContain('<div class="sum-label">10:25–10:40</div>')
+          expect(html).toContain('<div class="sum-label">10:50</div>')
+          expect(html).not.toContain('非法时间应被丢弃')
+        },
+      })
+    })
+
+    it('merges consecutive same-repo commits into one row; duplicates count ×n; manual events break the run', { timeout: TEST_TIMEOUT }, async () => {
+      const input = {
+        date: '2026-11-06',
+        anchors: [
+          { time: '10:00', src: 'git', repo: 'a/b', text: 'fix: one' },
+          { time: '10:05', src: 'git', repo: 'a/b', text: 'fix: one' },
+          { time: '10:10', src: 'git', repo: 'a/b', text: 'chore: two' },
+          { time: '10:15', src: 'manual', text: '手动打断合并' },
+          { time: '10:20', src: 'git', repo: 'a/b', text: 'fix: three' },
+          { time: '10:25', src: 'git', repo: 'c/d', text: 'feat: other repo' },
+        ],
+      }
+
+      await withBoard({
+        mode: 'gaps',
+        input,
+        fn: async ({ base }) => {
+          const html = await fetchPage(base)
+          expect((html.match(/class="anchor /g) || []).length).toBe(4)
+          expect(html).toContain('<span class="src">提交 ×3</span>')
+          expect(html).toContain('fix: one <span class="dup">×2</span>')
+          expect(html).toContain('chore: two')
+          expect(html).toContain('fix: three')
+          expect(html).toContain('手动打断合并')
         },
       })
     })
@@ -268,11 +339,11 @@ describe('yesterday-recall board', () => {
   })
 
   describe('--confirm', () => {
-    it('dual columns, read-only existing side, editable draft cards', { timeout: TEST_TIMEOUT }, async () => {
+    it('plain existing rows on the left, draft cards time-anchored to matching rows', { timeout: TEST_TIMEOUT }, async () => {
       const input = {
         date: '2026-11-06',
         existing: [
-          { time: '10:30', src: 'auto', text: 'test(collect): pin JS number & branch ordering' },
+          { time: '10:30', src: 'auto', repo: 'retail-cloud/retail-platform', text: 'test(collect): pin JS number & branch ordering' },
           { time: '12:47', src: 'manual', text: '手动补的一条' },
         ],
         drafts: [
@@ -287,19 +358,22 @@ describe('yesterday-recall board', () => {
         input,
         fn: async ({ base }) => {
           const html = await fetchPage(base)
-          expect(html).toContain('class="col-wrap"')
-          expect(html).toContain('已有事件（2 条 · 只读）')
-          expect(html).toContain('新草稿（3 条 · 可改）')
+          expect(html).toContain('class="cf-grid"')
+          expect(html).toContain('已有事件 2 条只读（合并为 2 行）')
+          expect(html).toContain('新草稿 3 条可改')
 
-          const leftColumn = html.match(/<div class="col">([\s\S]*?)<div class="col">/)?.[1] ?? ''
-          expect(leftColumn.length).toBeGreaterThan(0)
-          expect(leftColumn).not.toContain('<input')
-          expect(leftColumn).not.toContain('<textarea')
-          expect((leftColumn.match(/class="exist"/g) || []).length).toBe(2)
-          expect(leftColumn).toContain('<span class="src">自动</span>')
-          expect(leftColumn).toContain('<span class="src">手动</span>')
+          const existRows = [...html.matchAll(/<div class="exist" style="grid-row:(\d+)">/g)].map((m) => m[1])
+          expect(existRows).toEqual(['1', '2'])
+          const existHtml = html.match(/<div class="exist"[\s\S]*?<div class="draft"/)?.[0] ?? ''
+          expect(existHtml).not.toContain('<input')
+          expect(existHtml).not.toContain('<textarea')
+          expect(html).toContain('<span class="src">自动</span>')
+          expect(html).toContain('<span class="src">手动</span>')
+          expect(html).toContain('<span class="proj" title="retail-cloud/retail-platform">retail-platform</span>')
 
           expect((html.match(/class="draft"/g) || []).length).toBe(3)
+          const draftRows = [...html.matchAll(/<div class="draft" data-index="\d+" style="grid-row:(\d+)">/g)].map((m) => m[1])
+          expect(draftRows).toEqual(['1', '3', '4']) // 09:30→row1 (before 10:30), 13:50/16:40 past the last event
           expect((html.match(/type="checkbox"/g) || []).length).toBe(3)
           expect((html.match(/type="time"/g) || []).length).toBe(3)
           expect((html.match(/<textarea/g) || []).length).toBe(3)
@@ -540,15 +614,14 @@ describe('yesterday-recall board', () => {
       assertRatifiedTypography(html)
     })
 
-    it('confirm page carries ratified typography and a two-column layout', { timeout: TEST_TIMEOUT }, async () => {
+    it('confirm page carries ratified typography and a two-column grid', { timeout: TEST_TIMEOUT }, async () => {
       const html = await capturePage('confirm', {
         date: '2026-11-06',
         existing: [{ time: '10:30', src: 'auto', text: 'existing' }],
         drafts: [{ time: '13:50', text: 'draft' }],
       })
       assertRatifiedTypography(html)
-      expect(html).toContain('class="col-wrap"')
-      expect((html.match(/class="col"/g) || []).length).toBe(2)
+      expect(html).toContain('class="cf-grid"')
       expect(html).toContain('type="time"')
       expect(html).toContain('class="draft-time"')
     })
