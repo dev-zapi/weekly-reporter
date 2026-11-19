@@ -53,19 +53,19 @@ relevant existing `tags[].name` before new tags. Append selected tags at line en
 
 ## Approve and submit
 
-**Normal:** show the draft with recommended tags appended, plus any plan
-ambiguity, together. Carrying the recommended tags is the default: a plain
-approval keeps them; omit tags only when the user explicitly declines them,
-and swap in user-named tags when supplied. Mention tags can be dropped or
-changed on request, but ask no separate tag question. Treat a tag remark
-separately from preview approval; create only after explicit approval. If a
-reply combines a tag remark and approval, apply both. Defaults and unanswered
-questions never authorize creation.
+**Default — direct-send:** an explicit recording request or accepted “Log now”
+offer authorizes this record without an additional preview stop. Use recommended
+tags unless the user chose otherwise; skip collection decisions and ambiguous
+plan links. This grants no permission to register/enable sources or change plans.
+Missing facts still require clarification.
 
-**Direct-send:** “直接发送 / 不用确认” or **summarize-event-quick** authorizes
-this run's create without preview approval. Use recommended tags unless the
-user chose otherwise; skip collection decisions and ambiguous plan links.
-It grants no permission to register/enable sources or change plans.
+**User-requested confirmation:** when the user asks to review or confirm first,
+show the draft with recommended tags appended and any plan ambiguity together.
+Keep tags unless declined or replaced; ask no separate tag question. Submit only
+after explicit approval. A tag change alone is not approval; a reply combining
+changes and approval authorizes both. An unanswered preview never authorizes a
+write. Honor the user's confirmation preference until changed; “直接发送 / 不用确认”
+can waive it for the requested run.
 
 Before `wrp events create "<content>"`, check: single-line plain text;
 project and evidenced outcome present; whitespace/line boundaries on both sides

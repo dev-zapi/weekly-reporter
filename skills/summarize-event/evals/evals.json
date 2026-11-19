@@ -4,7 +4,7 @@
     {
       "id": 0,
       "eval_name": "week-plan-clear-match",
-      "prompt": "帮我把刚做完的这段工作总结记录到时间线：在 retail-platform 项目里完成了支付渠道沙箱环境的对接，联调和回归测试都过了。",
+      "prompt": "帮我把刚做完的这段工作总结记录到时间线：在 retail-platform 项目里完成了支付渠道沙箱环境的对接，联调和回归测试都过了。 先给我看草稿，确认后再记录。",
       "expected_output": "Queries the covering week and month plans, resolves the open sandbox-integration item from returned data, and previews one single-line event with a whitespace-bounded %id. It waits for preview approval before creating anything. A matching week item takes precedence over its month parent.",
       "files": [],
       "assertions": [
@@ -17,8 +17,8 @@
     {
       "id": 1,
       "eval_name": "user-named-month-item",
-      "prompt": "总结记录一下：月度计划里“上线灰度发布能力”这条总算做完了，retail-platform 的灰度发布今天全量放开了。帮我记一条。",
-      "expected_output": "Resolves the user-named month item from plans list output and includes its %id in the preview, even when automatic matching would otherwise exclude it. Waits for approval rather than assuming '帮我记一条' is direct-send.",
+      "prompt": "总结记录一下：月度计划里“上线灰度发布能力”这条总算做完了，retail-platform 的灰度发布今天全量放开了。帮我记一条。 先给我看草稿，确认后再记录。",
+      "expected_output": "Resolves the user-named month item from plans list output and includes its %id in the preview, even when automatic matching would otherwise exclude it. Waits for approval because the user explicitly requested preview first.",
       "files": [],
       "assertions": [
         "month_plan_queried: a month plan lookup precedes the preview",
@@ -30,7 +30,7 @@
     {
       "id": 2,
       "eval_name": "no-plan-skip",
-      "prompt": "帮我把这段工作总结一下记到时间线：weekly-reporter 的本地开发依赖脚本从 yarn 切到 pnpm，构建时间快了一半。",
+      "prompt": "帮我把这段工作总结一下记到时间线：weekly-reporter 的本地开发依赖脚本从 yarn 切到 pnpm，构建时间快了一半。 先给我看草稿，确认后再记录。",
       "expected_output": "With no covering plans, previews a project-named event without %id and without a plan-related question. The missing plan does not block drafting; creation still waits for approval.",
       "files": [],
       "assertions": [
@@ -43,7 +43,7 @@
     {
       "id": 3,
       "eval_name": "ambiguous-ask",
-      "prompt": "总结一下记录：retail-platform 的支付渠道那边收尾了，联调通过，回归也全绿。",
+      "prompt": "总结一下记录：retail-platform 的支付渠道那边收尾了，联调通过，回归也全绿。 先给我看草稿，确认后再记录。",
       "expected_output": "When two returned open plan items plausibly compete, shows both ids/texts with the draft and asks which, if any, to associate. Presents the plan question together with the preview and its default tags, and does not create yet.",
       "files": [],
       "assertions": [
@@ -243,7 +243,7 @@
     {
       "id": 20,
       "eval_name": "tag-decline-is-not-preview-approval",
-      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户只回复“不要带标签”。相关 lookups 已完成。",
+      "prompt": "用户已明确要求本轮先预览、确认后记录。会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户只回复“不要带标签”。相关 lookups 已完成。",
       "expected_output": "Updates the preview without tags but does not create yet; asks for explicit approval of the updated line.",
       "files": [],
       "assertions": [
@@ -255,7 +255,7 @@
     {
       "id": 21,
       "eval_name": "plain-approval-carries-default-tags",
-      "prompt": "会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户回复“确认记录”。本轮 create 模拟返回 ✓ event created: #807。相关 lookups 已完成。",
+      "prompt": "用户已明确要求本轮先预览、确认后记录。会话上下文：你已展示 retail-platform 的单行成果草稿，默认携带推荐标签 #工作 #支付，周计划关联 %41。用户回复“确认记录”。本轮 create 模拟返回 ✓ event created: #807。相关 lookups 已完成。",
       "expected_output": "Treats the explicit approval as authorization, keeps the recommended tags by default without asking a separate tag question, reuses completed lookups, creates once, then reports #807.",
       "files": [],
       "assertions": [
@@ -287,6 +287,39 @@
         "new_outcome_offer: one offer is made at the new task's completion boundary",
         "scope_clear: the offer concerns the new unrecorded work rather than re-logging #808",
         "no_implicit_write: no recording reference, collection or wrp call runs"
+      ]
+    },
+    {
+      "id": 24,
+      "eval_name": "default-request-direct-send",
+      "prompt": "帮我把刚完成的 weekly-reporter 时区显示修复记一条，约定验证已通过。不加标签。本轮为隔离模拟：不在 Git 仓库，计划为空，create 返回 #809。",
+      "expected_output": "Creates one factual event without asking for preview approval, then reports #809.",
+      "files": [],
+      "assertions": [
+        "default_direct_send: exactly one create without a preview stop",
+        "facts_preserved: records only the stated fix and verification"
+      ]
+    },
+    {
+      "id": 25,
+      "eval_name": "accepted-offer-direct-send",
+      "prompt": "你刚提议记录 weekly-reporter 时区显示修复及验证通过，用户选择“现在记录”，未要求预览。不加标签。本轮隔离模拟：不在 Git 仓库，计划为空，create 返回 #810。",
+      "expected_output": "Creates once without a second confirmation question and reports #810.",
+      "files": [],
+      "assertions": [
+        "accepted_offer_authorizes: no additional preview approval required",
+        "single_create: exactly one create"
+      ]
+    },
+    {
+      "id": 26,
+      "eval_name": "confirmation-preference-preserved",
+      "prompt": "用户先前要求“以后记录都先让我确认”。现在说“把刚完成的 weekly-reporter 时区修复及验证通过记一条”。隔离模拟：不在 Git 仓库，计划和标签为空。",
+      "expected_output": "Shows the draft and waits for approval, honoring the standing user confirmation preference.",
+      "files": [],
+      "assertions": [
+        "preference_respected: preview shown",
+        "no_create: waits for explicit approval"
       ]
     }
   ]

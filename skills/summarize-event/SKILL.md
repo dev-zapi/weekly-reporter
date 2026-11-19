@@ -27,7 +27,7 @@ Apply the user's reminder choice before checking any automatic trigger:
 
 | User's choice | Next action |
 | --- | --- |
-| Log now | Enter the recording flow; preview approval still applies. |
+| Log now | Enter the recording flow; submit directly unless the user requests confirmation. |
 | Not yet | Wait for one **new** completed outcome after this offer, or wrap-up/project switch. |
 | Skip this session | Mute every automatic offer, including wrap-up, until re-enabled. Explicit requests still work. |
 | Remind at session end | Defer every automatic offer until wrap-up. |
@@ -51,8 +51,11 @@ conversation context: no collection, API queries, or recording-reference reads.
 
 For an explicit request or an accepted offer, read
 [the recording flow](references/recording.md). It covers collection, tags, event
-and plan links, preview, and submission. “直接发送 / 不用确认” or an explicit
-**summarize-event-quick** invocation selects direct-send for this run only.
+and plan links, wording, and submission. Default to direct-send after an explicit
+recording request or accepted offer. Wait for preview approval only when the user
+asks to review or confirm first (e.g. “先给我看 / 确认后再发”). Honor an explicit
+confirmation preference until the user changes it. **summarize-event-quick**
+selects direct-send, subject to any newer user instruction.
 
 Confirm the created event id (`✓ event created: #<id>`, or a verified record
 after an uncertain create); report it and clear only the outcomes it covers.
