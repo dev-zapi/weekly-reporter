@@ -610,12 +610,6 @@
   border-radius: 4px;
 }
 
-.tracePanel > p {
-  color: var(--tl-secondary);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
 .traceEvent {
   margin-top: 14px;
   padding-top: 12px;
@@ -659,6 +653,8 @@
 
 .traceCopy {
   margin: 12px 0 !important;
+  color: var(--tl-secondary);
+  font-size: 13px;
   line-height: 1.6;
 }
 
