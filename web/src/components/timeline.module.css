@@ -460,6 +460,35 @@
   color: var(--tl-cobalt-dark);
 }
 
+/* Expanded state: drop the two-line clamp so the full record reads in place.
+   The row grid absorbs the extra height; nothing else in the row moves. */
+.eventTitleExpanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+/* Same language as the shared text button (cobalt ink, underline on hover),
+   sized to sit between the title and the meta row without adding a new gap. */
+.expandToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  min-height: 24px;
+  padding: 1px 0;
+  color: var(--tl-cobalt-dark);
+  background: transparent;
+  border: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.expandToggle:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
 .eventMeta {
   display: flex;
   flex-wrap: wrap;
@@ -588,8 +617,6 @@
 }
 
 .traceEvent {
-  display: -webkit-box;
-  overflow: hidden;
   margin-top: 14px;
   padding-top: 12px;
   color: var(--tl-ink);
@@ -598,8 +625,6 @@
   font-weight: 600;
   line-height: 1.55;
   overflow-wrap: anywhere;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
 }
 
 .traceChain {

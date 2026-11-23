@@ -217,7 +217,7 @@ The palette is cool and operational: dark navy for shell and review gates, cobal
 ### Hierarchy
 - **Display** (400, 24–34px responsive clamp, 1.16): Page-level workspace names; balanced wrapping and tight tracking.
 - **Headline** (400, 15px, 1.3): Panel and section titles.
-- **Title** (550, 14px, 1.55): Evidence and record titles; event text clamps to two lines and wraps anywhere when needed.
+- **Title** (550, 14px, 1.55): Evidence and record titles; event text clamps to two lines by default and wraps anywhere when needed. When the clamp actually hides text, a small cobalt-ink text toggle (Show more / Show less, with chevron) appears beneath the title and expands the full record inline; short records never show the toggle.
 - **Body** (400, 14px, 1.5): Controls, explanations, and general interface copy; introductory copy may extend to 70ch.
 - **Document** (400, 13px, 1.75): Markdown source and final prose, constrained to 72ch with 17px section headings and 14px subheadings.
 - **Label** (700, 12px, tabular numerals): `@id`, `%id`, and `Rid` references and trace nodes.

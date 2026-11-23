@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Edit2, Trash2, FileText, GitBranch, Link2, MessageSquare } from 'lucide-react'
+import { Edit2, Trash2, FileText, GitBranch, Link2, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react'
 import type { RawEvent } from '@/lib/db/schema'
 import { EventTimestamp } from './EventTimestamp'
 import { ContentWithReferences } from './ContentWithReferences'
@@ -54,8 +54,25 @@ export function EventCard({
   const [editContent, setEditContent] = useState(event.content)
   const [loading, setLoading] = useState(false)
   const [locatingCitation, setLocatingCitation] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [clamped, setClamped] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
+  const titleRef = useRef<HTMLParagraphElement>(null)
   const isManual = event.source === 'manual'
+
+  // Show the expand toggle only when the two-line clamp actually hides text.
+  // While expanded the title renders in full, so measuring would report
+  // "not clamped" and the collapse control would disappear; skip it then.
+  useEffect(() => {
+    if (expanded || editing) return
+    const el = titleRef.current
+    if (!el) return
+    const measure = () => setClamped(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [expanded, editing, event.content])
 
   useEffect(() => {
     if (highlightKey && cardRef.current) {
@@ -220,14 +237,36 @@ export function EventCard({
             </div>
           </div>
         ) : (
-          <p className={styles.eventTitle}>
-            <ContentWithReferences
-              content={event.content}
-              isManual={isManual}
-              onReferenceClick={onReferenceClick}
-              onPlanReferenceClick={onPlanReferenceClick}
-            />
-          </p>
+          <>
+            <p
+              ref={titleRef}
+              id={`event-content-${event.id}`}
+              className={`${styles.eventTitle} ${expanded ? styles.eventTitleExpanded : ''}`}
+            >
+              <ContentWithReferences
+                content={event.content}
+                isManual={isManual}
+                onReferenceClick={onReferenceClick}
+                onPlanReferenceClick={onPlanReferenceClick}
+              />
+            </p>
+            {(clamped || expanded) && (
+              <button
+                type="button"
+                className={styles.expandToggle}
+                aria-expanded={expanded}
+                aria-controls={`event-content-${event.id}`}
+                onClick={() => setExpanded((value) => !value)}
+              >
+                {expanded ? 'Show less' : 'Show more'}
+                {expanded ? (
+                  <ChevronUp size={12} aria-hidden="true" />
+                ) : (
+                  <ChevronDown size={12} aria-hidden="true" />
+                )}
+              </button>
+            )}
+          </>
         )}
 
         <div className={styles.eventMeta}>
