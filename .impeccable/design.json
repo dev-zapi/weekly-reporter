@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-04T00:00:00Z",
+  "generatedAt": "2026-11-23T06:08:32Z",
   "title": "Design System: weekly-reporter — Numbered Evidence",
   "extensions": {
     "colorMeta": {
@@ -256,7 +256,7 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Evidence and record titles."
+        "purpose": "Evidence and record titles; event text clamps to two lines and expands inline via a cobalt Show more/Show less toggle shown only when clamped."
       },
       "body": {
         "displayName": "Body",
@@ -303,6 +303,10 @@
       {
         "name": "compact",
         "value": "1100px"
+      },
+      {
+        "name": "stack",
+        "value": "960px"
       },
       {
         "name": "mobile",
@@ -394,9 +398,9 @@
     {
       "name": "Evidence Row",
       "kind": "custom",
-      "description": "Selectable record with a stable leading event reference and explicit trace action.",
-      "html": "<button class=\"ds-evidence-row\" aria-pressed=\"true\"><span class=\"ds-evidence-id\">@8540</span><span class=\"ds-evidence-body\"><strong>Evidence record title</strong><span>Nov 3, 2:54 PM · Manual entry</span></span><span class=\"ds-evidence-action\">Tracing</span></button>",
-      "css": ".ds-evidence-row { position:relative; display:grid; grid-template-columns:62px minmax(0,1fr) 72px; gap:13px; align-items:start; width:100%; padding:15px 13px; text-align:left; color:#172537; background:#e9f0fd; border:0; border-bottom:1px solid #cbd6e2; font:400 14px/1.5 sans-serif; cursor:pointer; } .ds-evidence-row::after { content:\"\"; position:absolute; left:0; bottom:-1px; width:100%; height:2px; background:#2f66d0; } .ds-evidence-row:hover { background:#f2f6fb; } .ds-evidence-row:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-evidence-id { color:#214fae; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; } .ds-evidence-body { display:grid; gap:8px; min-width:0; } .ds-evidence-body strong { font-size:14px; font-weight:550; line-height:1.55; overflow-wrap:anywhere; } .ds-evidence-body span { color:#52647a; font-size:11px; } .ds-evidence-action { color:#214fae; font-size:11px; text-align:right; } @media(max-width:780px) { .ds-evidence-row { grid-template-columns:48px minmax(0,1fr); padding:13px 10px; } .ds-evidence-action { display:none; } }"
+      "description": "Selectable record with a stable leading event reference and explicit trace action. Long titles clamp to two lines; the expand toggle appears only when text is hidden.",
+      "html": "<button class=\"ds-evidence-row\" aria-pressed=\"true\"><span class=\"ds-evidence-id\">@8540</span><span class=\"ds-evidence-body\"><strong>Evidence record title</strong><span class=\"ds-evidence-expand\">Show more</span><span>Nov 3, 2:54 PM · Manual entry</span></span><span class=\"ds-evidence-action\">Tracing</span></button>",
+      "css": ".ds-evidence-row { position:relative; display:grid; grid-template-columns:62px minmax(0,1fr) 72px; gap:13px; align-items:start; width:100%; padding:15px 13px; text-align:left; color:#172537; background:#e9f0fd; border:0; border-bottom:1px solid #cbd6e2; font:400 14px/1.5 sans-serif; cursor:pointer; } .ds-evidence-row::after { content:\"\"; position:absolute; left:0; bottom:-1px; width:100%; height:2px; background:#2f66d0; } .ds-evidence-row:hover { background:#f2f6fb; } .ds-evidence-row:focus-visible { outline:3px solid #74a2fa; outline-offset:3px; } .ds-evidence-id { color:#214fae; font-size:12px; font-weight:700; font-variant-numeric:tabular-nums; } .ds-evidence-body { display:grid; gap:8px; min-width:0; } .ds-evidence-body strong { font-size:14px; font-weight:550; line-height:1.55; overflow-wrap:anywhere; } .ds-evidence-body span { color:#52647a; font-size:11px; } .ds-evidence-body .ds-evidence-expand { display:inline-flex; align-items:center; gap:4px; justify-self:start; min-height:24px; padding:1px 0; color:#214fae; background:transparent; font-size:12px; font-weight:500; cursor:pointer; } .ds-evidence-body .ds-evidence-expand:hover { text-decoration:underline; text-underline-offset:4px; } .ds-evidence-action { color:#214fae; font-size:11px; text-align:right; } @media(max-width:780px) { .ds-evidence-row { grid-template-columns:48px minmax(0,1fr); padding:13px 10px; } .ds-evidence-action { display:none; } }"
     },
     {
       "name": "Readiness Cells",
