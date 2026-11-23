@@ -1,8 +1,9 @@
 # Record a work segment
 
-Use **weekly-reporter** and only its relevant module references for wrp commands,
-output, and auth. Read **collect-git-source** only in the Git branch below.
-Reuse this run's lookup results; independent reads may run together.
+Load the **weekly-reporter** skill for wrp commands, output, and auth; read
+only its module references for the verbs you run. Load **collect-git-source**
+only in the Git branch below. Reuse this run's lookup results; independent
+reads may run together.
 
 Before lookups, establish a concrete action/decision and its result or current
 state from conversation evidence. If missing, ask one factual question first;
@@ -76,7 +77,8 @@ known, ask for a time instead of inventing one.
 
 ## Recovery
 
-On `401`, hand off `error.fix` per weekly-reporter; wait for credential
-provisioning before retrying. Other optional lookup failures may be omitted.
+On `401`, hand off `error.fix` per the loaded **weekly-reporter** skill; wait
+for credential provisioning before retrying. Other optional lookup failures
+may be omitted.
 If create's outcome is uncertain, check recent events for the submitted line
 before retrying. Confirm its id before claiming success; avoid duplicate writes.
