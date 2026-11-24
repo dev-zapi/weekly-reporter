@@ -1,29 +1,14 @@
-
 import { useEffect, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Star, Trash2 } from 'lucide-react'
+import { Pencil, RotateCcw } from 'lucide-react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { TabsContent } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { apiFetch, traceSuffix } from '@/lib/api-client'
-import type { AIStyleRow, SystemPromptRow } from '@/lib/db/schema'
-import { useAIStyles } from './useAIStyles'
-import type { StyleFormData } from './useAIStyles'
+import type { SystemPromptRow } from '@/lib/db/schema'
+import { AIStyleWorkbench } from './AIStyleWorkbench'
+import { PromptHeader, PromptTabs, type PromptTab } from './PromptChrome'
 import styles from './library-configuration.module.css'
-
-const RANDOM_WORDS = [
-  'nova', 'apex', 'zen', 'flux', 'core', 'sage', 'echo', 'pulse',
-  'spark', 'wave', 'beam', 'dash', 'glow', 'prism', 'forge', 'rift',
-  'swift', 'crisp', 'pure', 'bold', 'keen', 'vivid', 'calm', 'dusk',
-]
 
 const DEFAULT_CHECK = `You are a weekly report writing assistant. Analyze the content below and provide improvement suggestions.
 
@@ -67,343 +52,30 @@ const SYSTEM_PROMPTS = [
   },
 ] as const
 
-function randomWord(): string {
-  return RANDOM_WORDS[Math.floor(Math.random() * RANDOM_WORDS.length)]
-}
-
-function emptyStyleForm(key = ''): StyleFormData {
-  return {
-    key,
-    label: '',
-    systemPrompt: '',
-    temperature: 0.3,
-    detailLevel: 'medium',
-    resultOriented: 'medium',
-    isDefault: false,
-  }
-}
-
-function regenerateKey(form: StyleFormData, setForm: (form: StyleFormData) => void) {
-  setForm({ ...form, key: randomWord() })
-}
-
 export function PromptManager() {
-  const [activeTab, setActiveTab] = useState<'styles' | 'system'>('styles')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab: PromptTab = searchParams.get('tab') === 'system' ? 'system' : 'styles'
 
-  return (
-    <Tabs
-      value={activeTab}
-      onValueChange={(value) => setActiveTab(value as 'styles' | 'system')}
-      className={styles.tabs}
-    >
-      <TabsList className={styles.tabsList} aria-label="Prompt configuration">
-        <TabsTrigger value="styles" className={styles.tabTrigger}>Style management</TabsTrigger>
-        <TabsTrigger value="system" className={styles.tabTrigger}>System prompts</TabsTrigger>
-      </TabsList>
-      <TabsContent value="styles" className={styles.tabContent}>
-        <StyleTab />
-      </TabsContent>
-      <TabsContent value="system" className={styles.tabContent}>
-        <SystemPromptTab />
-      </TabsContent>
-    </Tabs>
-  )
-}
-
-function StyleTab() {
-  const { styles: aiStyles, loading, error, retry, create, update, remove, setDefault } = useAIStyles()
-  const [editing, setEditing] = useState<AIStyleRow | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  // Random keys are generated only after the create dialog opens in the browser.
-  const [form, setForm] = useState<StyleFormData>(() => emptyStyleForm())
-  const [showAdvanced, setShowAdvanced] = useState(false)
-
-  function openCreate() {
-    setEditing(null)
-    setForm(emptyStyleForm(randomWord()))
-    setShowAdvanced(false)
-    setDialogOpen(true)
+  function changeTab(tab: PromptTab) {
+    const params = new URLSearchParams(searchParams)
+    params.set('tab', tab)
+    if (tab === 'system') params.delete('style')
+    setSearchParams(params)
   }
 
-  function openEdit(style: AIStyleRow) {
-    setEditing(style)
-    setForm({
-      key: style.key,
-      label: style.label,
-      systemPrompt: style.systemPrompt,
-      temperature: parseFloat(style.temperature),
-      detailLevel: style.detailLevel ?? 'medium',
-      resultOriented: style.resultOriented ?? 'medium',
-      isDefault: style.isDefault,
-    })
-    setShowAdvanced(false)
-    setDialogOpen(true)
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault()
-    const payload = {
-      ...form,
-      detailLevel: form.detailLevel || undefined,
-      resultOriented: form.resultOriented || undefined,
-    } as StyleFormData
-
-    setSaving(true)
-    try {
-      const ok = editing ? await update(editing.id, payload) : await create(payload)
-      if (ok) setDialogOpen(false)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete(style: AIStyleRow) {
-    if (!confirm(`Delete style “${style.label}”?`)) return
-    await remove(style.id)
-  }
-
-  if (loading) {
-    return (
-      <div className={styles.loadingState} role="status">
-        <span className={styles.loadingLine} aria-hidden="true" />
-        <strong>Loading AI styles…</strong>
-      </div>
-    )
+  if (activeTab === 'styles') {
+    return <AIStyleWorkbench activeTab={activeTab} onTabChange={changeTab} />
   }
 
   return (
-    <div>
-      <div className={styles.indexBar}>
-        <div className={styles.indexTitle}>
-          <h2>AI style index</h2>
-          <span className={styles.count}>{aiStyles.length} styles</span>
-        </div>
-        <button type="button" className={styles.primaryButton} onClick={openCreate}>
-          <Plus size={15} aria-hidden="true" />
-          New style
-        </button>
-      </div>
-
-      {error ? (
-        <div className={styles.errorState} role="alert">
-          <strong>AI styles could not be loaded</strong>
-          <p>{error}</p>
-          <button type="button" className={styles.stateAction} onClick={() => void retry()}>
-            Retry loading styles
-          </button>
-        </div>
-      ) : aiStyles.length === 0 ? (
-        <div className={styles.emptyState}>
-          <strong>No styles yet</strong>
-          <p>Create an AI style to define the voice and generation parameters available for reports.</p>
-          <button type="button" className={styles.secondaryButton} onClick={openCreate}>
-            <Plus size={15} aria-hidden="true" />
-            New style
-          </button>
-        </div>
-      ) : (
-        <div className={styles.recordList}>
-          {aiStyles.map((style) => (
-            <article key={style.id} className={styles.recordRow}>
-              <span className={styles.recordId}>S{style.id}</span>
-              <div className={styles.recordBody}>
-                <div className={styles.recordTitleLine}>
-                  <h3 className={styles.recordTitle}>{style.label}</h3>
-                  {style.isDefault && <span className={`${styles.badge} ${styles.defaultBadge}`}>Default</span>}
-                </div>
-                <div className={styles.recordMeta}>
-                  <span>Key: {style.key}</span>
-                  <span>Temperature: {style.temperature}</span>
-                </div>
-                <p className={styles.recordDescription}>{style.systemPrompt.slice(0, 100)}...</p>
-              </div>
-              <div className={styles.recordActions} role="group" aria-label={`Actions for ${style.label}`}>
-                {!style.isDefault && (
-                  <button
-                    type="button"
-                    className={styles.iconButton}
-                    aria-label={`Set ${style.label} as default`}
-                    title="Set as default"
-                    onClick={() => void setDefault(style.id)}
-                  >
-                    <Star size={15} aria-hidden="true" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className={styles.iconButton}
-                  aria-label={`Edit style ${style.label}`}
-                  title="Edit style"
-                  onClick={() => openEdit(style)}
-                >
-                  <Pencil size={15} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.iconButton} ${styles.dangerButton}`}
-                  aria-label={`Delete style ${style.label}`}
-                  title="Delete style"
-                  onClick={() => void handleDelete(style)}
-                >
-                  <Trash2 size={15} aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className={styles.dialogContent}>
-          <DialogHeader>
-            <div className={styles.dialogTitleRow}>
-              <DialogTitle className={styles.dialogTitle}>{editing ? 'Edit style' : 'New style'}</DialogTitle>
-              {editing && <span className={styles.recordRef}>S{editing.id}</span>}
-            </div>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className={styles.dialogBody}>
-            <div className={styles.fieldGrid}>
-              <div className={styles.field}>
-                <Label htmlFor="skey" className={styles.fieldLabel}>Identifier (key)</Label>
-                <div className={styles.keyField}>
-                  <input
-                    id="skey"
-                    className={styles.input}
-                    value={form.key}
-                    onChange={(event) => setForm({ ...form, key: event.target.value })}
-                    pattern="^[a-z][a-z0-9_\-]*$"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className={styles.iconButton}
-                    aria-label="Generate random style identifier"
-                    title="Generate randomly"
-                    onClick={() => regenerateKey(form, setForm)}
-                  >
-                    <RotateCcw size={15} aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-              <div className={styles.field}>
-                <Label htmlFor="slabel" className={styles.fieldLabel}>Name</Label>
-                <input
-                  id="slabel"
-                  className={styles.input}
-                  value={form.label}
-                  onChange={(event) => setForm({ ...form, label: event.target.value })}
-                  required
-                  maxLength={50}
-                />
-              </div>
-            </div>
-
-            <div className={styles.field}>
-              <Label htmlFor="sprompt" className={styles.fieldLabel}>System Prompt</Label>
-              <textarea
-                id="sprompt"
-                className={styles.textarea}
-                value={form.systemPrompt}
-                onChange={(event) => setForm({ ...form, systemPrompt: event.target.value })}
-                required
-                maxLength={5000}
-              />
-            </div>
-
-            <div className={styles.checkboxRow}>
-              <Checkbox
-                id="style-default"
-                checked={form.isDefault}
-                onCheckedChange={(checked) => setForm({ ...form, isDefault: checked })}
-              />
-              <Label htmlFor="style-default" className={styles.fieldLabel}>Set as default style</Label>
-            </div>
-
-            <div className={styles.advanced}>
-              <button
-                type="button"
-                className={styles.advancedTrigger}
-                aria-expanded={showAdvanced}
-                aria-controls="style-advanced-parameters"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                {showAdvanced ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronRight size={14} aria-hidden="true" />}
-                Advanced parameters
-              </button>
-              {showAdvanced && (
-                <div id="style-advanced-parameters" className={styles.advancedPanel}>
-                  <div className={styles.field}>
-                    <Label htmlFor="style-temperature" className={styles.fieldLabel}>
-                      Temperature ({form.temperature})
-                    </Label>
-                    <input
-                      id="style-temperature"
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={form.temperature}
-                      onChange={(event) => setForm({ ...form, temperature: parseFloat(event.target.value) })}
-                      className={styles.range}
-                    />
-                  </div>
-
-                  <div className={styles.fieldGrid}>
-                    <div className={styles.field}>
-                      <span className={styles.fieldLabel}>Detail level</span>
-                      <Select
-                        value={form.detailLevel || 'medium'}
-                        onValueChange={(value) => setForm({ ...form, detailLevel: value as string })}
-                      >
-                        <SelectTrigger className={styles.selectTrigger} aria-label="Detail level">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className={styles.selectContent}>
-                          <SelectItem value="low" className={styles.selectItem}>Concise</SelectItem>
-                          <SelectItem value="medium" className={styles.selectItem}>Balanced</SelectItem>
-                          <SelectItem value="high" className={styles.selectItem}>Detailed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className={styles.field}>
-                      <span className={styles.fieldLabel}>Result orientation</span>
-                      <Select
-                        value={form.resultOriented || 'medium'}
-                        onValueChange={(value) => setForm({ ...form, resultOriented: value as string })}
-                      >
-                        <SelectTrigger className={styles.selectTrigger} aria-label="Result orientation">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className={styles.selectContent}>
-                          <SelectItem value="low" className={styles.selectItem}>Low</SelectItem>
-                          <SelectItem value="medium" className={styles.selectItem}>Medium</SelectItem>
-                          <SelectItem value="high" className={styles.selectItem}>High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className={styles.dialogFooter}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setDialogOpen(false)}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button type="submit" className={styles.primaryButton} disabled={saving}>
-                {saving ? 'Saving…' : editing ? 'Save' : 'Create'}
-              </button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <section className={styles.surface} aria-labelledby="prompt-library-title">
+      <PromptHeader />
+      <PromptTabs activeTab={activeTab} onChange={changeTab}>
+        <TabsContent value="system" className={styles.tabContent}>
+          <SystemPromptTab />
+        </TabsContent>
+      </PromptTabs>
+    </section>
   )
 }
 

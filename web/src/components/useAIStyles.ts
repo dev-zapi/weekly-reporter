@@ -3,16 +3,9 @@ import { apiFetch } from '@/lib/api-client'
 import { useState, useEffect, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { AIStyleRow } from '@/lib/db/schema'
+import type { StyleFormData } from '@/lib/ai-style-drafts'
 
-export interface StyleFormData {
-  key: string
-  label: string
-  systemPrompt: string
-  temperature: number
-  detailLevel: string
-  resultOriented: string
-  isDefault: boolean
-}
+export type { StyleFormData } from '@/lib/ai-style-drafts'
 
 async function tryGetError(res: Response): Promise<string> {
   try {

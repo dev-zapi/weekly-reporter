@@ -204,7 +204,6 @@ test.describe('body-cap rail — single-column pages stay full width', () => {
     { path: '/collect', heading: 'Collection sources' },
     { path: '/collect/new', heading: 'New source' },
     { path: '/templates/new', heading: 'New Template' },
-    { path: '/prompts', heading: 'Prompt Management' },
   ]
 
   /**

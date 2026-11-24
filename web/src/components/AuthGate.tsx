@@ -15,7 +15,7 @@ import { verifyPassword, getStoredPassword, clearStoredPassword } from '@/lib/ap
  */
 export function AuthGate({ authEnabled }: { authEnabled: boolean }) {
   const navigate = useNavigate()
-  const pathname = useLocation().pathname
+  const { pathname, search } = useLocation()
 
   useEffect(() => {
     if (!authEnabled) {
@@ -29,7 +29,7 @@ export function AuthGate({ authEnabled }: { authEnabled: boolean }) {
 
     function redirectToLogin() {
       // Preserve the originally-requested path so login can bounce back.
-      const target = pathname && pathname !== '/' ? pathname : ''
+      const target = pathname && pathname !== '/' ? `${pathname}${search}` : ''
       navigate(
         target ? `/login?redirect=${encodeURIComponent(target)}` : '/login',
         { replace: true },
@@ -57,7 +57,7 @@ export function AuthGate({ authEnabled }: { authEnabled: boolean }) {
     }
 
     verify()
-  }, [authEnabled, navigate, pathname])
+  }, [authEnabled, navigate, pathname, search])
 
   // Don't render anything — just gate via redirect.
   // No blocking UI; page content renders behind the gate.

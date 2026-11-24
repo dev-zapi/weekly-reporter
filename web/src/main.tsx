@@ -6,11 +6,11 @@
 //    (WR_AUTH_DISABLED=1) and 401 when it is on. Rendering first would let
 //    AuthGate redirect before the flag is known (ADR-0028). Any probe failure
 //    is treated as "auth enabled" (fail closed), matching the Next version.
-//  - File-system routing becomes an explicit <Routes> table. The 15 routes are
-//    1:1 with src/app; all pages are wired in.
-import { StrictMode } from 'react'
+//  - File-system routing becomes an explicit data-router table. The data router
+//    also supplies navigation blockers used by dirty standalone editors.
+import { StrictMode, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router'
+import { createBrowserRouter, Outlet, RouterProvider } from 'react-router'
 
 import './styles/tailwind.css'
 import './styles/fonts.css'
@@ -34,6 +34,8 @@ import TemplatesPage from '@/app/templates/page'
 import NewTemplatePage from '@/app/templates/new/page'
 import EditTemplatePage from '@/app/templates/[id]/page'
 import PromptsPage from '@/app/prompts/page'
+import NewAIStylePage from '@/app/prompts/styles/new/page'
+import EditAIStylePage from '@/app/prompts/styles/[id]/page'
 import SecurityPage from '@/app/security/page'
 
 /**
@@ -49,9 +51,6 @@ async function probeAuthEnabled(): Promise<boolean> {
   }
 }
 
-/**
- * Catch-all fallback for routes that don't match the 15-route table.
- */
 function PendingPage({ path }: { path: string }) {
   return (
     <div role="status" style={{ padding: 24, opacity: 0.6 }}>
@@ -61,38 +60,53 @@ function PendingPage({ path }: { path: string }) {
   )
 }
 
-function Root({ authEnabled }: { authEnabled: boolean }) {
+function AppLayout({ authEnabled }: { authEnabled: boolean }) {
   return (
-    <BrowserRouter>
+    <>
       <AuthGate authEnabled={authEnabled} />
       <ThemeProvider>
         <SyncAllSourcesProvider>
           <AppShell>
-            <Routes>
-              <Route path="/" element={<TimelinePage />} />
-              <Route path="/new" element={<NewReportPage />} />
-              <Route path="/edit/:id" element={<EditReportPage />} />
-              <Route path="/plans" element={<PlansPage />} />
-              <Route path="/login" element={<LoginPage />} />
-
-              <Route path="/collect" element={<CollectPage />} />
-              <Route path="/collect/new" element={<NewCollectSourcePage />} />
-              <Route path="/collect/:id" element={<EditCollectSourcePage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/reports/:id" element={<ReportDetailPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
-              <Route path="/templates/new" element={<NewTemplatePage />} />
-              <Route path="/templates/:id" element={<EditTemplatePage />} />
-              <Route path="/prompts" element={<PromptsPage />} />
-              <Route path="/security" element={<SecurityPage />} />
-
-              <Route path="*" element={<PendingPage path="(unknown route)" />} />
-            </Routes>
+            <Outlet />
           </AppShell>
         </SyncAllSourcesProvider>
       </ThemeProvider>
+    </>
+  )
+}
+
+function Root({ authEnabled }: { authEnabled: boolean }) {
+  const router = useMemo(() => createBrowserRouter([
+    {
+      element: <AppLayout authEnabled={authEnabled} />,
+      children: [
+        { path: '/', element: <TimelinePage /> },
+        { path: '/new', element: <NewReportPage /> },
+        { path: '/edit/:id', element: <EditReportPage /> },
+        { path: '/plans', element: <PlansPage /> },
+        { path: '/login', element: <LoginPage /> },
+        { path: '/collect', element: <CollectPage /> },
+        { path: '/collect/new', element: <NewCollectSourcePage /> },
+        { path: '/collect/:id', element: <EditCollectSourcePage /> },
+        { path: '/reports', element: <ReportsPage /> },
+        { path: '/reports/:id', element: <ReportDetailPage /> },
+        { path: '/templates', element: <TemplatesPage /> },
+        { path: '/templates/new', element: <NewTemplatePage /> },
+        { path: '/templates/:id', element: <EditTemplatePage /> },
+        { path: '/prompts', element: <PromptsPage /> },
+        { path: '/prompts/styles/new', element: <NewAIStylePage /> },
+        { path: '/prompts/styles/:id', element: <EditAIStylePage /> },
+        { path: '/security', element: <SecurityPage /> },
+        { path: '*', element: <PendingPage path="(unknown route)" /> },
+      ],
+    },
+  ]), [authEnabled])
+
+  return (
+    <>
+      <RouterProvider router={router} />
       <Toaster />
-    </BrowserRouter>
+    </>
   )
 }
 
